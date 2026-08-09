@@ -1,0 +1,36 @@
+{
+  "name": "ai-workspace-session-manager",
+  "displayName": "AI Workspace Session Manager",
+  "description": "Lưu và khôi phục workspace gồm nhiều terminal, git worktree và Claude Code session",
+  "version": "0.0.1",
+  "publisher": "bigdatacloud",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/bigdatacloud/vscode-workspace-saver.git" },
+  "engines": { "vscode": "^1.90.0", "node": ">=20" },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "aiWorkspace.newWorkspace", "title": "AI Workspace: New Workspace" }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0"
+  }
+}
