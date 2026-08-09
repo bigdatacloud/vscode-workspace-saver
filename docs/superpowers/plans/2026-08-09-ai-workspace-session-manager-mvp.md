@@ -1366,9 +1366,103 @@ export class GitClient {
 Run: `npx vitest run test/unit/git-worktree.test.ts test/unit/git-safety.test.ts`
 Expected: 10 test PASS.
 
+Sau đó bổ sung thêm nhóm test `GitClient với runner giả` vào cuối `test/unit/git-worktree.test.ts` — dùng `GitRunner` giả tự viết trong file test (không thư viện mock, không đụng đĩa/git thật) để phủ các nhánh mà integration test (chỉ chạy trên git thật, luôn trả kết quả hợp lệ) không bao giờ chạm tới: `isRepo` true/false theo exit code, `listWorktrees` trả về danh sách đã parse khi code 0 và NÉM lỗi có chứa `stderr` khi code khác 0, `branchExists` true/false theo exit code, và quan trọng nhất — `addWorktree` phải gọi runner với đúng mảng args mà `buildAddWorktreeArgs` sinh ra (ghi lại lời gọi trong runner giả rồi assert trên đó) cho cả hai trường hợp branch đã tồn tại / chưa tồn tại, cùng với việc NÉM lỗi khi runner trả code khác 0.
+
+```ts
+// Thêm vào đầu file, cạnh các import khác:
+import { GitClient } from '../../src/git/worktree';
+import type { GitRunner, GitResult } from '../../src/git/exec';
+
+// Thêm vào cuối file, sau describe('buildAddWorktreeArgs', ...):
+
+/** Runner giả: không gọi git thật, không đụng đĩa. Ghi lại mọi lời gọi để assert. */
+function fakeRunner(results: GitResult[]): GitRunner & { calls: string[][] } {
+  const queue = [...results];
+  const calls: string[][] = [];
+  return {
+    calls,
+    async run(_cwd: string, args: string[]): Promise<GitResult> {
+      calls.push(args);
+      return queue.shift() ?? { stdout: '', stderr: '', code: 0 };
+    },
+  };
+}
+
+describe('GitClient với runner giả', () => {
+  it('isRepo trả true khi runner trả code 0', async () => {
+    const runner = fakeRunner([{ stdout: '.git', stderr: '', code: 0 }]);
+    const client = new GitClient(runner);
+    expect(await client.isRepo('/repo')).toBe(true);
+    expect(runner.calls).toEqual([['rev-parse', '--git-dir']]);
+  });
+
+  it('isRepo trả false khi runner trả code khác 0', async () => {
+    const runner = fakeRunner([{ stdout: '', stderr: 'not a git repository', code: 128 }]);
+    const client = new GitClient(runner);
+    expect(await client.isRepo('/khong-phai-repo')).toBe(false);
+  });
+
+  it('listWorktrees trả về danh sách đã parse khi code 0', async () => {
+    const stdout = 'worktree /projects/erp\nHEAD abc\nbranch refs/heads/main\n';
+    const runner = fakeRunner([{ stdout, stderr: '', code: 0 }]);
+    const client = new GitClient(runner);
+    const entries = await client.listWorktrees('/projects/erp');
+    expect(entries).toEqual([
+      { path: '/projects/erp', head: 'abc', branch: 'refs/heads/main', detached: false, bare: false },
+    ]);
+  });
+
+  it('listWorktrees ném lỗi chứa stderr khi runner trả code khác 0', async () => {
+    const runner = fakeRunner([{ stdout: '', stderr: 'fatal: không phải repo git', code: 1 }]);
+    const client = new GitClient(runner);
+    await expect(client.listWorktrees('/repo')).rejects.toThrow(/không phải repo git/);
+  });
+
+  it('branchExists trả true/false theo exit code', async () => {
+    const runnerTrue = fakeRunner([{ stdout: 'abc123', stderr: '', code: 0 }]);
+    expect(await new GitClient(runnerTrue).branchExists('/repo', 'main')).toBe(true);
+
+    const runnerFalse = fakeRunner([{ stdout: '', stderr: '', code: 1 }]);
+    expect(await new GitClient(runnerFalse).branchExists('/repo', 'khong-ton-tai')).toBe(false);
+  });
+
+  it('addWorktree dùng buildAddWorktreeArgs khi branch đã tồn tại', async () => {
+    const runner = fakeRunner([
+      { stdout: 'abc123', stderr: '', code: 0 }, // branchExists -> true
+      { stdout: '', stderr: '', code: 0 }, // worktree add
+    ]);
+    const client = new GitClient(runner);
+    await client.addWorktree('/repo', '/projects/erp-qc', 'feature/qc');
+    expect(runner.calls[1]).toEqual(['worktree', 'add', '/projects/erp-qc', 'feature/qc']);
+  });
+
+  it('addWorktree dùng buildAddWorktreeArgs khi branch chưa tồn tại', async () => {
+    const runner = fakeRunner([
+      { stdout: '', stderr: '', code: 1 }, // branchExists -> false
+      { stdout: '', stderr: '', code: 0 }, // worktree add -b
+    ]);
+    const client = new GitClient(runner);
+    await client.addWorktree('/repo', '/projects/erp-qc', 'feature/qc');
+    expect(runner.calls[1]).toEqual(['worktree', 'add', '-b', 'feature/qc', '/projects/erp-qc']);
+  });
+
+  it('addWorktree ném lỗi khi runner trả code khác 0', async () => {
+    const runner = fakeRunner([
+      { stdout: '', stderr: '', code: 1 }, // branchExists -> false
+      { stdout: '', stderr: 'fatal: đường dẫn đã tồn tại', code: 128 }, // worktree add thất bại
+    ]);
+    const client = new GitClient(runner);
+    await expect(client.addWorktree('/repo', '/projects/erp-qc', 'feature/qc')).rejects.toThrow(/thất bại/);
+  });
+});
+```
+
+Run lại: `npx vitest run test/unit/git-worktree.test.ts test/unit/git-safety.test.ts`
+Expected: 18 test PASS (9 test `classifyWorktree`/`buildAddWorktreeArgs` + 8 test `GitClient` với runner giả + 1 test an toàn).
+
 - [ ] **Step 7: Viết test integration với git thật**
 
-Tạo `test/integration/git.test.ts`:
+Tạo `test/integration/git.test.ts`. Lưu ý: các worktree được tạo là THƯ MỤC ANH EM của `root` (`join(root, '..', 'wt*-<timestamp>')`), không phải con của nó, nên việc dọn dẹp KHÔNG được đặt ở cuối thân từng test — nếu một assert phía trên ném lỗi, dòng dọn dẹp phía dưới sẽ không bao giờ chạy và thư mục worktree rò rỉ vĩnh viễn trong temp dir của máy. Thay vào đó, mỗi test đẩy đường dẫn worktree nó tạo vào mảng `worktreesToClean` ở scope `describe` NGAY SAU khi tạo, và `afterEach` — chạy bất kể test đỏ hay xanh — duyệt mảng đó để dọn, cộng với dọn `root`:
 
 ```ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -1381,9 +1475,14 @@ import { classifyWorktree } from '../../src/git/worktree';
 
 let root: string;
 const git = new GitClient(realGitRunner);
+// Worktree được tạo là THƯ MỤC ANH EM của `root` (nằm ngoài root), nên phải
+// tự đăng ký đường dẫn ở đây để afterEach dọn dẹp — kể cả khi test đỏ giữa chừng
+// và không bao giờ chạy tới dòng rmSync ở cuối thân test.
+let worktreesToClean: string[] = [];
 
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), 'wss-git-'));
+  worktreesToClean = [];
   await realGitRunner.run(root, ['init', '-b', 'main']);
   await realGitRunner.run(root, ['config', 'user.email', 'test@example.com']);
   await realGitRunner.run(root, ['config', 'user.name', 'Test']);
@@ -1391,7 +1490,10 @@ beforeEach(async () => {
   await realGitRunner.run(root, ['add', '.']);
   await realGitRunner.run(root, ['commit', '-m', 'init']);
 });
-afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const wt of worktreesToClean) rmSync(wt, { recursive: true, force: true });
+  rmSync(root, { recursive: true, force: true });
+});
 
 describe('GitClient trên repo thật', () => {
   it('isRepo phân biệt được repo và thư mục thường', async () => {
@@ -1409,6 +1511,7 @@ describe('GitClient trên repo thật', () => {
 
   it('addWorktree tạo branch mới khi branch chưa có', async () => {
     const wt = join(root, '..', `wt-${Date.now()}`);
+    worktreesToClean.push(wt);
     await git.addWorktree(root, wt, 'feature/qc');
     expect(existsSync(wt)).toBe(true);
     const entries = await git.listWorktrees(root);
@@ -1416,23 +1519,22 @@ describe('GitClient trên repo thật', () => {
       expectedPath: wt, expectedBranch: 'feature/qc', entries, pathExists: true,
     });
     expect(status.kind).toBe('ok');
-    rmSync(wt, { recursive: true, force: true });
   });
 
   it('addWorktree dùng lại branch đã tồn tại', async () => {
     await realGitRunner.run(root, ['branch', 'feature/existing']);
     const wt = join(root, '..', `wt2-${Date.now()}`);
+    worktreesToClean.push(wt);
     await git.addWorktree(root, wt, 'feature/existing');
     const entries = await git.listWorktrees(root);
     expect(entries.some((e) => e.branch === 'refs/heads/feature/existing')).toBe(true);
-    rmSync(wt, { recursive: true, force: true });
   });
 
   it('addWorktree ném lỗi rõ ràng khi đường dẫn đã bị chiếm', async () => {
     const wt = join(root, '..', `wt3-${Date.now()}`);
+    worktreesToClean.push(wt);
     await git.addWorktree(root, wt, 'feature/a');
     await expect(git.addWorktree(root, wt, 'feature/b')).rejects.toThrow(/thất bại/);
-    rmSync(wt, { recursive: true, force: true });
   });
 });
 ```
