@@ -614,6 +614,10 @@ describe('đường dẫn worktree', () => {
     expect(resolveWorktreePath(ROOT, abs)).toBe(abs);
   });
 
+  it('resolveWorktreePath với "." trả về project root', () => {
+    expect(resolveWorktreePath(ROOT, '.')).toBe(ROOT);
+  });
+
   it('toStoredPath luôn dùng dấu gạch chéo xuôi', () => {
     const abs = path.resolve(ROOT, '../erp-coordinator');
     expect(toStoredPath(ROOT, abs)).toBe('../erp-coordinator');
@@ -624,10 +628,26 @@ describe('đường dẫn worktree', () => {
     expect(toStoredPath(ROOT, abs)).toBe('worktrees/qc');
   });
 
-  it('toStoredPath rơi về tuyệt đối khi khác ổ đĩa hoặc quá xa', () => {
-    const abs = path.resolve('/totally/other/place');
+  it('toStoredPath cho đường dẫn xa nhưng cùng ổ đĩa', () => {
+    const abs = path.resolve(ROOT, '../..', 'totally', 'other');
     const stored = toStoredPath(ROOT, abs);
-    expect(path.isAbsolute(stored.replace(/\//g, path.sep)) || stored.startsWith('..')).toBe(true);
+    expect(stored.startsWith('..')).toBe(true);
+    expect(stored.replace(/\//g, path.sep)).not.toContain('/');
+  });
+
+  it.runIf(process.platform === 'win32')('toStoredPath khác ổ đĩa trả về tuyệt đối với dấu /', () => {
+    const rootDrive = path.resolve(ROOT)[0];
+    const otherDrive = rootDrive === 'C' || rootDrive === 'c' ? 'D' : 'C';
+    const abs = path.resolve(`${otherDrive}:\\totally\\other\\place`);
+
+    const stored = toStoredPath(ROOT, abs);
+
+    // Kiểm tra: trả về tuyệt đối và dùng dấu /
+    expect(path.isAbsolute(stored.replace(/\//g, path.sep))).toBe(true);
+    expect(stored).not.toContain('\\');
+
+    // Kiểm tra round-trip
+    expect(resolveWorktreePath(ROOT, stored)).toBe(abs);
   });
 
   it('round-trip: toStoredPath rồi resolveWorktreePath ra lại đúng chỗ cũ', () => {
@@ -688,7 +708,7 @@ export function toStoredPath(projectRoot: string, absolutePath: string): string 
 - [ ] **Step 4: Chạy test, xác nhận PASS**
 
 Run: `npx vitest run test/unit/manifest-paths.test.ts`
-Expected: 9 test PASS.
+Expected: 12 test PASS (bao gồm test Windows-only để kiểm tra khác ổ đĩa).
 
 - [ ] **Step 5: Commit**
 
