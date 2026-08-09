@@ -1622,6 +1622,9 @@ describe('detectShellKind', () => {
   it('nhận diện pwsh theo đường dẫn', () => {
     expect(detectShellKind('win32', 'C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toBe('powershell');
   });
+  it('nhận diện sh.exe (Git for Windows) là posix', () => {
+    expect(detectShellKind('win32', 'C:\\Program Files\\Git\\usr\\bin\\sh.exe')).toBe('posix');
+  });
   it('nhận diện cmd.exe', () => {
     expect(detectShellKind('win32', 'C:\\Windows\\System32\\cmd.exe')).toBe('cmd');
   });
@@ -1662,7 +1665,11 @@ export function detectShellKind(platform: NodeJS.Platform, shellPath: string | u
   if (platform !== 'win32') return 'posix';
   const lower = (shellPath ?? '').toLowerCase();
   if (lower.includes('cmd.exe')) return 'cmd';
-  if (lower.includes('bash') || lower.includes('sh.exe') || lower.includes('wsl')) return 'posix';
+  // Phải kiểm PowerShell TRƯỚC nhánh POSIX: chuỗi 'pwsh.exe' có chứa 'sh.exe'.
+  if (lower.includes('pwsh') || lower.includes('powershell')) return 'powershell';
+  // 'sh.exe' chỉ tính khi đứng ngay sau dấu phân cách và ở cuối đường dẫn,
+  // để không bắt nhầm những tên kết thúc bằng 'sh.exe' như 'pwsh.exe'.
+  if (lower.includes('bash') || lower.includes('wsl') || /[\\/]sh\.exe$/.test(lower)) return 'posix';
   return 'powershell';
 }
 ```
@@ -1670,7 +1677,7 @@ export function detectShellKind(platform: NodeJS.Platform, shellPath: string | u
 - [ ] **Step 4: Chạy test, xác nhận PASS**
 
 Run: `npx vitest run test/unit/agent-quote.test.ts`
-Expected: 14 test PASS.
+Expected: 15 test PASS.
 
 - [ ] **Step 5: Commit**
 
