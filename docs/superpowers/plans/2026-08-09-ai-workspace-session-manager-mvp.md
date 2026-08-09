@@ -777,14 +777,35 @@ describe('manifest store', () => {
 
   it('ném ManifestError kèm mô tả khi yaml sai schema', async () => {
     mkdirSync(join(root, '.ai-workspace'), { recursive: true });
-    writeFileSync(join(root, '.ai-workspace', 'workspace.yaml'), 'version: 2\nworkspace:\n  name: X\n');
-    await expect(readManifest(root)).rejects.toBeInstanceOf(ManifestError);
+    const file = join(root, '.ai-workspace', 'workspace.yaml');
+    writeFileSync(file, 'version: 2\nworkspace:\n  name: X\n');
+    try {
+      await readManifest(root);
+      expect.fail('phải ném ManifestError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ManifestError);
+      if (error instanceof ManifestError) {
+        expect(error.issues).not.toHaveLength(0);
+        expect(error.issues.some((issue) => issue.includes('version'))).toBe(true);
+        expect(error.message).toContain(file);
+      }
+    }
   });
 
   it('ném ManifestError khi yaml hỏng cú pháp', async () => {
     mkdirSync(join(root, '.ai-workspace'), { recursive: true });
-    writeFileSync(join(root, '.ai-workspace', 'workspace.yaml'), 'version: [1\n');
-    await expect(readManifest(root)).rejects.toBeInstanceOf(ManifestError);
+    const file = join(root, '.ai-workspace', 'workspace.yaml');
+    writeFileSync(file, 'version: [1\n');
+    try {
+      await readManifest(root);
+      expect.fail('phải ném ManifestError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ManifestError);
+      if (error instanceof ManifestError) {
+        expect(error.issues).not.toHaveLength(0);
+        expect(error.message).toContain(file);
+      }
+    }
   });
 
   it('readState trả state rỗng khi chưa có file', async () => {
@@ -809,6 +830,34 @@ describe('manifest store', () => {
     };
     await writeState(root, state);
     expect(await readState(root)).toEqual(state);
+  });
+
+  it('chi tiết lỗi tên session trùng nhau', async () => {
+    mkdirSync(join(root, '.ai-workspace'), { recursive: true });
+    const yamlWithDuplicateName = `version: 1
+workspace:
+  name: ERP Team
+sessions:
+  - key: s1
+    name: Duplicate Name
+    terminal: { name: S1 }
+  - key: s2
+    name: Duplicate Name
+    terminal: { name: S2 }
+`;
+    const file = join(root, '.ai-workspace', 'workspace.yaml');
+    writeFileSync(file, yamlWithDuplicateName);
+    try {
+      await readManifest(root);
+      expect.fail('phải ném ManifestError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ManifestError);
+      if (error instanceof ManifestError) {
+        expect(error.issues).not.toHaveLength(0);
+        expect(error.issues.some((issue) => issue.includes('name'))).toBe(true);
+        expect(error.message).toContain(file);
+      }
+    }
   });
 });
 ```
@@ -893,7 +942,7 @@ export async function writeState(projectRoot: string, state: WorkspaceState): Pr
 - [ ] **Step 4: Chạy test, xác nhận PASS**
 
 Run: `npx vitest run test/unit/manifest-store.test.ts`
-Expected: 7 test PASS.
+Expected: 8 test PASS.
 
 - [ ] **Step 5: Commit**
 
