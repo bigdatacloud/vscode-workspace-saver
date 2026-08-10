@@ -560,7 +560,9 @@ export class WorkspaceManager implements vscode.Disposable {
     // Không đoán cwd: entry không có cwd thì lần sau không mở lại đúng chỗ được.
     if (cwd === null) return null;
 
-    const entry: TerminalEntry = { id: randomUUID(), name: terminal.name, cwd, kind: 'plain' };
+    // Schema bắt name >= 1 ký tự; terminal không tên sẽ làm hỏng file store khi ghi.
+    const name = terminal.name.trim() === '' ? 'terminal' : terminal.name;
+    const entry: TerminalEntry = { id: randomUUID(), name, cwd, kind: 'plain' };
     upsertTerminal(ws, entry);
     this.terminals.adopt(entry.id, terminal);
     this.scheduleSave();
@@ -580,7 +582,11 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   async addOpenTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
-    const target = terminal ?? vscode.window.activeTerminal;
+    // Menu chuột phải tab terminal không đảm bảo truyền đúng một `vscode.Terminal`
+    // (có bản VS Code truyền context object khác). Nhận tham số chỉ khi nó thực sự là
+    // terminal đang sống — nếu không, entry sẽ có name/cwd undefined và làm hỏng store.
+    const known = terminal !== undefined && vscode.window.terminals.includes(terminal);
+    const target = known ? terminal : vscode.window.activeTerminal;
     if (!target) {
       void vscode.window.showWarningMessage('Không có terminal nào đang mở để thêm.');
       return;
