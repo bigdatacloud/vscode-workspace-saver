@@ -25,4 +25,7 @@ describe('pickCwd', () => {
     expect(pickCwd(undefined, undefined, 'C:\\c')).toBe('C:\\c');
     expect(pickCwd(undefined, undefined, undefined)).toBeNull();
   });
+  it('chuỗi rỗng là giá trị đã xác định — vẫn thắng (chỉ bỏ qua undefined)', () => {
+    expect(pickCwd('', 'C:\\b', 'C:\\c')).toBe('');
+  });
 });

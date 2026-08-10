@@ -13,6 +13,7 @@ export function classifyTerminal(info: OpenedTerminalInfo): AdoptDecision {
   return 'auto';
 }
 
+// Chỉ bỏ qua undefined; chuỗi rỗng do caller đưa vào là lỗi của caller.
 export function pickCwd(
   shellCwd: string | undefined,
   creationCwd: string | undefined,

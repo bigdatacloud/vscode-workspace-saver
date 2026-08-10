@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const PURE_DIRS = ['manifest', 'git', 'agent', 'events', 'index'];
+const PURE_DIRS = ['manifest', 'git', 'agent', 'events', 'index', 'model', 'adopt'];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
