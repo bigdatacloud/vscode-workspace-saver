@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import * as path from 'node:path';
 
 export interface TrustMemory {
   get(key: string): string | undefined;
@@ -12,19 +11,19 @@ export function fingerprintCommands(commands: string[]): string {
   return createHash('sha256').update(JSON.stringify(commands)).digest('hex');
 }
 
-function memoryKey(manifestPath: string): string {
-  return `trust:${path.resolve(manifestPath).toLowerCase()}`;
+function memoryKey(key: string): string {
+  return `trust:${key.toLowerCase()}`;
 }
 
 export class TrustStore {
   constructor(private readonly memory: TrustMemory) {}
 
-  isTrusted(manifestPath: string, commands: string[]): boolean {
+  isTrusted(key: string, commands: string[]): boolean {
     if (commands.length === 0) return true;
-    return this.memory.get(memoryKey(manifestPath)) === fingerprintCommands(commands);
+    return this.memory.get(memoryKey(key)) === fingerprintCommands(commands);
   }
 
-  async trust(manifestPath: string, commands: string[]): Promise<void> {
-    await this.memory.set(memoryKey(manifestPath), fingerprintCommands(commands));
+  async trust(key: string, commands: string[]): Promise<void> {
+    await this.memory.set(memoryKey(key), fingerprintCommands(commands));
   }
 }

@@ -51,4 +51,15 @@ describe('TrustStore', () => {
     const store = new TrustStore(memory());
     expect(store.isTrusted('/p/workspace.yaml', [])).toBe(true);
   });
+
+  it('key mờ không bị path.resolve — hai cwd process khác nhau vẫn cùng key', async () => {
+    // 'ws:<uuid>' không phải đường dẫn: fingerprint phải tra được bất kể cwd
+    const map = new Map<string, string>();
+    const mem: TrustMemory = { get: (k) => map.get(k), set: async (k, v) => { map.set(k, v); } };
+    const store = new TrustStore(mem);
+    const key = 'ws:AAAAAAAA-1111-4111-8111-111111111111';
+    await store.trust(key, ['npm run dev']);
+    expect(store.isTrusted(key.toLowerCase(), ['npm run dev'])).toBe(true); // case-insensitive
+    expect([...map.keys()][0]).toBe(`trust:${key.toLowerCase()}`); // không dính drive/cwd
+  });
 });
