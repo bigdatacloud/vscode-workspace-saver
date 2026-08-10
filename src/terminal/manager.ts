@@ -1,5 +1,16 @@
 import * as vscode from 'vscode';
-import type { CreateTerminalOptions, TerminalHandle } from '../workspace/restore';
+
+export interface TerminalHandle {
+  sendText(text: string): void;
+  show(): void;
+}
+
+export interface CreateTerminalOptions {
+  key: string;
+  name: string;
+  cwd: string;
+  env?: Record<string, string>;
+}
 
 export class TerminalManager {
   private readonly terminals = new Map<string, vscode.Terminal>();
@@ -67,6 +78,11 @@ export class TerminalManager {
 
   get(key: string): vscode.Terminal | undefined {
     return this.terminals.get(key);
+  }
+
+  /** Thôi theo dõi terminal của key này mà KHÔNG đóng nó — dùng khi gỡ entry khỏi workspace. */
+  release(key: string): void {
+    this.terminals.delete(key);
   }
 
   onClosed(handler: (key: string) => void): vscode.Disposable {
