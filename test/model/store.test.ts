@@ -55,6 +55,21 @@ describe('saveStore', () => {
     expect(ops).toEqual([`write:${P}.tmp`, `rename:${P}.tmp->${P}`]);
     expect(JSON.parse(files.get(P)!)).toEqual(emptyStore());
   });
+
+  // Store sai schema mà lọt xuống đĩa là mất dữ liệu thật: lần nạp sau loadStore parse hỏng
+  // → backup + danh sách workspace rỗng. Chặn ngay tại cửa ghi, đừng tin caller.
+  it('store sai schema thì ném lỗi và KHÔNG đụng vào đĩa', () => {
+    const { fs, files, ops } = memFs();
+    const store = emptyStore();
+    const ws = createWorkspace(store, 'X', uuidA);
+    upsertTerminal(ws, {
+      id: uuidB, name: 'a', cwd: 'C:\\x', kind: 'claude', claudeName: '',
+    });
+
+    expect(() => saveStore(fs, P, store)).toThrow();
+    expect(ops).toEqual([]);
+    expect(files.size).toBe(0);
+  });
 });
 
 describe('CRUD', () => {

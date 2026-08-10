@@ -22,6 +22,10 @@ export function loadStore(fs: StoreFs, filePath: string, epoch: () => number): L
 }
 
 export function saveStore(fs: StoreFs, filePath: string, store: StoreFile): void {
+  // Cửa ghi là nơi cuối cùng chặn được dữ liệu hỏng: một entry sai schema lọt xuống đĩa sẽ
+  // làm loadStore lần sau parse hỏng → backup + danh sách workspace rỗng (mất dữ liệu thật).
+  // Ném TRƯỚC khi đụng vào đĩa, để caller giữ nguyên file cũ và thử lại ở lần save sau.
+  StoreFileSchema.parse(store);
   const tmp = `${filePath}.tmp`;
   fs.writeFile(tmp, JSON.stringify(store, null, 2));
   fs.rename(tmp, filePath);

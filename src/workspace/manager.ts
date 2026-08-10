@@ -44,15 +44,24 @@ export interface TerminalView {
 const SAVE_DEBOUNCE_MS = 500;
 const STORE_FILE = 'workspaces.json';
 
+/**
+ * `pickCwd` cố tình chỉ bỏ qua `undefined` (chuỗi rỗng là lỗi của caller — đã ghim bằng test).
+ * Caller là chỗ này, nên chuỗi rỗng/toàn khoảng trắng phải được quy về "không có" TẠI ĐÂY;
+ * nếu không, entry sẽ có `cwd: ''` — sai schema `min(1)` và làm hỏng file store.
+ */
+function nonEmpty(value: string | undefined): string | undefined {
+  return value !== undefined && value.trim() !== '' ? value : undefined;
+}
+
 /** cwd của terminal lúc tạo — `creationOptions.cwd` là `string | Uri | undefined`. */
 function creationCwd(terminal: vscode.Terminal): string | undefined {
   const cwd = (terminal.creationOptions as vscode.TerminalOptions).cwd;
   if (cwd === undefined) return undefined;
-  return typeof cwd === 'string' ? cwd : cwd.fsPath;
+  return nonEmpty(typeof cwd === 'string' ? cwd : cwd.fsPath);
 }
 
 function folderCwd(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return nonEmpty(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
 }
 
 export class WorkspaceManager implements vscode.Disposable {
@@ -73,6 +82,7 @@ export class WorkspaceManager implements vscode.Disposable {
   private saveTimer: NodeJS.Timeout | null = null;
   private dirty = false;
   private refreshing = false;
+  private activating = false;
 
   private readonly subscriptions: vscode.Disposable[] = [];
   private readonly onChanged = new vscode.EventEmitter<void>();
@@ -227,41 +237,54 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
 
-    if (this.activeId !== null) {
-      const current = findWorkspace(this.store, this.activeId);
-      const answer = await vscode.window.showWarningMessage(
-        `Lưu và đóng workspace "${current?.name ?? this.activeId}" trước khi mở "${ws.name}"?`,
-        { modal: true },
-        'Lưu và đóng',
-      );
-      if (answer !== 'Lưu và đóng') return;
-      await this.closeActive();
+    // Không có active ws thì không có modal nào chặn, cây vẫn bấm được trong lúc withProgress
+    // chạy. Hai lượt activate song song đều ghi activeWindowId = sessionId nhưng chỉ một lượt
+    // thắng activeId — lượt thua để lại khóa V5 không bao giờ được gỡ.
+    if (this.activating) {
+      void vscode.window.showInformationMessage('Đang mở một workspace khác, thử lại sau khi xong.');
+      return;
     }
+    this.activating = true;
+    try {
+      // Khóa V5 — best-effort, luôn có lối thoát "Vẫn mở". Hỏi TRƯỚC khi đóng workspace cũ:
+      // người dùng hủy ở đây thì không được để mất terminal của workspace đang chạy.
+      if (ws.activeWindowId !== null && ws.activeWindowId !== vscode.env.sessionId) {
+        const answer = await vscode.window.showWarningMessage(
+          `Workspace "${ws.name}" đang mở ở cửa sổ khác.`,
+          { modal: true },
+          'Vẫn mở',
+        );
+        if (answer !== 'Vẫn mở') return;
+      }
 
-    // Khóa V5 — best-effort, luôn có lối thoát "Vẫn mở".
-    if (ws.activeWindowId !== null && ws.activeWindowId !== vscode.env.sessionId) {
-      const answer = await vscode.window.showWarningMessage(
-        `Workspace "${ws.name}" đang mở ở cửa sổ khác.`,
-        { modal: true },
-        'Vẫn mở',
+      if (this.activeId !== null) {
+        const current = findWorkspace(this.store, this.activeId);
+        const answer = await vscode.window.showWarningMessage(
+          `Lưu và đóng workspace "${current?.name ?? this.activeId}" trước khi mở "${ws.name}"?`,
+          { modal: true },
+          'Lưu và đóng',
+        );
+        if (answer !== 'Lưu và đóng') return;
+        await this.closeActive();
+      }
+
+      for (const entry of ws.terminals) this.errorIds.delete(entry.id);
+
+      const report = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${ws.name}"…` },
+        () => activateWorkspace(ws, this.buildPorts(ws)),
       );
-      if (answer !== 'Vẫn mở') return;
+      this.applyReport(report);
+
+      this.activeId = ws.id;
+      ws.lastActiveAt = new Date().toISOString();
+      ws.activeWindowId = vscode.env.sessionId;
+      this.scheduleSave();
+      this.flush();
+      this.onChanged.fire();
+    } finally {
+      this.activating = false;
     }
-
-    for (const entry of ws.terminals) this.errorIds.delete(entry.id);
-
-    const report = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${ws.name}"…` },
-      () => activateWorkspace(ws, this.buildPorts(ws)),
-    );
-    this.applyReport(report);
-
-    this.activeId = ws.id;
-    ws.lastActiveAt = new Date().toISOString();
-    ws.activeWindowId = vscode.env.sessionId;
-    this.scheduleSave();
-    this.flush();
-    this.onChanged.fire();
   }
 
   private applyReport(report: ActivateReport): void {
@@ -553,7 +576,7 @@ export class WorkspaceManager implements vscode.Disposable {
 
   private adoptInto(ws: Workspace, terminal: vscode.Terminal): TerminalEntry | null {
     const cwd = pickCwd(
-      terminal.shellIntegration?.cwd?.fsPath,
+      nonEmpty(terminal.shellIntegration?.cwd?.fsPath),
       creationCwd(terminal),
       folderCwd(),
     );
@@ -575,7 +598,7 @@ export class WorkspaceManager implements vscode.Disposable {
     if (key === null || this.activeId === null) return;
     const entry = this.findEntry(this.activeId, key);
     if (!entry) return;
-    const cwd = event.shellIntegration.cwd?.fsPath ?? entry.cwd;
+    const cwd = nonEmpty(event.shellIntegration.cwd?.fsPath) ?? entry.cwd;
     if (cwd === entry.cwd) return;
     entry.cwd = cwd;
     this.scheduleSave();
@@ -745,7 +768,9 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry = ws.terminals.find((t) => t.id === terminalId);
     if (!entry) return false;
     entry.claudeSessionId = session.sessionId;
-    entry.claudeName = session.name ?? entry.name;
+    // Registry có thể trả name rỗng (parseAgentsJson cho chuỗi rỗng đi qua), mà `??` không
+    // bắt được chuỗi rỗng — schema đòi claudeName >= 1 ký tự nên phải dùng `||`.
+    entry.claudeName = session.name?.trim() || entry.name;
     entry.kind = 'claude'; // thăng cấp: terminal thường hóa ra đang chạy một session
     this.statuses.set(entry.id, session.status);
     return true;
