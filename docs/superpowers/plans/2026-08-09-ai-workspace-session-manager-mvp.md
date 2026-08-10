@@ -2986,6 +2986,11 @@ describe('fingerprintCommands', () => {
   it('đổi thứ tự thì đổi vân tay', () => {
     expect(fingerprintCommands(['a', 'b'])).not.toBe(fingerprintCommands(['b', 'a']));
   });
+  it('không va chạm khi nội dung lệnh chứa ký tự phân cách', () => {
+    const NUL = String.fromCharCode(0);
+    // Một lệnh chứa NUL không được cho cùng vân tay với hai lệnh riêng biệt.
+    expect(fingerprintCommands([`a${NUL}b`])).not.toBe(fingerprintCommands(['a', 'b']));
+  });
 });
 
 describe('TrustStore', () => {
@@ -3036,7 +3041,9 @@ export interface TrustMemory {
 }
 
 export function fingerprintCommands(commands: string[]): string {
-  return createHash('sha256').update(commands.join('\u0000')).digest('hex');
+  // Băm biểu diễn JSON chứ không nối chuỗi: nối bằng một ký tự phân cách bất kỳ đều
+  // có thể va chạm nếu chính nội dung lệnh chứa ký tự đó.
+  return createHash('sha256').update(JSON.stringify(commands)).digest('hex');
 }
 
 function memoryKey(manifestPath: string): string {
@@ -3080,6 +3087,14 @@ export class TerminalManager {
   }
 
   create(key: string, options: CreateTerminalOptions): TerminalHandle {
+    const cu = this.terminals.get(key);
+    if (cu) {
+      // Gỡ khỏi map TRƯỚC khi dispose: sự kiện đóng terminal so khớp theo danh tính,
+      // nên entry mới sẽ không bị xoá nhầm, và người nghe không nhận báo "session offline"
+      // trong khi thực chất ta đang thay terminal cho chính session đó.
+      this.terminals.delete(key);
+      cu.dispose();
+    }
     const terminal = vscode.window.createTerminal({
       name: options.name,
       cwd: options.cwd,
@@ -3124,7 +3139,7 @@ export class TerminalManager {
 - [ ] **Step 5: Chạy test và typecheck, xác nhận PASS**
 
 Run: `npx vitest run test/unit/trust-store.test.ts && npm run typecheck`
-Expected: 8 test PASS, tsc không lỗi.
+Expected: 9 test PASS, tsc không lỗi.
 
 - [ ] **Step 6: Commit**
 
@@ -3930,3 +3945,4 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 | 10. Resume Claude session | 10, 13 |
 | 11. Sidebar hiển thị sessions | 16 |
 | Bổ sung: peer nhận diện đúng tên | 9, 10, 13, 17 |
+

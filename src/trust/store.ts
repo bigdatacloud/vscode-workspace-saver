@@ -7,7 +7,9 @@ export interface TrustMemory {
 }
 
 export function fingerprintCommands(commands: string[]): string {
-  return createHash('sha256').update(commands.join('\u0000')).digest('hex');
+  // Băm biểu diễn JSON chứ không nối chuỗi: nối bằng một ký tự phân cách bất kỳ đều
+  // có thể va chạm nếu chính nội dung lệnh chứa ký tự đó.
+  return createHash('sha256').update(JSON.stringify(commands)).digest('hex');
 }
 
 function memoryKey(manifestPath: string): string {

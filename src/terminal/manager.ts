@@ -18,6 +18,14 @@ export class TerminalManager {
   }
 
   create(key: string, options: CreateTerminalOptions): TerminalHandle {
+    const cu = this.terminals.get(key);
+    if (cu) {
+      // Gỡ khỏi map TRƯỚC khi dispose: sự kiện đóng terminal so khớp theo danh tính,
+      // nên entry mới sẽ không bị xoá nhầm, và người nghe không nhận báo "session offline"
+      // trong khi thực chất ta đang thay terminal cho chính session đó.
+      this.terminals.delete(key);
+      cu.dispose();
+    }
     const terminal = vscode.window.createTerminal({
       name: options.name,
       cwd: options.cwd,

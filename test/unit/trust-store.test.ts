@@ -16,6 +16,11 @@ describe('fingerprintCommands', () => {
   it('đổi thứ tự thì đổi vân tay', () => {
     expect(fingerprintCommands(['a', 'b'])).not.toBe(fingerprintCommands(['b', 'a']));
   });
+  it('không va chạm khi nội dung lệnh chứa ký tự phân cách', () => {
+    const NUL = String.fromCharCode(0);
+    // Một lệnh chứa NUL không được cho cùng vân tay với hai lệnh riêng biệt.
+    expect(fingerprintCommands([`a${NUL}b`])).not.toBe(fingerprintCommands(['a', 'b']));
+  });
 });
 
 describe('TrustStore', () => {
