@@ -20,9 +20,8 @@ export class TerminalManager {
   create(key: string, options: CreateTerminalOptions): TerminalHandle {
     const cu = this.terminals.get(key);
     if (cu) {
-      // Gỡ khỏi map TRƯỚC khi dispose: sự kiện đóng terminal so khớp theo danh tính,
-      // nên entry mới sẽ không bị xoá nhầm, và người nghe không nhận báo "session offline"
-      // trong khi thực chất ta đang thay terminal cho chính session đó.
+      // Gỡ khỏi map TRƯỚC khi dispose: nếu createTerminal ném exception sau khi dispose,
+      // map không được giữ lại entry chỉ tới terminal đã bị dispose.
       this.terminals.delete(key);
       cu.dispose();
     }
@@ -48,6 +47,26 @@ export class TerminalManager {
 
   has(key: string): boolean {
     return this.terminals.has(key);
+  }
+
+  /** Nhận nuôi terminal có sẵn (adoption) — track như terminal của mình, không show lại. */
+  adopt(key: string, terminal: vscode.Terminal): void {
+    const cu = this.terminals.get(key);
+    if (cu && cu !== terminal) {
+      this.terminals.delete(key);
+      cu.dispose();
+    }
+    this.terminals.set(key, terminal);
+  }
+
+  /** Trả key nếu terminal này đang được track, ngược lại null. */
+  ownsTerminal(terminal: vscode.Terminal): string | null {
+    for (const [key, t] of this.terminals) if (t === terminal) return key;
+    return null;
+  }
+
+  get(key: string): vscode.Terminal | undefined {
+    return this.terminals.get(key);
   }
 
   onClosed(handler: (key: string) => void): vscode.Disposable {
