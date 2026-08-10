@@ -9,11 +9,23 @@
   "engines": { "vscode": "^1.90.0", "node": ">=20" },
   "categories": ["Other"],
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
-      { "command": "aiWorkspace.newWorkspace", "title": "AI Workspace: New Workspace" }
-    ]
+      { "command": "aiWorkspace.newWorkspace",     "title": "AI Workspace: New Workspace" },
+      { "command": "aiWorkspace.saveWorkspace",    "title": "AI Workspace: Save Workspace" },
+      { "command": "aiWorkspace.openWorkspace",    "title": "AI Workspace: Open Workspace" },
+      { "command": "aiWorkspace.closeWorkspace",   "title": "AI Workspace: Close Workspace" },
+      { "command": "aiWorkspace.addSession",       "title": "AI Workspace: Add Session" },
+      { "command": "aiWorkspace.removeSession",    "title": "AI Workspace: Remove Session" },
+      { "command": "aiWorkspace.openSessionTerminal", "title": "AI Workspace: Open Session Terminal" },
+      { "command": "aiWorkspace.restoreSession",   "title": "AI Workspace: Restore Session" }
+    ],
+    "views": {
+      "explorer": [
+        { "id": "aiWorkspace.sessions", "name": "AI Workspace" }
+      ]
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",

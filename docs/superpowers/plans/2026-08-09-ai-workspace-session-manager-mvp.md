@@ -3202,7 +3202,7 @@ import { promises as fsp } from 'node:fs';
 import * as vscode from 'vscode';
 import { readManifest, writeManifest, readState, writeState, ManifestError } from '../manifest/store';
 import { manifestFilePath, resolveProjectRoot, toStoredPath } from '../manifest/paths';
-import { ManifestSchema, type Manifest, type SessionSpec, type SessionStatus, type WorkspaceState } from '../manifest/schema';
+import { ManifestSchema, SessionSchema, type Manifest, type SessionSpec, type SessionStatus, type WorkspaceState } from '../manifest/schema';
 import { GitClient } from '../git/worktree';
 import { realGitRunner } from '../git/exec';
 import { ClaudeCodeAdapter } from '../agent/claude';
@@ -3406,7 +3406,9 @@ export class WorkspaceManager {
     });
     if (startup === undefined) return;
 
-    const session = ManifestSchema.shape.sessions.element.parse({
+    // Không dùng `ManifestSchema.shape` — `.superRefine()` bọc ManifestSchema thành ZodEffects,
+    // không còn `.shape`. `SessionSchema` (export sẵn) chính là schema của một session đơn lẻ.
+    const session = SessionSchema.parse({
       key, name, role, worktree,
       terminal: { name },
       startupCommand: startup.trim() === '' ? null : startup.trim(),
@@ -3554,7 +3556,7 @@ export class WorkspaceManager {
 `CreateTerminalOptions` đã có trường `key` từ Task 13 nên `buildPorts()` chuyển thẳng `options.key` xuống `TerminalManager.create(key, options)`. Không có trạng thái tạm nào giữa hai lớp.
 
 Run: `npx vitest run test/unit/workspace-restore.test.ts`
-Expected: 14 test PASS (các assert đọc `opts.cwd` và `opts.env` không đổi).
+Expected: 15 test PASS (các assert đọc `opts.cwd` và `opts.env` không đổi).
 
 - [ ] **Step 4: Cài đặt `src/ui/commands.ts`**
 
