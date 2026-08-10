@@ -12,3 +12,8 @@ vitest.config.ts
 **/*.map
 **/*.ts
 .superpowers/**
+docs/**
+.claude/**
+**/*.pdf
+.vscode-test.mjs
+package-lock.json
