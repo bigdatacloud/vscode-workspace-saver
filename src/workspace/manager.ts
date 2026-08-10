@@ -184,6 +184,9 @@ export class WorkspaceManager {
     this.manifestPath = null;
     this.manifestAnchor = null;
     this.projectRoot = null;
+    // State của workspace cũ không được rò sang workspace mở sau: reset về object mới, không giữ
+    // lại tham chiếu sessions cũ.
+    this.state = { version: 1, sessions: {} };
     this.statuses.clear();
     this.onChanged.fire();
   }
@@ -280,8 +283,13 @@ export class WorkspaceManager {
       return;
     }
     const single: Manifest = { ...this.manifest, sessions: [session] };
-    const report = await restoreWorkspace(single, this.state, this.buildPorts());
-    await this.applyReport(report);
+    try {
+      const report = await restoreWorkspace(single, this.state, this.buildPorts());
+      await this.applyReport(report);
+    } catch (error) {
+      await vscode.window.showErrorMessage(`Không dựng lại được session "${key}": ${String(error)}`);
+      return;
+    }
     this.onChanged.fire();
   }
 

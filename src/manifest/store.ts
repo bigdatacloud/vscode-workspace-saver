@@ -10,7 +10,10 @@ export class ManifestError extends Error {
   }
 }
 
-const EMPTY_STATE: WorkspaceState = { version: 1, sessions: {} };
+// Factory thay vì hằng số dùng chung: mỗi lần gọi phải trả về một object MỚI, vì `sessions` sẽ bị
+// mutate trực tiếp ở nơi gọi (WorkspaceManager.applyReport) — dùng chung một object sẽ khiến state
+// của workspace này rò sang workspace khác mở sau đó.
+const taoStateRong = (): WorkspaceState => ({ version: 1, sessions: {} });
 
 export async function readManifest(projectRoot: string): Promise<Manifest> {
   const file = manifestFilePath(projectRoot);
@@ -51,9 +54,9 @@ export async function readState(projectRoot: string): Promise<WorkspaceState> {
   try {
     const raw = await fs.readFile(stateFilePath(projectRoot), 'utf8');
     const parsed = StateSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : EMPTY_STATE;
+    return parsed.success ? parsed.data : taoStateRong();
   } catch {
-    return EMPTY_STATE;
+    return taoStateRong();
   }
 }
 

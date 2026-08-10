@@ -75,6 +75,17 @@ describe('manifest store', () => {
     expect(await readState(root)).toEqual({ version: 1, sessions: {} });
   });
 
+  it('readState trả về object MỚI mỗi lần gọi khi chưa có state.json, không dùng chung một object (chống rò state giữa các workspace)', async () => {
+    const first = await readState(root);
+    // Mô phỏng đúng thứ WorkspaceManager làm: mutate trực tiếp `sessions` của kết quả trả về.
+    (first.sessions as Record<string, unknown>)['fake-session-tu-workspace-khac'] = {
+      sessionId: '00000000-0000-0000-0000-000000000000',
+      pid: null, lastStatus: 'idle', lastActiveAt: 0,
+    };
+    const second = await readState(root);
+    expect(second.sessions).toEqual({});
+  });
+
   it('ghi rồi đọc lại state', async () => {
     const state = {
       version: 1 as const,

@@ -4,7 +4,7 @@ Một phần lớn của extension này **không thể kiểm thử tự động
 hộp thoại VS Code (`showInputBox`, `showWarningMessage`, `showQuickPick`) treo vô hạn trong
 Extension Host chạy headless — `showWarningMessage()` không bao giờ tự resolve. Vì vậy
 `New Workspace`, `Add Session`, hộp thoại xác nhận worktree thiếu và hộp thoại trust đều nằm
-ngoài phạm vi 134 test vitest + 5 test Extension Host hiện có. Checklist này là lưới an toàn
+ngoài phạm vi 138 test vitest + 5 test Extension Host hiện có. Checklist này là lưới an toàn
 DUY NHẤT cho các luồng đó.
 
 Chạy trên một repo git thật, có ít nhất 1 commit, mở trong VS Code. Đánh dấu từng mục — mỗi mục
@@ -81,6 +81,12 @@ phải trả lời được "đạt/không đạt" mà không cần suy đoán.
       chuyển sang hội thoại mới khi `--resume` hỏng — đó là việc của Phase 2. Kiểm thêm hai điều:
       `workspace.yaml` không bị đụng tới, và `state.json` vẫn giữ nguyên `sessionId` cũ của session
       đó (không bị đổi sang uuid khác)
+- [ ] Tạo một session MỚI (key chưa có trong `state.json`), rồi đóng terminal của nó NGAY SAU KHI
+      lệnh `claude` vừa được gửi đi — trước khi nó kịp lên registry (`claude agents --json`) —
+      khiến session bị báo THẤT BẠI. Mở `.ai-workspace/state.json` ngay sau đó và xác nhận
+      `sessionId` vừa được cấp cho session này VẪN được ghi ở đó, dù sidebar báo lỗi (đây là bước
+      ghi state ngay khi launch, không chờ registry xác nhận — nếu thiếu, cuộc hội thoại vừa khởi
+      động sẽ không bao giờ resume lại được)
 
 ## An toàn
 - [ ] Xoá thủ công một thư mục worktree → restore hỏi trước khi tạo lại, liệt kê đúng đường dẫn

@@ -112,7 +112,7 @@ lần mở kế tiếp phải hỏi trust lại.
 
 ```bash
 npm install
-npm test              # 134 unit/integration test (vitest)
+npm test              # 138 unit/integration test (vitest)
 npm run test:vscode   # 5 smoke test chạy trong Extension Host thật
 npm run build         # bundle bằng esbuild ra dist/extension.js
 ```
