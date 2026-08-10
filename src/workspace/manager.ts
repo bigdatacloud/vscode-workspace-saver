@@ -322,29 +322,37 @@ export class WorkspaceManager implements vscode.Disposable {
         await this.closeActive();
       }
 
-      // Đánh dấu TRƯỚC khi chạy orchestrator: trong lúc mở, một lượt save debounce có thể
-      // nổ ra và merge sẽ thay object workspace chưa-đụng-tới bằng bản đĩa — trong khi ports
-      // vẫn cầm object cũ, khiến sessionId vừa mint rơi vào object mồ côi.
-      this.touch(ws.id);
-      for (const entry of ws.terminals) this.errorIds.delete(entry.id);
+      // Modal ở trên có thể mở vô hạn; một lượt saveNow trong lúc đó có thể đã thay object
+      // workspace trong store bằng bản đĩa (merge rule b cho ws CHƯA touch). Lấy lại object
+      // hiện hành rồi mới touch — hai lệnh đồng bộ liền nhau nên không timer nào chen giữa
+      // được. KHÔNG touch trước modal: người dùng bấm Hủy mà ta đã nhận chủ quyền thì suốt
+      // phiên này ta lại ghi đè bản của cửa sổ khác.
+      const wsNow = findWorkspace(this.store, workspaceId);
+      if (!wsNow) {
+        void vscode.window.showWarningMessage('Workspace không còn tồn tại.');
+        return;
+      }
+      this.touch(wsNow.id);
+
+      for (const entry of wsNow.terminals) this.errorIds.delete(entry.id);
 
       // Terminal đang mở (đã adopt vào ws này từ trước) phải được để yên: TerminalManager.create
       // dùng chung key sẽ dispose terminal cũ — giết một shell đang chạy dở. Và gửi lệnh
       // `--resume` vào một terminal đang chạy claude thì lệnh đó bị gõ thẳng vào hội thoại
       // đang sống. Chỉ mở những entry thực sự chưa có terminal.
       const toOpen: Workspace = {
-        ...ws,
-        terminals: ws.terminals.filter((entry) => !this.terminals.has(entry.id)),
+        ...wsNow,
+        terminals: wsNow.terminals.filter((entry) => !this.terminals.has(entry.id)),
       };
       const report = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${ws.name}"…` },
-        () => activateWorkspace(toOpen, this.buildPorts(ws)),
+        { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${wsNow.name}"…` },
+        () => activateWorkspace(toOpen, this.buildPorts(wsNow)),
       );
       this.applyReport(report);
 
-      this.activeId = ws.id;
-      ws.lastActiveAt = new Date().toISOString();
-      ws.activeWindowId = vscode.env.sessionId;
+      this.activeId = wsNow.id;
+      wsNow.lastActiveAt = new Date().toISOString();
+      wsNow.activeWindowId = vscode.env.sessionId;
       this.scheduleSave();
       this.flush();
       this.onChanged.fire();
@@ -433,15 +441,20 @@ export class WorkspaceManager implements vscode.Disposable {
     });
     if (name === undefined) return;
     const trimmed = name.trim();
-    if (trimmed === '' || trimmed === ws.name) return;
+    if (trimmed === '') return;
+
+    // Lấy lại object sau await rồi mới touch (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) return;
+    if (trimmed === wsNow.name) return;
 
     const lower = trimmed.toLowerCase();
-    if (this.store.workspaces.some((w) => w.id !== ws.id && w.name.toLowerCase() === lower)) {
+    if (this.store.workspaces.some((w) => w.id !== wsNow.id && w.name.toLowerCase() === lower)) {
       void vscode.window.showWarningMessage(`Tên workspace "${trimmed}" đã tồn tại.`);
       return;
     }
-    ws.name = trimmed;
-    this.touch(ws.id);
+    wsNow.name = trimmed;
+    this.touch(wsNow.id);
     this.scheduleSave();
     this.onChanged.fire();
   }
@@ -456,18 +469,23 @@ export class WorkspaceManager implements vscode.Disposable {
     );
     if (answer !== 'Xóa') return;
 
+    // Lấy lại object sau modal: bản trong store có thể đã bị merge thay bằng bản đĩa, và
+    // danh sách terminal của bản cũ có thể đã lỗi thời (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) return;
+
     // Xóa workspace KHÔNG bao giờ giết terminal thật — người dùng chỉ muốn quên danh sách,
     // không muốn mất việc đang chạy.
-    if (this.activeId === ws.id) this.activeId = null;
-    ws.activeWindowId = null;
+    if (this.activeId === wsNow.id) this.activeId = null;
+    wsNow.activeWindowId = null;
     // Bia mộ: nếu không nhớ, lần save sau sẽ thấy nó còn trên đĩa và "cứu" nó sống lại.
-    this.deletedIds.add(ws.id);
-    for (const entry of ws.terminals) {
+    this.deletedIds.add(wsNow.id);
+    for (const entry of wsNow.terminals) {
       this.terminals.release(entry.id);
       this.statuses.delete(entry.id);
       this.errorIds.delete(entry.id);
     }
-    this.store.workspaces = this.store.workspaces.filter((w) => w.id !== ws.id);
+    this.store.workspaces = this.store.workspaces.filter((w) => w.id !== wsNow.id);
     this.scheduleSave();
     this.flush();
     this.onChanged.fire();
@@ -498,6 +516,14 @@ export class WorkspaceManager implements vscode.Disposable {
     if (worktreeCwd === null) return;
     cwd = worktreeCwd;
 
+    // Lấy lại object sau chuỗi input/quickpick rồi mới touch (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) {
+      void vscode.window.showWarningMessage('Workspace không còn tồn tại.');
+      return;
+    }
+    this.touch(wsNow.id);
+
     const entry: TerminalEntry = {
       id: randomUUID(),
       name: name.trim(),
@@ -505,11 +531,10 @@ export class WorkspaceManager implements vscode.Disposable {
       kind: 'claude',
       claudeName: name.trim(),
     };
-    upsertTerminal(ws, entry);
-    this.touch(ws.id);
+    upsertTerminal(wsNow, entry);
     this.scheduleSave();
 
-    if (this.activeId === ws.id) await this.launchOne(ws, entry);
+    if (this.activeId === wsNow.id) await this.launchOne(wsNow, entry);
     this.flush();
     this.onChanged.fire();
   }
@@ -578,10 +603,14 @@ export class WorkspaceManager implements vscode.Disposable {
     });
     if (value === undefined) return;
     const trimmed = value.trim();
-    // KHÔNG tự trust lại: fingerprint đổi nên lần activate sau sẽ hỏi lại — đúng thiết kế.
-    if (trimmed === '') delete entry.startCommand;
-    else entry.startCommand = trimmed;
+    // Lấy lại entry sau input box: merge có thể đã thay cả object workspace lẫn entry bên
+    // trong nó, sửa bản cũ là sửa vào object mồ côi (xem ghi chú ở activate()).
+    const entryNow = this.findEntry(workspaceId, terminalId);
+    if (!entryNow) return;
     this.touch(workspaceId);
+    // KHÔNG tự trust lại: fingerprint đổi nên lần activate sau sẽ hỏi lại — đúng thiết kế.
+    if (trimmed === '') delete entryNow.startCommand;
+    else entryNow.startCommand = trimmed;
     this.scheduleSave();
     this.onChanged.fire();
   }
@@ -639,10 +668,14 @@ export class WorkspaceManager implements vscode.Disposable {
         'Thêm',
       );
       if (answer !== 'Thêm') return;
-      // Sau khi chờ người dùng bấm, workspace có thể đã bị xóa hoặc đóng.
-      if (this.activeId !== ws.id || !findWorkspace(this.store, ws.id)) return;
+      // Sau khi chờ người dùng bấm: workspace có thể đã bị xóa/đóng, và object của nó có thể
+      // đã bị merge thay bằng bản đĩa — phải adopt vào object HIỆN HÀNH, không phải bản cũ
+      // (xem ghi chú ở activate()).
+      if (this.activeId !== ws.id) return;
+      const wsNow = findWorkspace(this.store, ws.id);
+      if (!wsNow) return;
       if (this.terminals.ownsTerminal(terminal) !== null) return;
-      this.adoptInto(ws, terminal);
+      this.adoptInto(wsNow, terminal);
       return;
     }
 
@@ -810,7 +843,7 @@ export class WorkspaceManager implements vscode.Disposable {
 
     let changed = false;
     for (const pair of result.matched) {
-      if (this.claimSession(ws, pair.terminalId, pair.session)) changed = true;
+      if (this.claimSession(ws.id, pair.terminalId, pair.session)) changed = true;
     }
     if (changed) this.scheduleSave();
 
@@ -841,15 +874,21 @@ export class WorkspaceManager implements vscode.Disposable {
         title: `Terminal nào đang chạy session "${session.name ?? session.sessionId}"?`,
       });
       if (!picked) break;
-      if (this.claimSession(ws, picked.id, session)) changed = true;
+      if (this.claimSession(ws.id, picked.id, session)) changed = true;
       remaining.splice(remaining.indexOf(picked.id), 1);
     }
     if (changed) this.scheduleSave();
     return changed;
   }
 
-  private claimSession(ws: Workspace, terminalId: string, session: RunningSession): boolean {
-    const entry = ws.terminals.find((t) => t.id === terminalId);
+  /**
+   * Tự tra lại entry theo id thay vì tin object caller đang cầm: `resolveAmbiguity` giữ tham
+   * chiếu workspace qua một QuickPick có thể mở rất lâu, mà merge lúc save có thể thay object
+   * đó (xem ghi chú ở activate()). Workspace active trên thực tế luôn đã touch nên hiếm khi
+   * bị thay — nhưng đừng để tính đúng đắn phụ thuộc vào một bất biến ở xa như thế.
+   */
+  private claimSession(workspaceId: string, terminalId: string, session: RunningSession): boolean {
+    const entry = this.findEntry(workspaceId, terminalId);
     if (!entry) return false;
     entry.claudeSessionId = session.sessionId;
     // Registry có thể trả name rỗng (parseAgentsJson cho chuỗi rỗng đi qua), mà `??` không
@@ -861,7 +900,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // aiTerminalPlain — để lại là rác vô hình (và vẫn tính vào fingerprint trust).
     delete entry.startCommand;
     this.statuses.set(entry.id, session.status);
-    this.touch(ws.id);
+    this.touch(workspaceId);
     return true;
   }
 
