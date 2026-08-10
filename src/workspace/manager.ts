@@ -303,9 +303,17 @@ export class WorkspaceManager implements vscode.Disposable {
 
       for (const entry of ws.terminals) this.errorIds.delete(entry.id);
 
+      // Terminal đang mở (đã adopt vào ws này từ trước) phải được để yên: TerminalManager.create
+      // dùng chung key sẽ dispose terminal cũ — giết một shell đang chạy dở. Và gửi lệnh
+      // `--resume` vào một terminal đang chạy claude thì lệnh đó bị gõ thẳng vào hội thoại
+      // đang sống. Chỉ mở những entry thực sự chưa có terminal.
+      const toOpen: Workspace = {
+        ...ws,
+        terminals: ws.terminals.filter((entry) => !this.terminals.has(entry.id)),
+      };
       const report = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${ws.name}"…` },
-        () => activateWorkspace(ws, this.buildPorts(ws)),
+        () => activateWorkspace(toOpen, this.buildPorts(ws)),
       );
       this.applyReport(report);
 
@@ -377,6 +385,8 @@ export class WorkspaceManager implements vscode.Disposable {
       for (const entry of ws.terminals) {
         this.terminals.get(entry.id)?.dispose();
         this.statuses.delete(entry.id);
+        // Không xóa thì nhãn "lỗi" của lần activate trước còn dính mãi ở lần mở sau.
+        this.errorIds.delete(entry.id);
       }
       ws.activeWindowId = null;
     }
@@ -544,13 +554,15 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   async removeTerminal(workspaceId: string, terminalId: string): Promise<void> {
-    const ws = findWorkspace(this.store, workspaceId);
-    if (!ws) return;
-    removeTerminalEntry(ws, terminalId);
-    // Không dispose terminal thật: gỡ khỏi workspace chỉ là quên nó đi.
+    // Nhả trước mọi lối thoát sớm: workspace biến mất (đã bị xóa) mà key còn trong map thì
+    // terminal đó vĩnh viễn không được nhận nuôi lại. Không dispose terminal thật —
+    // gỡ khỏi workspace chỉ là quên nó đi.
     this.terminals.release(terminalId);
     this.statuses.delete(terminalId);
     this.errorIds.delete(terminalId);
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    removeTerminalEntry(ws, terminalId);
     this.scheduleSave();
     this.onChanged.fire();
     await Promise.resolve();
@@ -807,6 +819,10 @@ export class WorkspaceManager implements vscode.Disposable {
     // bắt được chuỗi rỗng — schema đòi claudeName >= 1 ký tự nên phải dùng `||`.
     entry.claudeName = session.name?.trim() || entry.name;
     entry.kind = 'claude'; // thăng cấp: terminal thường hóa ra đang chạy một session
+    // startCommand chỉ có nghĩa với terminal 'plain': sau khi thăng cấp, activate sẽ chạy
+    // nhánh claude nên lệnh này không bao giờ chạy nữa, mà menu sửa nó cũng chỉ hiện cho
+    // aiTerminalPlain — để lại là rác vô hình (và vẫn tính vào fingerprint trust).
+    delete entry.startCommand;
     this.statuses.set(entry.id, session.status);
     return true;
   }
