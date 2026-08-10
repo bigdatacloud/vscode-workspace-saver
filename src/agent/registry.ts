@@ -37,10 +37,3 @@ export function parseAgentsJson(stdout: string): RunningSession[] {
   }
   return sessions;
 }
-
-export function uniqueSessionName(desired: string, taken: ReadonlySet<string>): string {
-  if (!taken.has(desired)) return desired;
-  let n = 2;
-  while (taken.has(`${desired}-${n}`)) n += 1;
-  return `${desired}-${n}`;
-}

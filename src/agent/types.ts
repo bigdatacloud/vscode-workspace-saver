@@ -23,5 +23,4 @@ export interface AgentAdapter {
   newSessionId(): string;
   buildLaunchCommand(spec: LaunchSpec): string;
   listRunning(): Promise<RunningSession[]>;
-  isAvailable(): Promise<boolean>;
 }

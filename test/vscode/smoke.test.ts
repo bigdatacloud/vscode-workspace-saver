@@ -69,7 +69,7 @@ suite('AI Workspace extension', () => {
     const truoc = vscode.window.terminals.length;
     try {
       const handle = manager.create('backend', {
-        key: 'backend', name: 'wss-backend', cwd: tmpdir(), env: {},
+        name: 'wss-backend', cwd: tmpdir(), env: {},
       });
       assert.ok(handle, 'create phải trả về handle');
       assert.strictEqual(vscode.window.terminals.length, truoc + 1);
@@ -88,11 +88,11 @@ suite('AI Workspace extension', () => {
     const manager = new TerminalManager();
     const truoc = vscode.window.terminals.length;
     try {
-      manager.create('qc', { key: 'qc', name: 'wss-qc-1', cwd: tmpdir(), env: {} });
+      manager.create('qc', { name: 'wss-qc-1', cwd: tmpdir(), env: {} });
       assert.strictEqual(vscode.window.terminals.length, truoc + 1);
 
       // Tạo lại cùng key: terminal cũ phải bị đóng, không được để lại hai cái.
-      manager.create('qc', { key: 'qc', name: 'wss-qc-2', cwd: tmpdir(), env: {} });
+      manager.create('qc', { name: 'wss-qc-2', cwd: tmpdir(), env: {} });
       await waitForTerminalCount(truoc + 1);
       assert.strictEqual(
         vscode.window.terminals.length, truoc + 1,

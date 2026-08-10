@@ -52,6 +52,5 @@ export const StoreFileSchema = z
 export type TerminalEntry = z.infer<typeof TerminalEntrySchema>;
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type StoreFile = z.infer<typeof StoreFileSchema>;
-export type TerminalKind = TerminalEntry['kind'];
 
 export const emptyStore = (): StoreFile => ({ version: 2, workspaces: [] });

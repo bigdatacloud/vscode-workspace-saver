@@ -2,11 +2,9 @@ import * as vscode from 'vscode';
 
 export interface TerminalHandle {
   sendText(text: string): void;
-  show(): void;
 }
 
 export interface CreateTerminalOptions {
-  key: string;
   name: string;
   cwd: string;
   env?: Record<string, string>;
@@ -43,10 +41,7 @@ export class TerminalManager {
     });
     this.terminals.set(key, terminal);
     terminal.show(false);
-    return {
-      sendText: (text) => terminal.sendText(text, true),
-      show: () => terminal.show(false),
-    };
+    return { sendText: (text) => terminal.sendText(text, true) };
   }
 
   focus(key: string): boolean {

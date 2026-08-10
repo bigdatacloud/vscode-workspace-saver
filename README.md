@@ -108,7 +108,7 @@ mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển thị (d�
 
 ```bash
 npm install
-npm test              # 112 unit/integration test (vitest) — pure core, không đụng vscode API
+npm test              # 95 unit/integration test (vitest) — pure core, không đụng vscode API
 npm run test:vscode   # 6 smoke test chạy trong Extension Host thật
 npm run typecheck     # tsc --noEmit
 npm run build         # bundle bằng esbuild ra dist/extension.js

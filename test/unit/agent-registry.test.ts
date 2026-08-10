@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAgentsJson, uniqueSessionName } from '../../src/agent/registry';
+import { parseAgentsJson } from '../../src/agent/registry';
 
 const REAL_OUTPUT = JSON.stringify([
   { id: '44027166', cwd: 'D:\\Coding\\3D Load Calculator', kind: 'background',
@@ -49,18 +49,5 @@ describe('parseAgentsJson', () => {
       { sessionId: '639a2ba8-e4f0-4e0b-917c-6ab773c8a922', cwd: '/a', kind: 'interactive', status: 'khong-ro' },
     ]);
     expect(parseAgentsJson(out)[0]!.status).toBe('idle');
-  });
-});
-
-describe('uniqueSessionName', () => {
-  it('giữ nguyên tên khi chưa bị chiếm', () => {
-    expect(uniqueSessionName('Backend', new Set())).toBe('Backend');
-  });
-  it('thêm hậu tố -2 khi trùng', () => {
-    expect(uniqueSessionName('Backend', new Set(['Backend']))).toBe('Backend-2');
-  });
-  it('tăng hậu tố tới khi hết trùng', () => {
-    expect(uniqueSessionName('Backend', new Set(['Backend', 'Backend-2', 'Backend-3'])))
-      .toBe('Backend-4');
   });
 });

@@ -4,4 +4,3 @@ out/
 dist/
 *.vsix
 .vscode-test/
-.ai-workspace/state.json

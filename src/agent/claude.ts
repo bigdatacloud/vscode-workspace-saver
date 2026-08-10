@@ -47,9 +47,4 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     if (r.code !== 0) return [];
     return parseAgentsJson(r.stdout);
   }
-
-  async isAvailable(): Promise<boolean> {
-    const r = await this.runner.run(CLAUDE_BIN, ['--version']);
-    return r.code === 0;
-  }
 }

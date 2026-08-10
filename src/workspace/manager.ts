@@ -342,7 +342,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const trustKey = `ws:${ws.id}`;
     return {
       createTerminal: (entry) =>
-        this.terminals.create(entry.id, { key: entry.id, name: entry.name, cwd: entry.cwd }),
+        this.terminals.create(entry.id, { name: entry.name, cwd: entry.cwd }),
       agent: this.agent,
       fsExists: (p) => nodeFs.existsSync(p),
       isTrusted: (commands) => this.trust.isTrusted(trustKey, commands),

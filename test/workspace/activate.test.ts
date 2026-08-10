@@ -10,7 +10,6 @@ const fakeAgent = (minted: string): AgentAdapter => ({
   newSessionId: () => minted,
   buildLaunchCommand: (spec: LaunchSpec) => `LAUNCH ${spec.mode.kind} ${spec.mode.sessionId} AS ${spec.name}`,
   listRunning: async () => [],
-  isAvailable: async () => true,
 });
 
 function ws(terminals: TerminalEntry[]): Workspace {

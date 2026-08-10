@@ -54,14 +54,3 @@ describe('listRunning', () => {
   });
 });
 
-describe('isAvailable', () => {
-  it('true khi claude --version chạy được', async () => {
-    const adapter = new ClaudeCodeAdapter('posix', stubRunner('2.1.226 (Claude Code)'), () => UUID);
-    expect(await adapter.isAvailable()).toBe(true);
-  });
-
-  it('false khi lệnh trả mã lỗi', async () => {
-    const adapter = new ClaudeCodeAdapter('posix', stubRunner('', 127), () => UUID);
-    expect(await adapter.isAvailable()).toBe(false);
-  });
-});

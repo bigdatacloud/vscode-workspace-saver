@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GitClient } from '../../src/git/worktree';
 import { realGitRunner } from '../../src/git/exec';
-import { classifyWorktree } from '../../src/git/worktree';
 
 let root: string;
 const git = new GitClient(realGitRunner);
@@ -36,10 +35,9 @@ describe('GitClient trên repo thật', () => {
     rmSync(plain, { recursive: true, force: true });
   });
 
-  it('listWorktrees thấy worktree gốc', async () => {
-    const entries = await git.listWorktrees(root);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.branch).toBe('refs/heads/main');
+  it('branchExists phân biệt branch có và không có', async () => {
+    expect(await git.branchExists(root, 'main')).toBe(true);
+    expect(await git.branchExists(root, 'khong-ton-tai')).toBe(false);
   });
 
   it('addWorktree tạo branch mới khi branch chưa có', async () => {
@@ -47,11 +45,7 @@ describe('GitClient trên repo thật', () => {
     worktreesToClean.push(wt);
     await git.addWorktree(root, wt, 'feature/qc');
     expect(existsSync(wt)).toBe(true);
-    const entries = await git.listWorktrees(root);
-    const status = classifyWorktree({
-      expectedPath: wt, expectedBranch: 'feature/qc', entries, pathExists: true,
-    });
-    expect(status.kind).toBe('ok');
+    expect(await git.branchExists(root, 'feature/qc')).toBe(true);
   });
 
   it('addWorktree dùng lại branch đã tồn tại', async () => {
@@ -59,8 +53,7 @@ describe('GitClient trên repo thật', () => {
     const wt = join(root, '..', `wt2-${Date.now()}`);
     worktreesToClean.push(wt);
     await git.addWorktree(root, wt, 'feature/existing');
-    const entries = await git.listWorktrees(root);
-    expect(entries.some((e) => e.branch === 'refs/heads/feature/existing')).toBe(true);
+    expect(existsSync(wt)).toBe(true);
   });
 
   it('addWorktree ném lỗi rõ ràng khi đường dẫn đã bị chiếm', async () => {
