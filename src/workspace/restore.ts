@@ -118,35 +118,43 @@ export async function restoreWorkspace(
       continue;
     }
 
-    const name = uniqueSessionName(plan.session.name, taken);
-    if (name !== plan.session.name) {
-      plan.warnings.push(`Tên "${plan.session.name}" đã bị một session khác chiếm; dùng "${name}".`);
+    try {
+      const name = uniqueSessionName(plan.session.name, taken);
+      if (name !== plan.session.name) {
+        plan.warnings.push(`Tên "${plan.session.name}" đã bị một session khác chiếm; dùng "${name}".`);
+      }
+      taken.add(name);
+
+      const previous = state.sessions[plan.session.key];
+      const sessionId = previous?.sessionId ?? ports.agent.newSessionId();
+      const mode = previous?.sessionId
+        ? ({ kind: 'resume', sessionId } as const)
+        : ({ kind: 'new', sessionId } as const);
+
+      const env: Record<string, string> = {};
+      if (plan.session.role === 'coordinator') env.CLAUDE_CODE_COORDINATOR_MODE = '1';
+
+      const terminal = ports.terminals.create({
+        key: plan.session.key,
+        name: plan.session.terminal.name,
+        cwd: plan.cwd,
+        env,
+      });
+      if (plan.session.startupCommand !== null) {
+        if (trusted) terminal.sendText(plan.session.startupCommand);
+        else plan.warnings.push('Bỏ qua startup command vì bạn chưa tin manifest này.');
+      }
+      terminal.sendText(ports.agent.buildLaunchCommand({ name, mode }));
+
+      plan.launched = { name, sessionId };
+      expected.push({ key: plan.session.key, sessionId });
+    } catch (error) {
+      // Một session hỏng không được kéo theo các session khác: ghi nhận rồi đi tiếp.
+      report.failed.push({
+        key: plan.session.key,
+        reason: `Không mở được session: ${String(error)}`,
+      });
     }
-    taken.add(name);
-
-    const previous = state.sessions[plan.session.key];
-    const sessionId = previous?.sessionId ?? ports.agent.newSessionId();
-    const mode = previous?.sessionId
-      ? ({ kind: 'resume', sessionId } as const)
-      : ({ kind: 'new', sessionId } as const);
-
-    const env: Record<string, string> = {};
-    if (plan.session.role === 'coordinator') env.CLAUDE_CODE_COORDINATOR_MODE = '1';
-
-    const terminal = ports.terminals.create({
-      key: plan.session.key,
-      name: plan.session.terminal.name,
-      cwd: plan.cwd,
-      env,
-    });
-    if (plan.session.startupCommand !== null) {
-      if (trusted) terminal.sendText(plan.session.startupCommand);
-      else plan.warnings.push('Bỏ qua startup command vì bạn chưa tin manifest này.');
-    }
-    terminal.sendText(ports.agent.buildLaunchCommand({ name, mode }));
-
-    plan.launched = { name, sessionId };
-    expected.push({ key: plan.session.key, sessionId });
   }
 
   // Bước 6: chờ registry xác nhận.

@@ -224,6 +224,30 @@ describe('restoreWorkspace — trust và lỗi', () => {
     expect(canhBao).toContain('ERP-Coordinator-2');
   });
 
+  it('tạo terminal thất bại ở một session thì các session khác vẫn mở', async () => {
+    const h = harness({}, {
+      running: [],
+      runningAfter: [
+        { sessionId: UUID_A, name: 'ERP-Coordinator' },
+        { sessionId: UUID_B, name: 'ERP-Backend' },
+      ],
+    });
+    // Session đầu tiên ném khi tạo terminal (vd VS Code từ chối vì cwd không truy cập được).
+    const goc = h.ports.terminals.create;
+    let lanGoi = 0;
+    h.ports.terminals.create = (options) => {
+      if (lanGoi++ === 0) throw new Error('không tạo được terminal');
+      return goc(options);
+    };
+
+    const report = await restoreWorkspace(manifest(), emptyState, h.ports);
+
+    expect(report.failed.map((f) => f.key)).toEqual(['coordinator']);
+    expect(report.failed[0]!.reason).toContain('không tạo được terminal');
+    expect(report.started.map((s) => s.key)).toEqual(['backend']);
+    expect(h.terminals).toHaveLength(1);
+  });
+
   it('session không xuất hiện trong registry sau khi chờ thì bị tính là thất bại', async () => {
     const h = harness({}, { running: [{ sessionId: UUID_A, name: 'ERP-Coordinator' }] });
     const report = await restoreWorkspace(manifest(), emptyState, h.ports);
