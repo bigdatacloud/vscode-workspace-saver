@@ -2388,6 +2388,12 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 Tạo `test/unit/workspace-restore.test.ts`:
 
+Registry giả (`listRunning` trong `harness`) phải phân biệt trạng thái **trước** khi launch
+(chỉ có các session lạ đang chạy, dùng để tính tên đã bị chiếm ở Bước 4 của `restoreWorkspace`)
+và trạng thái **sau** khi launch (session của chính ta đã xuất hiện, dùng ở `waitForSessions`) —
+vì registry thật thay đổi theo thời gian giữa hai thời điểm đó; gộp chung thành một danh sách
+tĩnh khiến session của ta vô tình bị tính là "đã bị chiếm" bởi chính nó.
+
 ```ts
 import { describe, it, expect, vi } from 'vitest';
 import * as path from 'node:path';
@@ -2427,6 +2433,7 @@ function harness(over: Partial<RestorePorts> = {}, opts: {
   entries?: WorktreeEntry[];
   existing?: string[];
   running?: { sessionId: string; name: string }[];
+  runningAfter?: { sessionId: string; name: string }[];
 } = {}): Harness {
   const terminals: Harness['terminals'] = [];
   const added: Harness['added'] = [];
@@ -2435,6 +2442,7 @@ function harness(over: Partial<RestorePorts> = {}, opts: {
 
   let uuidN = 0;
   const uuids = [UUID_A, UUID_B];
+  let listRunningCalls = 0;
 
   const ports: RestorePorts = {
     projectRoot: ROOT,
@@ -2448,10 +2456,17 @@ function harness(over: Partial<RestorePorts> = {}, opts: {
       id: 'claude',
       newSessionId: () => uuids[uuidN++] ?? UUID_A,
       buildLaunchCommand: (s) => `claude ${s.mode.kind} ${s.mode.sessionId} -n ${s.name}`,
-      listRunning: async () => (opts.running ?? []).map((r) => ({
-        sessionId: r.sessionId, name: r.name, cwd: '', pid: 1,
-        kind: 'interactive' as const, status: 'idle' as const,
-      })),
+      // Registry thật đổi theo thời gian: lần gọi đầu là để tính tên đã bị chiếm
+      // (chỉ có session lạ đang chạy), các lần sau là vòng chờ (session của ta đã lên).
+      listRunning: async () => {
+        const rows = listRunningCalls++ === 0
+          ? (opts.running ?? [])
+          : (opts.runningAfter ?? opts.running ?? []);
+        return rows.map((r) => ({
+          sessionId: r.sessionId, name: r.name, cwd: '', pid: 1,
+          kind: 'interactive' as const, status: 'idle' as const,
+        }));
+      },
       isAvailable: async () => true,
     },
     terminals: {
@@ -2587,7 +2602,12 @@ describe('restoreWorkspace — trust và lỗi', () => {
 
   it('tên trùng session đang chạy thì tự thêm hậu tố', async () => {
     const h = harness({}, {
+      // Trước khi launch: chỉ một session LẠ đang chiếm tên 'ERP-Coordinator'.
       running: [
+        { sessionId: '99999999-9999-4999-8999-999999999999', name: 'ERP-Coordinator' },
+      ],
+      // Sau khi launch: session của ta đã lên registry, mang tên đã được thêm hậu tố.
+      runningAfter: [
         { sessionId: '99999999-9999-4999-8999-999999999999', name: 'ERP-Coordinator' },
         { sessionId: UUID_A, name: 'ERP-Coordinator-2' },
         { sessionId: UUID_B, name: 'ERP-Backend' },
@@ -2595,7 +2615,10 @@ describe('restoreWorkspace — trust và lỗi', () => {
     });
     const report = await restoreWorkspace(manifest(), emptyState, h.ports);
     expect(report.started[0]!.name).toBe('ERP-Coordinator-2');
-    expect(report.started[0]!.warnings.join(' ')).toContain('trùng');
+    const canhBao = report.started[0]!.warnings.join(' ');
+    // Cảnh báo phải nói rõ hai điều: tên cũ đã bị chiếm, và tên nào được dùng thay thế.
+    expect(canhBao).toContain('đã bị một session khác chiếm');
+    expect(canhBao).toContain('ERP-Coordinator-2');
   });
 
   it('session không xuất hiện trong registry sau khi chờ thì bị tính là thất bại', async () => {
