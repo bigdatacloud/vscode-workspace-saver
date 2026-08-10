@@ -14,6 +14,7 @@ const EXPECTED_COMMANDS = [
   'aiWorkspace.removeTerminal',
   'aiWorkspace.focusTerminal',
   'aiWorkspace.addOpenTerminalToWorkspace',
+  'aiWorkspace.assignClaudeSession',
 ];
 
 /**

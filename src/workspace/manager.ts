@@ -45,6 +45,8 @@ export interface TerminalView {
 
 const SAVE_DEBOUNCE_MS = 500;
 const STORE_FILE = 'workspaces.json';
+/** Cùng nhịp với poll của tree; hai timer chạy song song vô hại nhờ guard refreshPromise. */
+const ACTIVE_POLL_MS = 3000;
 
 /**
  * `pickCwd` cố tình chỉ bỏ qua `undefined` (chuỗi rỗng là lỗi của caller — đã ghim bằng test).
@@ -91,7 +93,13 @@ export class WorkspaceManager implements vscode.Disposable {
 
   private saveTimer: NodeJS.Timeout | null = null;
   private dirty = false;
-  private refreshing = false;
+  /** Lượt refresh đang chạy — gọi chồng sẽ nhận lại promise của lượt đang chạy. */
+  private refreshPromise: Promise<void> | null = null;
+  /**
+   * Poll riêng của manager khi có workspace active: việc bắt session không được phụ thuộc
+   * vào chuyện tree view có đang hiển thị hay không (poll của tree chỉ phục vụ hiển thị).
+   */
+  private pollTimer: NodeJS.Timeout | null = null;
   private activating = false;
   private disposed = false;
   private warnedRecovered = false;
@@ -353,6 +361,7 @@ export class WorkspaceManager implements vscode.Disposable {
       this.activeId = wsNow.id;
       wsNow.lastActiveAt = new Date().toISOString();
       wsNow.activeWindowId = vscode.env.sessionId;
+      this.startActivePoll();
       this.scheduleSave();
       this.flush();
       this.onChanged.fire();
@@ -412,6 +421,9 @@ export class WorkspaceManager implements vscode.Disposable {
   async closeActive(): Promise<void> {
     const id = this.activeId;
     if (id === null) return;
+    // Quét bắt session lần cuối TRƯỚC khi dispose terminal — dispose xong là hết đường bắt.
+    await this.finalClaimSweep();
+    this.stopActivePoll();
     this.flush();
 
     const ws = findWorkspace(this.store, id);
@@ -787,24 +799,63 @@ export class WorkspaceManager implements vscode.Disposable {
   // -------------------------------------------------------------- poll 3s
 
   async refreshStatuses(): Promise<void> {
-    // QuickPick phân định ambiguity có thể mở lâu hơn một nhịp poll — không chồng lượt.
-    if (this.refreshing) return;
-    this.refreshing = true;
-    try {
-      let running: RunningSession[] = [];
-      try {
-        running = await this.agent.listRunning();
-      } catch {
-        return;
-      }
-      const bySession = new Map(running.map((r) => [r.sessionId, r]));
+    // QuickPick phân định ambiguity có thể mở lâu hơn một nhịp poll — không chồng lượt,
+    // nhưng trả về promise của lượt đang chạy để caller (finalClaimSweep) chờ được nó.
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this.doRefresh().finally(() => {
+      this.refreshPromise = null;
+    });
+    return this.refreshPromise;
+  }
 
-      let changed = this.syncStatuses(bySession);
-      if (await this.matchActiveWorkspace(running)) changed = true;
-      if (changed) this.onChanged.fire();
-    } finally {
-      this.refreshing = false;
+  private async doRefresh(): Promise<void> {
+    let running: RunningSession[] = [];
+    try {
+      running = await this.agent.listRunning();
+    } catch {
+      return;
     }
+    const bySession = new Map(running.map((r) => [r.sessionId, r]));
+
+    let changed = this.syncStatuses(bySession);
+    if (await this.matchActiveWorkspace(running)) changed = true;
+    if (changed) this.onChanged.fire();
+  }
+
+  private startActivePoll(): void {
+    if (this.pollTimer !== null) return;
+    this.pollTimer = setInterval(() => {
+      void this.refreshStatuses();
+    }, ACTIVE_POLL_MS);
+  }
+
+  private stopActivePoll(): void {
+    if (this.pollTimer === null) return;
+    clearInterval(this.pollTimer);
+    this.pollTimer = null;
+  }
+
+  /**
+   * Cơ hội cuối để bắt session trước khi dispose terminal của workspace active — sau đó
+   * cwd không còn terminal nào để đối chiếu nữa. Xóa askedCwds: nhóm mơ hồ người dùng đã
+   * Esc trong phiên được hỏi lại đúng một lần nữa, vì đây là "bây giờ hoặc không bao giờ".
+   */
+  private async finalClaimSweep(): Promise<void> {
+    const id = this.activeId;
+    if (id === null) return;
+    const ws = findWorkspace(this.store, id);
+    if (!ws) return;
+    const conChuaBat = ws.terminals.some(
+      (t) => this.terminals.has(t.id) && t.claudeSessionId === undefined,
+    );
+    if (!conChuaBat) return;
+
+    // Đợi lượt poll đang dở (nếu có) xong hẳn rồi mới quét — lượt dở đã đi qua vòng hỏi
+    // ambiguity với askedCwds cũ, xóa set xong phải chạy một lượt MỚI thì mới hỏi lại được.
+    const inflight = this.refreshPromise;
+    if (inflight) await inflight;
+    this.askedCwds.clear();
+    await this.refreshStatuses();
   }
 
   private syncStatuses(bySession: Map<string, RunningSession>): boolean {
@@ -904,11 +955,59 @@ export class WorkspaceManager implements vscode.Disposable {
     return true;
   }
 
+  /**
+   * Gắn tay một session Claude đang chạy vào terminal — lối thoát cho các trường hợp máy
+   * không tự bắt được (nhiều terminal cùng cwd, đã Esc QuickPick, poll chưa kịp chạy).
+   */
+  async assignClaudeSession(workspaceId: string, terminalId: string): Promise<void> {
+    if (!this.findEntry(workspaceId, terminalId)) return;
+
+    let running: RunningSession[] = [];
+    try {
+      running = await this.agent.listRunning();
+    } catch {
+      // rơi xuống thông báo "không có session" bên dưới
+    }
+    // Session đã bị entry khác (bất kỳ workspace nào) giữ thì không đưa ra chọn nữa —
+    // hai entry cùng trỏ một hội thoại là nguồn double --resume.
+    const claimed = new Set<string>();
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.claudeSessionId !== undefined && t.id !== terminalId) claimed.add(t.claudeSessionId);
+      }
+    }
+    const options = running.filter((r) => r.kind === 'interactive' && !claimed.has(r.sessionId));
+    if (options.length === 0) {
+      void vscode.window.showInformationMessage(
+        'Không có session Claude nào đang chạy (chưa bị gắn) để chọn.',
+      );
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      options.map((r) => ({
+        label: r.name?.trim() || r.sessionId,
+        description: r.cwd,
+        detail: `trạng thái: ${r.status}`,
+        session: r,
+      })),
+      { placeHolder: 'Session Claude nào đang chạy trong terminal này?' },
+    );
+    if (!picked) return;
+
+    // claimSession tự tra lại entry theo id sau await (bất biến re-resolve-then-touch).
+    if (this.claimSession(workspaceId, terminalId, picked.session)) {
+      this.scheduleSave();
+      this.onChanged.fire();
+    }
+  }
+
   // --------------------------------------------------------------- dispose
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.stopActivePoll();
     // Gỡ khóa V5 khi đóng cửa sổ bình thường. saveStore hoàn toàn đồng bộ (writeFileSync +
     // renameSync) nên việc này chạy trọn vẹn trong deactivate; chỉ khi VS Code chết đột ngột
     // mới còn khóa mồ côi — đúng như README mô tả. KHÔNG đóng terminal ở đây.

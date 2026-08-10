@@ -62,6 +62,10 @@
       {
         "command": "aiWorkspace.addOpenTerminalToWorkspace",
         "title": "AI Workspace: Thêm terminal đang mở vào workspace"
+      },
+      {
+        "command": "aiWorkspace.assignClaudeSession",
+        "title": "AI Workspace: Gắn session Claude vào terminal"
       }
     ],
     "views": {
@@ -112,6 +116,11 @@
           "group": "1_edit"
         },
         {
+          "command": "aiWorkspace.assignClaudeSession",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "1_edit"
+        },
+        {
           "command": "aiWorkspace.removeTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
           "group": "2_remove"
@@ -138,6 +147,10 @@
         },
         {
           "command": "aiWorkspace.focusTerminal",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.assignClaudeSession",
           "when": "false"
         }
       ]

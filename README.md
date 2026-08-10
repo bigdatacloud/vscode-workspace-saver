@@ -45,7 +45,10 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   mở trong workspace active với `claude agents --json` (chỉ hàng `kind: interactive`). Khớp
   duy nhất → tự gắn `claudeSessionId`/tên peer, terminal `plain` "thăng cấp" thành `claude`.
   Nhiều terminal cùng cwd/nhiều session cùng cwd → hiện QuickPick hỏi một lần cho mỗi cụm cwd
-  (không hỏi lặp lại mỗi chu kỳ poll nếu bạn bỏ qua).
+  (không hỏi lặp lại mỗi chu kỳ poll nếu bạn bỏ qua); riêng lúc **đóng workspace**, extension
+  quét bắt lần cuối và hỏi lại cả những cụm bạn đã bỏ qua — sau khi đóng là hết đường bắt.
+  Máy không tự bắt được thì gắn tay bằng menu **"Gắn session Claude vào terminal"** trên
+  terminal item trong cây.
 - **Một workspace active mỗi cửa sổ VS Code**: khóa best-effort theo `activeWindowId`; mở
   cùng một workspace ở cửa sổ thứ hai sẽ bị cảnh báo, có nút "Vẫn mở" để ghi đè.
 - **Đóng terminal không xóa khỏi workspace**: đóng tay một terminal (bấm X hoặc `exit`) chỉ
@@ -69,6 +72,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal |
 | AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây |
 | AI Workspace: Thêm terminal đang mở vào workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Menu chuột phải tab terminal / palette |
+| AI Workspace: Gắn session Claude vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây |
 
 Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là

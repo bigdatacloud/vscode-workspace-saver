@@ -3,7 +3,7 @@
 Phần lớn hành vi của v2 xoay quanh hộp thoại VS Code (`showInputBox`, `showWarningMessage`,
 `showQuickPick`) và trạng thái terminal thật (đóng tay, task runner mở terminal, hai cửa sổ
 cùng lúc) — những thứ Extension Host chạy headless không kiểm được: mọi hộp thoại sẽ treo vô
-hạn vì không có ai bấm. 112 test vitest (pure core: schema, store, classify, match, activate
+hạn vì không có ai bấm. 98 test vitest (pure core: schema, store, classify, match, activate
 orchestrator, TrustStore) + 6 smoke test Extension Host (activation, lệnh đăng ký, view tồn
 tại, TerminalManager thật) chỉ phủ được phần không cần hộp thoại. Checklist này là lưới an
 toàn DUY NHẤT cho phần còn lại.
@@ -111,6 +111,20 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       "Terminal nào đang chạy session "<tên/id>"?" — chọn đúng terminal cho từng session
 - [ ] Bỏ qua QuickPick đó (Esc) → hỏi lại lần đó không được ghi nhận, và **không hỏi lại nữa
       trong phiên hiện tại** dù vẫn ambiguous ở chu kỳ poll kế tiếp (không spam mỗi 3 giây)
+- [ ] **Matching không phụ thuộc tree**: ẩn hẳn view AI Workspaces (đóng section trong
+      Explorer / chuyển sang view khác), gõ `claude` trong terminal của workspace active có
+      cwd không trùng ai → sau ~3 giây entry vẫn tự thăng cấp thành `claude` (poll riêng của
+      manager chạy khi có workspace active, không cần tree hiển thị)
+- [ ] **Quét bắt lần cuối lúc đóng**: tạo tình huống ambiguous rồi Esc QuickPick; sau đó
+      "Đóng workspace đang active" → QuickPick hỏi LẠI đúng cụm đã Esc trước khi terminal bị
+      đóng; chọn xong, mở lại workspace → hội thoại Claude resume đúng
+- [ ] **Gắn tay session**: terminal `plain` của workspace đang chạy `claude` mà máy không tự
+      bắt (vd nhiều terminal cùng cwd) → chuột phải terminal item trong cây → "Gắn session
+      Claude vào terminal" → QuickPick liệt kê session đang chạy (tên + cwd + trạng thái),
+      session đã bị entry khác giữ KHÔNG xuất hiện; chọn xong entry thăng cấp `claude`, đóng/mở
+      workspace resume đúng hội thoại
+- [ ] Gắn tay khi không có session nào đang chạy → thông báo "Không có session Claude nào
+      đang chạy (chưa bị gắn) để chọn.", không có QuickPick rỗng
 
 ## Vòng đời terminal thủ công
 - [ ] Đóng một terminal bằng tay (bấm dấu X hoặc gõ `exit`) trong workspace active → entry đó
