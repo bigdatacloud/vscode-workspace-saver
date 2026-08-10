@@ -98,10 +98,12 @@ mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển thị (d�
 - Hai entry ở hai workspace khác nhau có thể cùng trỏ về một `claudeSessionId`: việc đối chiếu
   session chỉ nhìn workspace đang active, nên nó không biết session đó đã bị workspace khác
   nhận. Kích hoạt cả hai workspace sẽ `--resume` cùng một hội thoại hai lần.
-- Nhiều cửa sổ VS Code: mỗi lần lưu là gộp theo id (workspace của cửa sổ này thắng, workspace
-  chỉ có trên đĩa được giữ nguyên), nên trạng thái của mỗi workspace là của lần lưu cuối cùng
-  đụng tới nó. Xóa một workspace ở cửa sổ này có thể bị cửa sổ khác — đang giữ workspace đó
-  trong RAM — ghi sống lại ở lần lưu sau của nó.
+- Nhiều cửa sổ VS Code: mỗi lần lưu là gộp theo id, và **mỗi cửa sổ chỉ ghi đè những workspace
+  mà chính nó đã đụng tới** (tạo, đổi tên, kích hoạt, thêm/bỏ terminal…). Workspace nó không
+  đụng tới sẽ đi theo bản mới nhất trên đĩa, nên việc cửa sổ khác đang làm không bị ghi đè.
+  Trạng thái của mỗi workspace vì thế là của cửa sổ cuối cùng đụng tới nó.
+- Xóa một workspace ở cửa sổ này có thể bị cửa sổ khác — đang giữ workspace đó trong RAM và
+  đã từng đụng tới nó — ghi sống lại ở lần lưu sau của nó.
 - Không quản lý workspace từ nhiều máy, không chia sẻ workspace qua git.
 
 ## Phát triển

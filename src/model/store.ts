@@ -37,36 +37,50 @@ export function saveStore(fs: StoreFs, filePath: string, store: StoreFile): void
  * Mỗi cửa sổ VS Code chạy một instance extension riêng, nạp store một lần lúc khởi động rồi
  * ghi đè cả file mỗi lần lưu. Không gộp thì cửa sổ lưu sau xóa sạch workspace mà cửa sổ kia
  * vừa tạo. Luật:
- *  (a) id có trong RAM  → bản RAM thắng (cửa sổ này mới là chủ của những workspace đó);
- *  (b) id chỉ có trên đĩa → giữ lại, TRỪ KHI nằm trong `deletedIds` (bia mộ: workspace mà
+ *  (a) id có trong RAM VÀ cửa sổ này đã đụng tới (`touchedIds`) → bản RAM thắng;
+ *  (b) id có trong RAM nhưng cửa sổ này CHƯA đụng tới, mà đĩa cũng có → BẢN ĐĨA thắng. Bản
+ *      RAM của workspace ta chưa đụng chỉ là ảnh chụp lúc khởi động (hoặc bản vừa hút vào từ
+ *      lần merge trước); ghi đè nó lên đĩa sẽ xóa sessionId mà cửa sổ khác vừa mint và xóa
+ *      luôn khóa V5 của họ. Không đụng tới ⇒ không có closure/mint nào đang trỏ vào object
+ *      đó, nên thay bằng object của đĩa là an toàn;
+ *  (c) id có trong RAM mà đĩa không còn → giữ bản RAM (không bao giờ vứt dữ liệu ta đang cầm);
+ *  (d) id chỉ có trên đĩa → giữ lại, TRỪ KHI nằm trong `deletedIds` (bia mộ: workspace mà
  *      chính cửa sổ này vừa xóa, không được sống lại);
- *  (c) tên đụng nhau giữa bản đĩa giữ lại và bản RAM → đổi tên BẢN ĐĨA (' (2)', ' (3)'…),
+ *  (e) tên đụng nhau giữa bản đĩa giữ lại và bản phía RAM → đổi tên BẢN ĐĨA (' (2)', ' (3)'…),
  *      không bao giờ đụng vào tên người dùng đang thấy trong cửa sổ này.
  *
- * Trả về object workspace của RAM NGUYÊN TÁC THAM CHIẾU: manager giữ tham chiếu tới chúng
- * trong closure (ports, entry đang mint), thay bằng bản sao sẽ làm các mutation sau đó rơi
- * vào object mồ côi.
+ * Với nhánh (a) trả về object workspace của RAM NGUYÊN TÁC THAM CHIẾU: manager giữ tham chiếu
+ * tới chúng trong closure (ports, entry đang mint), thay bằng bản sao sẽ làm các mutation sau
+ * đó rơi vào object mồ côi. KHÔNG mutate `disk`: bản đĩa phải đổi tên thì clone rồi mới sửa.
  */
 export function mergeForSave(
   disk: StoreFile,
   ram: StoreFile,
   deletedIds: ReadonlySet<string>,
+  touchedIds: ReadonlySet<string>,
 ): StoreFile {
+  const diskById = new Map(disk.workspaces.map((w) => [w.id, w]));
+  const winners = ram.workspaces.map((ramWs) =>
+    touchedIds.has(ramWs.id) ? ramWs : diskById.get(ramWs.id) ?? ramWs,
+  );
+
   const ramIds = new Set(ram.workspaces.map((w) => w.id));
-  const takenNames = new Set(ram.workspaces.map((w) => w.name.toLowerCase()));
-  const kept = disk.workspaces.filter((w) => !ramIds.has(w.id) && !deletedIds.has(w.id));
+  const takenNames = new Set(winners.map((w) => w.name.toLowerCase()));
+  const candidates = disk.workspaces.filter((w) => !ramIds.has(w.id) && !deletedIds.has(w.id));
 
   // Hai lượt: giữ chỗ cho mọi tên đĩa KHÔNG đụng độ trước, rồi mới rải hậu tố cho tên đụng
   // độ thật. Một lượt sẽ đổi tên cả workspace vô can chỉ vì trùng với hậu tố ta vừa bịa ra.
-  const conflicting = kept.filter((w) => takenNames.has(w.name.toLowerCase()));
-  for (const w of kept) {
-    if (!takenNames.has(w.name.toLowerCase())) takenNames.add(w.name.toLowerCase());
+  const conflicting = new Set(candidates.filter((w) => takenNames.has(w.name.toLowerCase())));
+  for (const w of candidates) {
+    if (!conflicting.has(w)) takenNames.add(w.name.toLowerCase());
   }
-  for (const w of conflicting) {
-    w.name = uniqueName(w.name, takenNames);
-    takenNames.add(w.name.toLowerCase());
-  }
-  return { version: 2, workspaces: [...ram.workspaces, ...kept] };
+  const kept = candidates.map((w) => {
+    if (!conflicting.has(w)) return w;
+    const name = uniqueName(w.name, takenNames);
+    takenNames.add(name.toLowerCase());
+    return { ...w, name };
+  });
+  return { version: 2, workspaces: [...winners, ...kept] };
 }
 
 function uniqueName(base: string, taken: ReadonlySet<string>): string {

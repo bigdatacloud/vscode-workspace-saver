@@ -82,12 +82,19 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly askedCwds = new Set<string>();
   /** Bia mộ: workspace cửa sổ này đã xóa, không được merge sống lại từ đĩa. */
   private readonly deletedIds = new Set<string>();
+  /**
+   * Workspace mà CHÍNH cửa sổ này đã sửa. Chỉ những id ở đây mới được ghi đè lên bản trên
+   * đĩa; workspace ta chỉ hút vào từ file (cửa sổ khác làm chủ) phải đi theo bản đĩa, nếu
+   * không mỗi lần ta lưu sẽ xóa mất sessionId vừa mint và khóa V5 của cửa sổ kia.
+   */
+  private readonly touchedIds = new Set<string>();
 
   private saveTimer: NodeJS.Timeout | null = null;
   private dirty = false;
   private refreshing = false;
   private activating = false;
   private disposed = false;
+  private warnedRecovered = false;
 
   private readonly subscriptions: vscode.Disposable[] = [];
   private readonly onChanged = new vscode.EventEmitter<void>();
@@ -189,6 +196,11 @@ export class WorkspaceManager implements vscode.Disposable {
 
   // ------------------------------------------------------------- lưu trữ
 
+  /** Đánh dấu workspace này do cửa sổ hiện tại làm chủ ở lần lưu tới. */
+  private touch(workspaceId: string): void {
+    this.touchedIds.add(workspaceId);
+  }
+
   private scheduleSave(): void {
     this.dirty = true;
     if (this.saveTimer !== null) return;
@@ -212,8 +224,16 @@ export class WorkspaceManager implements vscode.Disposable {
       // Cửa sổ VS Code khác có thể đã ghi file này từ lúc ta nạp: đọc lại rồi gộp theo id,
       // nếu không lần lưu của ta sẽ xóa sạch workspace mà cửa sổ kia vừa tạo.
       // Đĩa hỏng ở đúng thời điểm này thì loadStore đã tự backup + trả store rỗng — chấp nhận.
-      const disk = loadStore(realStoreFs, this.filePath, Date.now).store;
-      const merged = mergeForSave(disk, this.store, this.deletedIds);
+      const reread = loadStore(realStoreFs, this.filePath, Date.now);
+      if (reread.recoveredFrom !== null && !this.warnedRecovered) {
+        // Đĩa hỏng ngay giữa lúc lưu: người dùng phải biết vì sao workspace của cửa sổ khác
+        // vừa biến mất khỏi cây. Chỉ báo một lần cho cả phiên.
+        this.warnedRecovered = true;
+        void vscode.window.showWarningMessage(
+          `File workspaces.json bị hỏng nên đã được sao lưu sang ${reread.recoveredFrom}; chỉ còn giữ lại workspace của cửa sổ này.`,
+        );
+      }
+      const merged = mergeForSave(reread.store, this.store, this.deletedIds, this.touchedIds);
       saveStore(realStoreFs, this.filePath, merged);
       this.store = merged;
       this.dirty = false;
@@ -250,6 +270,7 @@ export class WorkspaceManager implements vscode.Disposable {
     let ws: Workspace;
     try {
       ws = createWorkspace(this.store, name.trim(), randomUUID());
+      this.touch(ws.id);
     } catch (error) {
       void vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
       return;
@@ -301,6 +322,10 @@ export class WorkspaceManager implements vscode.Disposable {
         await this.closeActive();
       }
 
+      // Đánh dấu TRƯỚC khi chạy orchestrator: trong lúc mở, một lượt save debounce có thể
+      // nổ ra và merge sẽ thay object workspace chưa-đụng-tới bằng bản đĩa — trong khi ports
+      // vẫn cầm object cũ, khiến sessionId vừa mint rơi vào object mồ côi.
+      this.touch(ws.id);
       for (const entry of ws.terminals) this.errorIds.delete(entry.id);
 
       // Terminal đang mở (đã adopt vào ws này từ trước) phải được để yên: TerminalManager.create
@@ -365,6 +390,7 @@ export class WorkspaceManager implements vscode.Disposable {
           entry.claudeSessionId = sessionId;
           entry.claudeName = entry.claudeName ?? entry.name;
         }
+        this.touch(ws.id);
         this.scheduleSave();
         this.flush();
         await Promise.resolve();
@@ -389,6 +415,7 @@ export class WorkspaceManager implements vscode.Disposable {
         this.errorIds.delete(entry.id);
       }
       ws.activeWindowId = null;
+      this.touch(ws.id);
     }
     this.activeId = null;
     this.scheduleSave();
@@ -414,6 +441,7 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
     ws.name = trimmed;
+    this.touch(ws.id);
     this.scheduleSave();
     this.onChanged.fire();
   }
@@ -478,6 +506,7 @@ export class WorkspaceManager implements vscode.Disposable {
       claudeName: name.trim(),
     };
     upsertTerminal(ws, entry);
+    this.touch(ws.id);
     this.scheduleSave();
 
     if (this.activeId === ws.id) await this.launchOne(ws, entry);
@@ -530,6 +559,9 @@ export class WorkspaceManager implements vscode.Disposable {
 
   /** Mở lại đúng MỘT entry, tái dùng nguyên nhánh launch của orchestrator. */
   private async launchOne(ws: Workspace, entry: TerminalEntry): Promise<void> {
+    // Xem ghi chú ở activate(): ports cầm `ws`, nên nó phải là workspace do cửa sổ này làm chủ
+    // trước khi có bất kỳ await nào.
+    this.touch(ws.id);
     this.errorIds.delete(entry.id);
     const single: Workspace = { ...ws, terminals: [entry] };
     const report = await activateWorkspace(single, this.buildPorts(ws));
@@ -549,6 +581,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // KHÔNG tự trust lại: fingerprint đổi nên lần activate sau sẽ hỏi lại — đúng thiết kế.
     if (trimmed === '') delete entry.startCommand;
     else entry.startCommand = trimmed;
+    this.touch(workspaceId);
     this.scheduleSave();
     this.onChanged.fire();
   }
@@ -563,6 +596,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const ws = findWorkspace(this.store, workspaceId);
     if (!ws) return;
     removeTerminalEntry(ws, terminalId);
+    this.touch(ws.id);
     this.scheduleSave();
     this.onChanged.fire();
     await Promise.resolve();
@@ -635,6 +669,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry: TerminalEntry = { id: randomUUID(), name, cwd, kind: 'plain' };
     upsertTerminal(ws, entry);
     this.terminals.adopt(entry.id, terminal);
+    this.touch(ws.id);
     this.scheduleSave();
     this.onChanged.fire();
     return entry;
@@ -648,6 +683,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const cwd = nonEmpty(event.shellIntegration.cwd?.fsPath) ?? entry.cwd;
     if (cwd === entry.cwd) return;
     entry.cwd = cwd;
+    this.touch(this.activeId);
     this.scheduleSave();
   }
 
@@ -705,6 +741,7 @@ export class WorkspaceManager implements vscode.Disposable {
     if (name === undefined) return null;
     try {
       const ws = createWorkspace(this.store, name.trim(), randomUUID());
+      this.touch(ws.id);
       this.scheduleSave();
       this.onChanged.fire();
       return ws.id;
@@ -824,6 +861,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // aiTerminalPlain — để lại là rác vô hình (và vẫn tính vào fingerprint trust).
     delete entry.startCommand;
     this.statuses.set(entry.id, session.status);
+    this.touch(ws.id);
     return true;
   }
 
@@ -839,6 +877,7 @@ export class WorkspaceManager implements vscode.Disposable {
       const ws = findWorkspace(this.store, this.activeId);
       if (ws) {
         ws.activeWindowId = null;
+        this.touch(ws.id);
         this.scheduleSave();
       }
     }
