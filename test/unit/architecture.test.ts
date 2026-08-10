@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const PURE_DIRS = ['manifest', 'git', 'agent', 'events', 'index', 'model', 'adopt', 'claude'];
+const PURE_DIRS = ['git', 'agent', 'model', 'adopt', 'claude'];
+/** Module thuần nằm lẻ trong thư mục có cả code lớp vscode (src/workspace). */
+const PURE_FILES = [join('src', 'workspace', 'activate.ts')];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -31,12 +33,11 @@ function chuaImportVscode(source: string): boolean {
 describe('hàng rào kiến trúc', () => {
   it('các module core không được import vscode', () => {
     const offenders: string[] = [];
-    for (const dir of PURE_DIRS) {
-      for (const file of walk(join('src', dir))) {
-        const src = readFileSync(file, 'utf8');
-        if (chuaImportVscode(src)) {
-          offenders.push(file);
-        }
+    const files = [...PURE_DIRS.flatMap((dir) => walk(join('src', dir))), ...PURE_FILES];
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      if (chuaImportVscode(src)) {
+        offenders.push(file);
       }
     }
     expect(offenders).toEqual([]);

@@ -4,14 +4,16 @@ import * as vscode from 'vscode';
 import { TerminalManager } from '../../src/terminal/manager';
 
 const EXPECTED_COMMANDS = [
-  'aiWorkspace.newWorkspace',
-  'aiWorkspace.saveWorkspace',
-  'aiWorkspace.openWorkspace',
-  'aiWorkspace.closeWorkspace',
-  'aiWorkspace.addSession',
-  'aiWorkspace.removeSession',
-  'aiWorkspace.openSessionTerminal',
-  'aiWorkspace.restoreSession',
+  'aiWorkspace.createWorkspace',
+  'aiWorkspace.activateWorkspace',
+  'aiWorkspace.closeActiveWorkspace',
+  'aiWorkspace.renameWorkspace',
+  'aiWorkspace.deleteWorkspace',
+  'aiWorkspace.newClaudeTerminal',
+  'aiWorkspace.setStartCommand',
+  'aiWorkspace.removeTerminal',
+  'aiWorkspace.focusTerminal',
+  'aiWorkspace.addOpenTerminalToWorkspace',
 ];
 
 /**
@@ -39,30 +41,27 @@ suite('AI Workspace extension', () => {
     if (!ext.isActive) await ext.activate();
   });
 
-  test('đăng ký đủ 8 lệnh của MVP và activate() đã chạy xong', async () => {
+  test('đăng ký đủ 10 lệnh của v2 và activate() đã chạy xong', async () => {
     const all = await vscode.commands.getCommands(true);
     for (const command of EXPECTED_COMMANDS) {
       assert.ok(all.includes(command), `thiếu lệnh ${command}`);
     }
     // Khai báo trong package.json thôi chưa đủ: chạy thật một lệnh để chứng minh
-    // activate() đã đăng ký handler. Cố tình KHÔNG dùng 'aiWorkspace.saveWorkspace' ở đây:
-    // khi chưa có workspace, save() gọi vscode.window.showWarningMessage(), promise đó chỉ
-    // resolve khi có người bấm tắt thông báo — trong Extension Host chạy headless không ai
-    // bấm cả nên await sẽ treo tới hết timeout (đã tự kiểm chứng: treo đúng 30000ms).
-    // 'aiWorkspace.closeWorkspace' thì khi chưa có workspace mở sẽ return ngay lập tức
-    // (xem WorkspaceManager.close()), vẫn chứng minh được handler đã đăng ký và chạy được
-    // mà không cần tương tác UI.
-    await vscode.commands.executeCommand('aiWorkspace.closeWorkspace');
+    // activate() đã đăng ký handler. Cố tình chỉ dùng lệnh KHÔNG mở hộp thoại nào:
+    // mọi showInputBox/showWarningMessage trong Extension Host headless sẽ không có ai
+    // bấm, await sẽ treo tới hết timeout. 'closeActiveWorkspace' khi chưa có workspace
+    // active thì return ngay (xem WorkspaceManager.closeActive()).
+    await vscode.commands.executeCommand('aiWorkspace.closeActiveWorkspace');
   });
 
-  test('view aiWorkspace.sessions được đăng ký và focus được', async () => {
+  test('view aiWorkspace.workspaces được đăng ký và focus được', async () => {
     const all = await vscode.commands.getCommands(true);
     assert.ok(
-      all.includes('aiWorkspace.sessions.focus'),
+      all.includes('aiWorkspace.workspaces.focus'),
       'VS Code phải tự sinh lệnh focus cho view đã contribute',
     );
     // Focus được mà không ném nghĩa là view tồn tại thật trong workbench.
-    await vscode.commands.executeCommand('aiWorkspace.sessions.focus');
+    await vscode.commands.executeCommand('aiWorkspace.workspaces.focus');
   });
 
   test('TerminalManager tạo, theo dõi và đóng terminal theo key', async () => {
