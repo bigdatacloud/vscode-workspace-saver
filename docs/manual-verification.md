@@ -1,106 +1,140 @@
-# Checklist kiểm thử tay
+# Checklist kiểm thử tay — v2
 
-Một phần lớn của extension này **không thể kiểm thử tự động, kể cả về nguyên tắc**: mọi lệnh chờ
-hộp thoại VS Code (`showInputBox`, `showWarningMessage`, `showQuickPick`) treo vô hạn trong
-Extension Host chạy headless — `showWarningMessage()` không bao giờ tự resolve. Vì vậy
-`New Workspace`, `Add Session`, hộp thoại xác nhận worktree thiếu và hộp thoại trust đều nằm
-ngoài phạm vi 138 test vitest + 5 test Extension Host hiện có. Checklist này là lưới an toàn
-DUY NHẤT cho các luồng đó.
+Phần lớn hành vi của v2 xoay quanh hộp thoại VS Code (`showInputBox`, `showWarningMessage`,
+`showQuickPick`) và trạng thái terminal thật (đóng tay, task runner mở terminal, hai cửa sổ
+cùng lúc) — những thứ Extension Host chạy headless không kiểm được: mọi hộp thoại sẽ treo vô
+hạn vì không có ai bấm. 112 test vitest (pure core: schema, store, classify, match, activate
+orchestrator, TrustStore) + 6 smoke test Extension Host (activation, lệnh đăng ký, view tồn
+tại, TerminalManager thật) chỉ phủ được phần không cần hộp thoại. Checklist này là lưới an
+toàn DUY NHẤT cho phần còn lại.
 
-Chạy trên một repo git thật, có ít nhất 1 commit, mở trong VS Code. Đánh dấu từng mục — mỗi mục
-phải trả lời được "đạt/không đạt" mà không cần suy đoán.
+Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản" và "Terminal Claude" cần `git` và
+`claude` trong PATH), mở trong VS Code. Đánh dấu từng mục — mỗi mục phải trả lời được
+"đạt/không đạt" mà không cần suy đoán.
 
 ## Chuẩn bị
 - [ ] `claude --version` chạy được trong terminal tích hợp của VS Code
 - [ ] `git --version` chạy được trong terminal tích hợp của VS Code
-- [ ] Mở extension ở chế độ debug (F5), mở một repo git thử nghiệm ở cửa sổ Extension Host (đã mở
-      sẵn một thư mục làm workspace folder — `New Workspace` yêu cầu có workspace folder đang mở)
+- [ ] Mở extension ở chế độ debug (nhấn F5, dùng cấu hình "Chạy Extension" có sẵn trong
+      `.vscode/launch.json`), mở một cửa sổ Extension Host
 
-## Vòng đời cơ bản
-- [ ] `AI Workspace: New Workspace` → nhập tên → sinh ra `.ai-workspace/workspace.yaml` và
-      `.ai-workspace/.gitignore`
-- [ ] `.ai-workspace/.gitignore` có dòng `state.json`
-- [ ] `AI Workspace: Add Session` với branch mới → session xuất hiện trong sidebar
-- [ ] `AI Workspace: Save Workspace` → `workspace.yaml` chứa đúng session vừa thêm
-- [ ] Đóng cửa sổ, mở lại, `AI Workspace: Open Workspace` → workspace hiện trong Quick Pick
+## Vòng đời workspace cơ bản
+- [ ] `AI Workspace: Tạo workspace mới` → nhập tên → workspace mới xuất hiện trong cây VÀ được
+      kích hoạt ngay (badge/mô tả "(đang active)")
+- [ ] Nhấn Esc ở hộp nhập tên → không có workspace nào được tạo
+- [ ] Bấm vào một workspace khác (chưa active) trong khi đang có workspace active → hiện modal
+      "Lưu và đóng X trước khi mở Y?"; bấm "Lưu và đóng" → X bị đóng (terminal của X đóng hết),
+      Y được kích hoạt và mở lại đúng terminal đã lưu của Y
+- [ ] Lặp lại bước trên nhưng bấm Hủy/Esc ở modal → KHÔNG có gì thay đổi: X vẫn active,
+      terminal của X vẫn mở nguyên, Y vẫn ở trạng thái chưa active
+- [ ] `AI Workspace: Đóng workspace đang active` → mọi terminal thật của workspace đó đóng hết,
+      cây không còn workspace nào active
+- [ ] Đóng cửa sổ Extension Host, mở lại → cây vẫn hiện đúng danh sách workspace đã tạo (đọc
+      lại từ `workspaces.json` trong global storage), KHÔNG có workspace nào tự động active
 
-### Hộp thoại (không có kiểm thử tự động nào phủ được các mục này)
-- [ ] `AI Workspace: New Workspace` mở hộp nhập tên, giá trị mặc định sẵn điền là tên thư mục
-      đang mở; nhấn Esc để huỷ giữa chừng → không sinh ra `.ai-workspace/` hay bất kỳ file nào
-- [ ] `AI Workspace: Add Session` hỏi lần lượt đúng 6 bước theo thứ tự: khoá (key) → tên (name) →
-      vai trò (role) → branch → đường dẫn worktree (chỉ hỏi nếu branch không để trống) → startup
-      command
-- [ ] Nhập khoá không phải slug (ví dụ có khoảng trắng, chữ hoa, hoặc bắt đầu bằng dấu gạch
-      ngang) → hộp thoại báo lỗi validate ngay, không cho qua bước tiếp theo
-- [ ] Nhấn Esc ở BẤT KỲ bước nào trong 6 bước trên (thử riêng từng bước, không chỉ bước đầu) →
-      lệnh dừng ngay lập tức, `workspace.yaml` không có session mới nào được thêm vào
-- [ ] Khi có nhiều worktree bị thiếu cùng lúc (ví dụ xoá tay 2 thư mục worktree rồi restore),
-      hộp thoại xác nhận chỉ hiện ĐÚNG MỘT LẦN, liệt kê đủ toàn bộ các worktree thiếu — không phải
-      một hộp thoại riêng cho từng worktree
-- [ ] Hộp thoại trust hiển thị đầy đủ, nguyên văn nội dung của TỪNG startup command trong manifest
-      trước khi bất kỳ lệnh nào được chạy (kiểm bằng cách đặt một startup command dài/đặc biệt và
-      đọc lại nguyên văn trong hộp thoại)
+## Trường hợp biên: hủy modal giữa chừng khi tạo workspace mới (orphan)
+- [ ] Đang có workspace A active → `AI Workspace: Tạo workspace mới` → nhập tên workspace B
+      (không Esc) → khi modal "Lưu và đóng A trước khi mở B?" xuất hiện, bấm Hủy/Esc → xác nhận:
+      workspace B (rỗng, 0 terminal, chưa từng active) **vẫn còn nằm trong cây danh sách**,
+      KHÔNG bị xóa hay rollback — vì `createWorkspace` + lưu đĩa đã xảy ra TRƯỚC khi modal xuất
+      hiện. Đây là hành vi đã biết (orphan workspace rỗng), không phải bug cần fix ở task này —
+      chỉ cần xác nhận đúng như mô tả để không bất ngờ khi gặp trong thực tế.
 
-## Restore
-- [ ] Restore tạo đúng số terminal, mỗi terminal đúng tên
-- [ ] `pwd` (hoặc `Get-Location`) trong mỗi terminal ra đúng worktree
-- [ ] Claude Code khởi động trong từng terminal
-- [ ] `claude agents --json` ở terminal khác cho thấy đúng `name` đã đặt trong manifest
-- [ ] Sidebar chuyển session sang trạng thái "rảnh"/"đang chạy" trong vòng ~3 giây
+## Đổi tên / Xóa workspace
+- [ ] `AI Workspace: Đổi tên workspace` → tên mới hiển thị ngay trong cây
+- [ ] Đổi tên trùng (không phân biệt hoa thường) với workspace khác đã có → bị từ chối, có
+      cảnh báo, tên KHÔNG đổi
+- [ ] `AI Workspace: Xóa workspace` trên một workspace có terminal đang mở → modal xác nhận
+      "Xóa workspace X? Terminal đang mở không bị đóng." → bấm "Xóa" → workspace biến mất khỏi
+      cây NHƯNG các terminal thật của nó **vẫn mở nguyên** trong `vscode.window.terminals`
+      (xóa workspace không đóng terminal thật)
+- [ ] Xóa một workspace đang active → sau khi xóa, không còn workspace nào active
 
-### Vòng đời terminal
-- [ ] `AI Workspace: Restore Session` trên một session đã có terminal sống → extension TỪ CHỐI
-      dựng lại, hiện cảnh báo bảo đóng terminal trước, rồi focus vào terminal đang chạy đó. Không
-      có terminal thứ hai nào được tạo ra
-- [ ] Đóng terminal đó rồi chạy lại `AI Workspace: Restore Session` → lần này dựng lại bình thường,
-      và sidebar/`vscode.window.terminals` chỉ có MỘT terminal cho session đó
-- [ ] Đóng một terminal bằng tay (bấm dấu X hoặc gõ `exit`) → đúng session đó chuyển sang trạng
-      thái "chưa chạy"/offline trong sidebar trong vòng vài giây
-- [ ] Khi đóng terminal ở trên, KHÔNG có session nào khác trong sidebar bị đổi trạng thái
+## Adoption — terminal tự mở tay (auto)
+- [ ] Có workspace active → mở terminal mới bằng <kbd>Ctrl+Shift+`</kbd> (không đặt tên qua
+      task/extension khác) → terminal được **tự động thêm ngay** vào workspace active, kèm
+      toast "Đã thêm "<tên>" vào workspace <X>" có nút "Bỏ ra"
+- [ ] Bấm "Bỏ ra" trên toast đó → terminal biến mất khỏi cây của workspace (entry bị gỡ),
+      terminal thật KHÔNG bị đóng
+- [ ] Không có workspace nào active → mở terminal mới bằng Ctrl+Shift+` → KHÔNG có toast nào,
+      KHÔNG terminal nào tự thêm vào đâu cả
 
-## Polling
-- [ ] Ẩn view AI Workspace (thu gọn Explorer hoặc chuyển sang view container khác, ví dụ Search)
-      → mở Task Manager (hoặc công cụ theo dõi tiến trình tương đương) và xác nhận `claude agents
-      --json` không còn bị gọi lặp lại (theo dõi CPU của tiến trình `claude`/`node`, hoặc dùng
-      Process Monitor lọc theo tên lệnh)
-- [ ] Hiện lại view AI Workspace → xác nhận việc gọi `claude agents --json` lặp lại (polling) chạy
-      trở lại
+## Adoption — terminal có tên riêng (suggest)
+- [ ] Có workspace active → mở một terminal có tên riêng (ví dụ chạy một Task của VS Code có
+      `"label"`, hoặc terminal do extension khác tạo có tên) → hiện toast gợi ý
+      "Thêm terminal "<tên>" vào workspace <X>?" có nút "Thêm" — KHÔNG tự thêm ngay
+- [ ] Bỏ qua toast gợi ý (không bấm gì) → terminal đó KHÔNG được thêm vào workspace
+- [ ] Bấm "Thêm" trên toast gợi ý → terminal xuất hiện trong cây của workspace active
 
-## Peer
-- [ ] Sau khi restore, trong một session hỏi Claude liệt kê các agent nhắn được → các session khác
-      của workspace xuất hiện dưới đúng tên đã ghi trong `workspace.yaml` (trường `name` của từng
-      session), KHÔNG phải tên tự sinh của Claude Code
-- [ ] Nhắn từ session A sang session B → B nhận được tin nhắn và nhận diện đúng nguồn là session A
-- [ ] Session có `role: coordinator` khởi động ở chế độ coordinator (kiểm bằng
-      `echo $env:CLAUDE_CODE_COORDINATOR_MODE`, phải ra `1`)
+## Thêm terminal đang mở thủ công (menu chuột phải tab terminal)
+- [ ] Chuột phải vào tab của một terminal đang mở (chưa thuộc workspace nào) → chọn
+      "AI Workspace: Thêm terminal đang mở vào workspace" → nếu đang có workspace active,
+      terminal được thêm thẳng vào workspace đó, có toast xác nhận
+- [ ] Lặp lại khi KHÔNG có workspace nào active → lệnh hỏi QuickPick chọn workspace có sẵn
+      hoặc "Tạo workspace mới…"; chọn xong, terminal được thêm vào workspace đó **nhưng
+      workspace đó KHÔNG bị tự kích hoạt**
+- [ ] Chạy lệnh này lần nữa trên CHÍNH terminal vừa thêm → báo "Terminal đã thuộc một
+      workspace.", không thêm trùng lặp
+- [ ] Cũng thử gọi lệnh từ Command Palette (không phải menu chuột phải) trên terminal đang
+      focus → hoạt động tương tự (dùng `vscode.window.activeTerminal` khi không có context
+      terminal truyền vào)
 
-## Resume
-- [ ] Trò chuyện vài lượt trong một session, đóng workspace, mở lại → lịch sử hội thoại còn nguyên
-- [ ] Xoá thủ công file jsonl của session đó rồi restore → session đó bị báo là THẤT BẠI với lý do
-      rõ ràng (không lên được registry của Claude Code sau khi chờ). Bản MVP KHÔNG có cơ chế tự
-      chuyển sang hội thoại mới khi `--resume` hỏng — đó là việc của Phase 2. Kiểm thêm hai điều:
-      `workspace.yaml` không bị đụng tới, và `state.json` vẫn giữ nguyên `sessionId` cũ của session
-      đó (không bị đổi sang uuid khác)
-- [ ] Tạo một session MỚI (key chưa có trong `state.json`), rồi đóng terminal của nó NGAY SAU KHI
-      lệnh `claude` vừa được gửi đi — trước khi nó kịp lên registry (`claude agents --json`) —
-      khiến session bị báo THẤT BẠI. Mở `.ai-workspace/state.json` ngay sau đó và xác nhận
-      `sessionId` vừa được cấp cho session này VẪN được ghi ở đó, dù sidebar báo lỗi (đây là bước
-      ghi state ngay khi launch, không chờ registry xác nhận — nếu thiếu, cuộc hội thoại vừa khởi
-      động sẽ không bao giờ resume lại được)
+## Terminal thường (`plain`) — startCommand & trust
+- [ ] Tạo terminal `plain` (qua adoption ở trên), chuột phải chọn "AI Workspace: Đặt lệnh
+      khởi động cho terminal" → nhập một lệnh bất kỳ → lưu lại
+- [ ] Đóng workspace, kích hoạt lại → hiện modal trust liệt kê ĐÚNG NGUYÊN VĂN lệnh vừa đặt,
+      có nút "Tin và chạy"
+- [ ] Bấm "Tin và chạy" → terminal mở đúng cwd rồi lệnh được gửi chạy trong terminal đó
+- [ ] Đóng và kích hoạt lại LẦN NỮA (cùng lệnh, chưa đổi) → KHÔNG hỏi trust lại (đã nhớ theo
+      vân tay), lệnh tự chạy luôn
+- [ ] Đổi `startCommand` sang lệnh khác → kích hoạt lại → modal trust hiện lại (vân tay đổi)
+- [ ] Ở modal trust, bấm "Chỉ mở shell" (hoặc Esc) thay vì "Tin và chạy" → terminal vẫn mở
+      đúng cwd, nhưng `startCommand` KHÔNG được chạy, và trust KHÔNG được lưu (lần sau hỏi lại)
+- [ ] Xóa `startCommand` (để trống ô nhập rồi lưu) → kích hoạt lại → không còn modal trust nào,
+      terminal chỉ mở shell
 
-## An toàn
-- [ ] Xoá thủ công một thư mục worktree → restore hỏi trước khi tạo lại, liệt kê đúng đường dẫn
-- [ ] Từ chối hộp thoại → các session còn lại vẫn restore bình thường
-- [ ] Sửa branch của một worktree sang branch khác → restore chỉ cảnh báo, KHÔNG đổi branch
-- [ ] Tạo thay đổi chưa commit trong worktree → restore không làm mất thay đổi đó
-- [ ] Thêm `startupCommand` mới vào manifest → lần mở kế tiếp phải hỏi trust lại
-- [ ] `AI Workspace: Remove Session` → thư mục worktree vẫn còn nguyên trên đĩa
+## Terminal Claude (`kind: claude`) — resume
+- [ ] `AI Workspace: Tạo terminal Claude mới` trên workspace active → nhập tên peer, cwd → có
+      hỏi "chạy tại thư mục này hay tạo worktree mới" nếu cwd là git repo; chọn "chạy tại thư
+      mục này" → terminal mở, Claude Code khởi động với `--session-id` mới (session mới)
+- [ ] Trò chuyện vài lượt trong terminal đó, đóng workspace, kích hoạt lại → Claude Code resume
+      đúng cuộc hội thoại cũ (lịch sử còn nguyên) — kiểm bằng cách hỏi lại điều vừa nói trước
+      khi đóng
+- [ ] `claude agents --json` ở terminal khác cho thấy đúng tên peer (`claudeName`) đã đặt
 
-## Trường hợp biên
-- [ ] Đặt tên session trùng với một session Claude đang chạy ngoài workspace → có cảnh báo, tên
-      được thêm hậu tố
-- [ ] Đổi tên `claude` khỏi PATH → restore báo lỗi rõ ràng, không tạo terminal
-- [ ] Mở workspace trên thư mục không phải git repo → cảnh báo một lần, session chạy ở thư mục gốc
+## Bắt Claude session tự động (matching) — QuickPick ambiguity
+- [ ] Có workspace active với MỘT terminal `plain` trỏ cùng cwd với một session Claude đang
+      chạy NGOÀI workspace (tự mở tay bằng `claude`) → trong vòng ~3 giây, terminal đó tự thăng
+      cấp thành `kind: claude`, gắn đúng sessionId, nhãn trạng thái đổi sang đang chạy/rảnh
+- [ ] Tạo tình huống ambiguous: HAI terminal của workspace active cùng trỏ một cwd, và có (ít
+      nhất) hai session Claude đang chạy ở cwd đó → trong vòng ~3 giây hiện QuickPick hỏi
+      "Terminal nào đang chạy session "<tên/id>"?" — chọn đúng terminal cho từng session
+- [ ] Bỏ qua QuickPick đó (Esc) → hỏi lại lần đó không được ghi nhận, và **không hỏi lại nữa
+      trong phiên hiện tại** dù vẫn ambiguous ở chu kỳ poll kế tiếp (không spam mỗi 3 giây)
+
+## Vòng đời terminal thủ công
+- [ ] Đóng một terminal bằng tay (bấm dấu X hoặc gõ `exit`) trong workspace active → entry đó
+      chuyển sang nhãn "chưa mở" trong cây (KHÔNG biến mất khỏi workspace)
+- [ ] Đóng workspace rồi kích hoạt lại workspace đó → terminal "chưa mở" ở trên được mở lại
+      bình thường (đúng cwd, resume/startCommand như đã khai báo)
+- [ ] `AI Workspace: Bỏ terminal khỏi workspace` trên một terminal ĐANG MỞ → entry biến mất
+      khỏi cây, nhưng terminal thật KHÔNG bị đóng (vẫn còn trong `vscode.window.terminals`)
+
+## Khóa một workspace active mỗi cửa sổ (V5)
+- [ ] Kích hoạt một workspace ở cửa sổ VS Code A → mở một cửa sổ VS Code B khác (cùng máy),
+      cũng kích hoạt CHÍNH workspace đó → cửa sổ B hiện cảnh báo "Workspace "X" đang mở ở cửa
+      sổ khác." với nút "Vẫn mở"
+- [ ] Bấm Hủy/Esc ở cảnh báo đó (cửa sổ B) → workspace KHÔNG được kích hoạt ở cửa sổ B, cửa sổ
+      A không bị ảnh hưởng gì
+- [ ] Bấm "Vẫn mở" ở cửa sổ B → workspace được kích hoạt ở B, ghi đè khóa (không có cơ chế nào
+      tự đóng workspace ở A — đây là giới hạn best-effort đã biết, chỉ xác nhận không crash)
+
+## Dữ liệu hỏng
+- [ ] Đóng VS Code, sửa tay `workspaces.json` trong global storage của extension thành nội
+      dung không phải JSON hợp lệ (hoặc JSON không khớp schema) → mở lại VS Code → có cảnh báo
+      một lần "File workspaces.json bị hỏng nên đã được sao lưu sang…"; file gốc được đổi tên
+      thành `workspaces.json.bak-<epoch>`; danh sách workspace bắt đầu lại từ rỗng (không crash
+      extension)
 
 ## Kết quả lần chạy
 

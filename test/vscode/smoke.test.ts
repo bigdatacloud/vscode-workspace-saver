@@ -107,6 +107,32 @@ suite('AI Workspace extension', () => {
     }
   });
 
+  test('TerminalManager adopt() nhận nuôi terminal có sẵn, ownsTerminal() nhận diện đúng', async () => {
+    const manager = new TerminalManager();
+    const truoc = vscode.window.terminals.length;
+    // Terminal tạo thẳng bằng API vscode, KHÔNG qua TerminalManager.create — mô phỏng
+    // terminal người dùng tự mở tay mà adoption cần nhận nuôi.
+    const terminal = vscode.window.createTerminal({ name: 'wss-adopt-target' });
+    try {
+      assert.strictEqual(vscode.window.terminals.length, truoc + 1);
+      // Chưa adopt: manager không nhận đây là của mình.
+      assert.strictEqual(manager.ownsTerminal(terminal), null);
+      assert.strictEqual(manager.has('adopted'), false);
+
+      manager.adopt('adopted', terminal);
+
+      assert.strictEqual(manager.has('adopted'), true);
+      assert.strictEqual(manager.ownsTerminal(terminal), 'adopted');
+      assert.strictEqual(manager.get('adopted'), terminal);
+      // adopt() không tạo terminal mới, không show lại — số lượng không đổi.
+      assert.strictEqual(vscode.window.terminals.length, truoc + 1);
+    } finally {
+      manager.closeAll();
+      manager.dispose();
+      await waitForTerminalCount(truoc);
+    }
+  });
+
   test('tạo hai terminal liên tiếp thì số lượng terminal tăng đúng 2 và cả hai đều tồn tại', async () => {
     const before = vscode.window.terminals.length;
     const terminalA = vscode.window.createTerminal({ name: 'wss-smoke-a' });
