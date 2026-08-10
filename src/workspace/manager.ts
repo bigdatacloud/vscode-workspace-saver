@@ -1,413 +1,756 @@
+import { randomUUID } from 'node:crypto';
+import * as nodeFs from 'node:fs';
 import * as path from 'node:path';
-import { promises as fsp } from 'node:fs';
 import * as vscode from 'vscode';
-import { readManifest, writeManifest, readState, writeState, ManifestError } from '../manifest/store';
-import { manifestFilePath, resolveProjectRoot, toStoredPath } from '../manifest/paths';
-import { ManifestSchema, SessionSchema, type Manifest, type SessionSpec, type SessionStatus, type WorkspaceState } from '../manifest/schema';
-import { GitClient } from '../git/worktree';
-import { realGitRunner } from '../git/exec';
-import { ClaudeCodeAdapter } from '../agent/claude';
-import { detectShellKind } from '../agent/quote';
-import { WorkspaceIndex } from '../index/store';
-import { TrustStore } from '../trust/store';
-import { TerminalManager } from '../terminal/manager';
-import { EventBus } from '../events/bus';
-import { restoreWorkspace, type RestorePorts, type RestoreReport } from './restore';
 
-export interface SessionView {
-  key: string;
+import { classifyTerminal, pickCwd } from '../adopt/filter';
+import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
+import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
+import { realGitRunner } from '../git/exec';
+import { GitClient } from '../git/worktree';
+import type { StoreFile, TerminalEntry, Workspace } from '../model/schema';
+import {
+  createWorkspace,
+  findWorkspace,
+  loadStore,
+  realStoreFs,
+  removeTerminal as removeTerminalEntry,
+  saveStore,
+  upsertTerminal,
+} from '../model/store';
+import { TerminalManager } from '../terminal/manager';
+import { TrustStore } from '../trust/store';
+import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
+
+export type TerminalState = 'busy' | 'idle' | 'blocked' | 'open' | 'closed' | 'error';
+
+export interface WorkspaceView {
+  id: string;
   name: string;
-  role: string;
-  branch: string | null;
-  status: SessionStatus;
+  terminalCount: number;
+  isActive: boolean;
+  lastActiveAt: string | null;
 }
 
-export class WorkspaceManager {
-  private manifest: Manifest | null = null;
-  private state: WorkspaceState = { version: 1, sessions: {} };
-  private projectRoot: string | null = null;
-  private manifestPath: string | null = null;
-  /** Thư mục CHỨA `.ai-workspace` của file đang mở. Mọi thao tác đọc/ghi manifest và state
-   *  phải neo vào đây, không phải `projectRoot` — vì `project.root` có thể trỏ đi nơi khác,
-   *  và khi đó Save sẽ ghi sang một file thứ hai thay vì file vừa mở. */
-  private manifestAnchor: string | null = null;
-  private statuses = new Map<string, SessionStatus>();
+export interface TerminalView {
+  id: string;
+  workspaceId: string;
+  name: string;
+  kind: 'claude' | 'plain';
+  state: TerminalState;
+  hasStartCommand: boolean;
+}
 
-  readonly bus = new EventBus();
+const SAVE_DEBOUNCE_MS = 500;
+const STORE_FILE = 'workspaces.json';
+
+/** cwd của terminal lúc tạo — `creationOptions.cwd` là `string | Uri | undefined`. */
+function creationCwd(terminal: vscode.Terminal): string | undefined {
+  const cwd = (terminal.creationOptions as vscode.TerminalOptions).cwd;
+  if (cwd === undefined) return undefined;
+  return typeof cwd === 'string' ? cwd : cwd.fsPath;
+}
+
+function folderCwd(): string | undefined {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+export class WorkspaceManager implements vscode.Disposable {
+  private readonly filePath: string;
+  private store: StoreFile;
+  private activeId: string | null = null;
+
+  private readonly trust: TrustStore;
+  private readonly git: GitClient;
+
+  /** Trạng thái Claude gần nhất lấy từ registry, theo terminalId. */
+  private readonly statuses = new Map<string, RunningStatus>();
+  /** Terminal không mở được ở lần activate gần nhất (cwd mất, lỗi tạo…). */
+  private readonly errorIds = new Set<string>();
+  /** Nhóm cwd đã hỏi QuickPick trong phiên này — không hỏi lại dù người dùng bỏ qua. */
+  private readonly askedCwds = new Set<string>();
+
+  private saveTimer: NodeJS.Timeout | null = null;
+  private dirty = false;
+  private refreshing = false;
+
+  private readonly subscriptions: vscode.Disposable[] = [];
   private readonly onChanged = new vscode.EventEmitter<void>();
   readonly onDidChange = this.onChanged.event;
 
   constructor(
+    context: vscode.ExtensionContext,
     private readonly terminals: TerminalManager,
-    private readonly index: WorkspaceIndex,
-    private readonly trust: TrustStore,
-    private readonly git = new GitClient(realGitRunner),
-    private readonly agent = new ClaudeCodeAdapter(
-      detectShellKind(process.platform, vscode.env.shell),
-    ),
+    private readonly agent: AgentAdapter,
+    git: GitClient = new GitClient(realGitRunner),
   ) {
-    this.terminals.onClosed((key) => {
-      this.statuses.set(key, 'offline');
-      this.onChanged.fire();
+    this.git = git;
+    this.trust = new TrustStore({
+      get: (key) => context.globalState.get<string>(key),
+      set: (key, value) => Promise.resolve(context.globalState.update(key, value)),
     });
+
+    const dir = context.globalStorageUri.fsPath;
+    this.filePath = path.join(dir, STORE_FILE);
+    try {
+      nodeFs.mkdirSync(dir, { recursive: true });
+    } catch (error) {
+      void vscode.window.showWarningMessage(
+        `Không tạo được thư mục lưu trữ ${dir}: ${String(error)}`,
+      );
+    }
+    const loaded = loadStore(realStoreFs, this.filePath, Date.now);
+    this.store = loaded.store;
+    if (loaded.recoveredFrom !== null) {
+      void vscode.window.showWarningMessage(
+        `File workspaces.json bị hỏng nên đã được sao lưu sang ${loaded.recoveredFrom}; danh sách workspace bắt đầu lại từ đầu.`,
+      );
+    }
+
+    this.subscriptions.push(
+      this.terminals.onClosed(() => {
+        // V7: đóng terminal bằng tay KHÔNG gỡ entry khỏi workspace, chỉ đổi trạng thái hiển thị.
+        this.onChanged.fire();
+      }),
+      vscode.window.onDidOpenTerminal((terminal) => {
+        void this.onTerminalOpened(terminal);
+      }),
+      vscode.window.onDidChangeTerminalShellIntegration((event) => {
+        this.onShellIntegrationChanged(event);
+      }),
+    );
   }
 
-  get workspaceName(): string | null {
-    return this.manifest?.workspace.name ?? null;
+  // ---------------------------------------------------------------- views
+
+  workspaceViews(): WorkspaceView[] {
+    return [...this.store.workspaces]
+      .sort((a, b) => {
+        if (a.lastActiveAt === b.lastActiveAt) return a.name.localeCompare(b.name);
+        if (a.lastActiveAt === null) return 1;
+        if (b.lastActiveAt === null) return -1;
+        return b.lastActiveAt.localeCompare(a.lastActiveAt);
+      })
+      .map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        terminalCount: ws.terminals.length,
+        isActive: ws.id === this.activeId,
+        lastActiveAt: ws.lastActiveAt,
+      }));
   }
 
-  currentSessions(): SessionView[] {
-    if (!this.manifest) return [];
-    return this.manifest.sessions.map((s) => ({
-      key: s.key,
-      name: s.name,
-      role: s.role,
-      branch: s.worktree?.branch ?? null,
-      status: this.statuses.get(s.key) ?? 'offline',
+  terminalViews(workspaceId: string): TerminalView[] {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return [];
+    return ws.terminals.map((entry) => ({
+      id: entry.id,
+      workspaceId: ws.id,
+      name: entry.name,
+      kind: entry.kind,
+      state: this.terminalState(entry),
+      hasStartCommand: entry.startCommand !== undefined,
     }));
   }
 
-  async newWorkspace(): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      await vscode.window.showErrorMessage('Hãy mở một thư mục dự án trước khi tạo AI Workspace.');
-      return;
+  getActiveWorkspaceId(): string | null {
+    return this.activeId;
+  }
+
+  private terminalState(entry: TerminalEntry): TerminalState {
+    if (this.errorIds.has(entry.id)) return 'error';
+    if (!this.terminals.has(entry.id)) return 'closed';
+    return this.statuses.get(entry.id) ?? 'open';
+  }
+
+  // ------------------------------------------------------------- lưu trữ
+
+  private scheduleSave(): void {
+    this.dirty = true;
+    if (this.saveTimer !== null) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.saveNow();
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  /** Ghi ngay xuống đĩa (dùng khi deactivate và trước khi gửi lệnh launch có sessionId mới). */
+  flush(): void {
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
     }
+    if (this.dirty) this.saveNow();
+  }
+
+  private saveNow(): void {
+    try {
+      saveStore(realStoreFs, this.filePath, this.store);
+      this.dirty = false;
+    } catch (error) {
+      // Giữ nguyên cờ dirty: lần save sau sẽ thử lại thay vì mất trạng thái.
+      void vscode.window.showWarningMessage(
+        `Không ghi được ${this.filePath}: ${String(error)}. Sẽ thử lại ở lần lưu sau.`,
+      );
+    }
+  }
+
+  // ---------------------------------------------------- vòng đời workspace
+
+  async createAndActivate(): Promise<void> {
     const name = await vscode.window.showInputBox({
-      prompt: 'Tên workspace',
-      value: path.basename(folder.uri.fsPath),
+      prompt: 'Tên workspace mới',
       validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
     });
     if (name === undefined) return;
 
-    this.projectRoot = folder.uri.fsPath;
-    this.manifestPath = manifestFilePath(this.projectRoot);
-    this.manifestAnchor = path.dirname(path.dirname(this.manifestPath));
-    this.manifest = ManifestSchema.parse({ version: 1, workspace: { name }, sessions: [] });
-    this.state = { version: 1, sessions: {} };
-    this.statuses.clear();
-
-    await this.save();
-    this.bus.emit('WorkspaceOpened', { name });
+    let ws: Workspace;
+    try {
+      ws = createWorkspace(this.store, name.trim(), randomUUID());
+    } catch (error) {
+      void vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    this.scheduleSave();
+    this.flush();
     this.onChanged.fire();
+    await this.activate(ws.id);
   }
 
-  async save(): Promise<void> {
-    if (!this.manifest || !this.manifestAnchor || !this.manifestPath) {
-      await vscode.window.showWarningMessage('Chưa có workspace nào đang mở.');
-      return;
-    }
-    await writeManifest(this.manifestAnchor, this.manifest);
-    await writeState(this.manifestAnchor, this.state);
-    await this.index.upsert({
-      name: this.manifest.workspace.name,
-      manifestPath: this.manifestPath,
-      lastOpenedAt: Date.now(),
-    });
-    await vscode.window.showInformationMessage(`Đã lưu workspace "${this.manifest.workspace.name}".`);
-  }
+  async activate(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
 
-  async openViaQuickPick(): Promise<void> {
-    const entries = await this.index.prune(async (p) => {
-      try { await fsp.access(p); return true; } catch { return false; }
-    });
-    if (entries.length === 0) {
-      await vscode.window.showInformationMessage('Chưa có workspace nào được lưu.');
+    if (this.activeId === workspaceId) {
+      const opened = ws.terminals.find((entry) => this.terminals.has(entry.id));
+      if (opened) this.terminals.focus(opened.id);
       return;
     }
-    const picked = await vscode.window.showQuickPick(
-      entries.map((e) => ({ label: e.name, detail: e.manifestPath, entry: e })),
-      { placeHolder: 'Chọn AI Workspace để mở' },
+
+    if (this.activeId !== null) {
+      const current = findWorkspace(this.store, this.activeId);
+      const answer = await vscode.window.showWarningMessage(
+        `Lưu và đóng workspace "${current?.name ?? this.activeId}" trước khi mở "${ws.name}"?`,
+        { modal: true },
+        'Lưu và đóng',
+      );
+      if (answer !== 'Lưu và đóng') return;
+      await this.closeActive();
+    }
+
+    // Khóa V5 — best-effort, luôn có lối thoát "Vẫn mở".
+    if (ws.activeWindowId !== null && ws.activeWindowId !== vscode.env.sessionId) {
+      const answer = await vscode.window.showWarningMessage(
+        `Workspace "${ws.name}" đang mở ở cửa sổ khác.`,
+        { modal: true },
+        'Vẫn mở',
+      );
+      if (answer !== 'Vẫn mở') return;
+    }
+
+    for (const entry of ws.terminals) this.errorIds.delete(entry.id);
+
+    const report = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${ws.name}"…` },
+      () => activateWorkspace(ws, this.buildPorts(ws)),
     );
-    if (!picked) return;
-    await this.open(picked.entry.manifestPath);
-  }
+    this.applyReport(report);
 
-  async open(manifestPath: string): Promise<void> {
-    let manifest: Manifest;
-    // Neo vào chính file được mở: thư mục cha của `.ai-workspace`.
-    const anchor = resolveProjectRoot(manifestPath, '.');
-    try {
-      manifest = await readManifest(anchor);
-    } catch (error) {
-      if (error instanceof ManifestError) {
-        await vscode.window.showErrorMessage(`${error.message}\n${error.issues.join('\n')}`);
-      } else {
-        await vscode.window.showErrorMessage(String(error));
-      }
-      return;
-    }
-
-    this.manifest = manifest;
-    this.manifestPath = manifestPath;
-    this.manifestAnchor = anchor;
-    // `projectRoot` chỉ dùng cho git và cwd của terminal, KHÔNG dùng để đọc/ghi manifest.
-    this.projectRoot = resolveProjectRoot(manifestPath, manifest.project.root);
-    this.state = await readState(this.manifestAnchor);
-    this.statuses.clear();
-
-    let report: RestoreReport;
-    try {
-      report = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Đang dựng lại "${manifest.workspace.name}"…` },
-        () => restoreWorkspace(manifest, this.state, this.buildPorts()),
-      );
-    } catch (error) {
-      // Không để lại trạng thái dở dang: trả về đúng trạng thái "chưa mở workspace nào".
-      this.manifest = null;
-      this.manifestPath = null;
-      this.manifestAnchor = null;
-      this.projectRoot = null;
-      this.state = { version: 1, sessions: {} };
-      this.statuses.clear();
-      this.onChanged.fire();
-      await vscode.window.showErrorMessage(
-        `Không dựng lại được workspace "${manifest.workspace.name}": ${String(error)}`,
-      );
-      return;
-    }
-
-    await this.applyReport(report);
-    await this.index.upsert({
-      name: manifest.workspace.name, manifestPath, lastOpenedAt: Date.now(),
-    });
-    this.bus.emit('WorkspaceOpened', { name: manifest.workspace.name });
+    this.activeId = ws.id;
+    ws.lastActiveAt = new Date().toISOString();
+    ws.activeWindowId = vscode.env.sessionId;
+    this.scheduleSave();
+    this.flush();
     this.onChanged.fire();
   }
 
-  async close(): Promise<void> {
-    if (!this.manifest || !this.manifestAnchor) return;
-    await writeState(this.manifestAnchor, this.state);
-    this.terminals.closeAll();
-    this.bus.emit('WorkspaceClosed', { name: this.manifest.workspace.name });
-    this.manifest = null;
-    this.manifestPath = null;
-    this.manifestAnchor = null;
-    this.projectRoot = null;
-    // State của workspace cũ không được rò sang workspace mở sau: reset về object mới, không giữ
-    // lại tham chiếu sessions cũ.
-    this.state = { version: 1, sessions: {} };
-    this.statuses.clear();
-    this.onChanged.fire();
-  }
-
-  async addSession(): Promise<void> {
-    if (!this.manifest || !this.projectRoot) {
-      await vscode.window.showWarningMessage('Hãy tạo hoặc mở một workspace trước.');
-      return;
-    }
-    const key = await vscode.window.showInputBox({
-      prompt: 'Khoá session (chữ thường, số, gạch ngang)',
-      validateInput: (v) => (/^[a-z0-9][a-z0-9-]*$/.test(v) ? undefined : 'Chỉ chữ thường, số và dấu gạch ngang'),
-    });
-    if (key === undefined) return;
-    if (this.manifest.sessions.some((s) => s.key === key)) {
-      await vscode.window.showErrorMessage(`Khoá "${key}" đã tồn tại trong workspace này.`);
-      return;
-    }
-
-    const name = await vscode.window.showInputBox({
-      prompt: 'Tên session (đây là địa chỉ để các session khác nhắn tới)',
-      value: `${this.manifest.workspace.name}-${key}`,
-    });
-    if (name === undefined) return;
-
-    const role = await vscode.window.showInputBox({ prompt: 'Vai trò', value: 'developer' });
-    if (role === undefined) return;
-
-    const branch = await vscode.window.showInputBox({
-      prompt: 'Branch cho git worktree (để trống nếu chạy thẳng ở thư mục dự án)',
-      value: '',
-    });
-    if (branch === undefined) return;
-
-    let worktree: SessionSpec['worktree'] = null;
-    if (branch.trim() !== '') {
-      const suggested = path.resolve(this.projectRoot, '..', `${path.basename(this.projectRoot)}-${key}`);
-      const wtPath = await vscode.window.showInputBox({ prompt: 'Đường dẫn worktree', value: suggested });
-      if (wtPath === undefined) return;
-      worktree = { path: toStoredPath(this.projectRoot, wtPath), branch: branch.trim() };
-    }
-
-    const startup = await vscode.window.showInputBox({
-      prompt: 'Startup command chạy trước khi mở Claude (để trống nếu không cần)',
-      value: '',
-    });
-    if (startup === undefined) return;
-
-    const session = SessionSchema.parse({
-      key, name, role, worktree,
-      terminal: { name },
-      startupCommand: startup.trim() === '' ? null : startup.trim(),
-      agent: 'claude',
-    });
-    this.manifest.sessions.push(session);
-    await this.save();
-    this.onChanged.fire();
-  }
-
-  async removeSession(key: string): Promise<void> {
-    if (!this.manifest) return;
-    const confirmed = await vscode.window.showWarningMessage(
-      `Gỡ session "${key}" khỏi workspace? Worktree và mã nguồn không bị đụng tới.`,
-      { modal: true }, 'Gỡ',
-    );
-    if (confirmed !== 'Gỡ') return;
-    this.manifest.sessions = this.manifest.sessions.filter((s) => s.key !== key);
-    delete this.state.sessions[key];
-    this.statuses.delete(key);
-    await this.save();
-    this.onChanged.fire();
-  }
-
-  focusSession(key: string): void {
-    if (!this.terminals.focus(key)) {
-      void vscode.window.showInformationMessage(
-        `Session "${key}" chưa chạy. Dùng lệnh "AI Workspace: Restore Session" để mở lại.`,
+  private applyReport(report: ActivateReport): void {
+    for (const failed of report.failed) this.errorIds.add(failed.id);
+    if (report.failed.length > 0) {
+      const detail = report.failed.map((f) => f.reason).join('; ');
+      void vscode.window.showWarningMessage(
+        `Không mở được ${report.failed.length} terminal: ${detail}`,
       );
     }
   }
 
-  async restoreSession(key: string): Promise<void> {
-    if (!this.manifest || !this.projectRoot) return;
-    const session = this.manifest.sessions.find((s) => s.key === key);
-    if (!session) return;
-    if (this.terminals.has(key)) {
-      // Dựng lại một session đang sống sẽ resume LẠI đúng cuộc hội thoại đó lần thứ hai
-      // (và bị đổi tên thành "-2"), đồng thời giết terminal cũ khi tiến trình `claude`
-      // vẫn còn bám vào đó. Bắt người dùng đóng terminal trước.
-      await vscode.window.showWarningMessage(
-        `Session "${key}" đang chạy. Hãy đóng terminal của nó trước nếu bạn muốn dựng lại.`,
-      );
-      this.terminals.focus(key);
-      return;
-    }
-    const single: Manifest = { ...this.manifest, sessions: [session] };
-    try {
-      const report = await restoreWorkspace(single, this.state, this.buildPorts());
-      await this.applyReport(report);
-    } catch (error) {
-      await vscode.window.showErrorMessage(`Không dựng lại được session "${key}": ${String(error)}`);
-      return;
-    }
-    this.onChanged.fire();
-  }
-
-  async refreshStatuses(): Promise<void> {
-    if (!this.manifest) return;
-    const running = new Map((await this.agent.listRunning()).map((r) => [r.sessionId, r]));
-    let changed = false;
-    for (const session of this.manifest.sessions) {
-      const sessionId = this.state.sessions[session.key]?.sessionId;
-      const next: SessionStatus = sessionId && running.has(sessionId)
-        ? running.get(sessionId)!.status
-        : 'offline';
-      if (this.statuses.get(session.key) !== next) {
-        this.statuses.set(session.key, next);
-        this.bus.emit('SessionStatusChanged', { key: session.key, status: next });
-        changed = true;
-      }
-      const entry = sessionId ? this.state.sessions[session.key] : undefined;
-      if (entry) {
-        entry.lastStatus = next;
-        entry.lastActiveAt = Date.now();
-        entry.pid = running.get(entry.sessionId)?.pid ?? null;
-      }
-    }
-    if (changed) {
-      if (this.manifestAnchor) await writeState(this.manifestAnchor, this.state);
-      this.onChanged.fire();
-    }
-  }
-
-  private buildPorts(): RestorePorts {
-    const projectRoot = this.projectRoot!;
-    const manifestPath = this.manifestPath!;
+  private buildPorts(ws: Workspace): ActivatePorts {
+    const trustKey = `ws:${ws.id}`;
     return {
-      projectRoot,
-      git: {
-        isRepo: (dir) => this.git.isRepo(dir),
-        listWorktrees: (root) => this.git.listWorktrees(root),
-        addWorktree: (root, abs, branch) => this.git.addWorktree(root, abs, branch),
-      },
-      fs: { exists: async (p) => { try { await fsp.access(p); return true; } catch { return false; } } },
+      createTerminal: (entry) =>
+        this.terminals.create(entry.id, { key: entry.id, name: entry.name, cwd: entry.cwd }),
       agent: this.agent,
-      terminals: { create: (options) => this.terminals.create(options.key, options) },
-      confirm: {
-        worktrees: async (missing) => {
-          const lines = missing.map((m) => `• ${m.path}  (branch ${m.branch})`).join('\n');
-          const answer = await vscode.window.showWarningMessage(
-            `Thiếu ${missing.length} git worktree. Tạo bằng \`git worktree add\`?\n\n${lines}`,
-            { modal: true }, 'Tạo worktree',
-          );
-          return answer === 'Tạo worktree';
-        },
-        trust: async (commands) => {
-          const list = commands.map((c) => c.command);
-          if (this.trust.isTrusted(manifestPath, list)) return true;
-          const lines = commands.map((c) => `• [${c.key}] ${c.command}`).join('\n');
-          const answer = await vscode.window.showWarningMessage(
-            `Workspace này sẽ chạy các lệnh sau trên máy bạn:\n\n${lines}`,
-            { modal: true }, 'Tin và chạy',
-          );
-          if (answer !== 'Tin và chạy') return false;
-          await this.trust.trust(manifestPath, list);
-          return true;
-        },
+      fsExists: (p) => nodeFs.existsSync(p),
+      isTrusted: (commands) => this.trust.isTrusted(trustKey, commands),
+      confirmTrust: async (commands) => {
+        const lines = commands.map((c) => `• ${c}`).join('\n');
+        const answer = await vscode.window.showWarningMessage(
+          `Workspace "${ws.name}" sẽ chạy các lệnh sau trên máy bạn:\n\n${lines}`,
+          { modal: true },
+          'Tin và chạy',
+        );
+        if (answer !== 'Tin và chạy') return false;
+        await this.trust.trust(trustKey, commands);
+        return true;
       },
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      waitAttempts: 20,
+      onMinted: async (terminalId, sessionId) => {
+        // sessionId phải nằm trên đĩa TRƯỚC khi lệnh launch chạy, nếu không cuộc hội thoại
+        // vừa tạo sẽ mồ côi khi VS Code tắt đột ngột.
+        const entry = ws.terminals.find((t) => t.id === terminalId);
+        if (entry) {
+          entry.claudeSessionId = sessionId;
+          entry.claudeName = entry.claudeName ?? entry.name;
+        }
+        this.scheduleSave();
+        this.flush();
+        await Promise.resolve();
+      },
+      warn: (message) => {
+        void vscode.window.showWarningMessage(message);
+      },
     };
   }
 
-  private async applyReport(report: RestoreReport): Promise<void> {
-    // Ghi sessionId ngay khi đã gửi lệnh launch, KHÔNG chờ registry xác nhận: nếu bỏ qua bước
-    // này, một session chạy được nhưng lên registry trễ sẽ mất sessionId và cuộc hội thoại
-    // đang sống sẽ không bao giờ resume lại được nữa.
-    for (const launched of report.launched) {
-      if (this.state.sessions[launched.key]?.sessionId === launched.sessionId) continue;
-      this.state.sessions[launched.key] = {
-        sessionId: launched.sessionId,
-        pid: null,
-        lastStatus: 'offline',
-        lastActiveAt: Date.now(),
-      };
-    }
-    for (const started of report.started) {
-      this.state.sessions[started.key] = {
-        sessionId: started.sessionId,
-        pid: null,
-        lastStatus: 'idle',
-        lastActiveAt: Date.now(),
-      };
-      this.statuses.set(started.key, 'idle');
-      this.bus.emit('SessionStarted', { key: started.key, sessionId: started.sessionId });
-      for (const warning of started.warnings) {
-        void vscode.window.showWarningMessage(`[${started.key}] ${warning}`);
+  async closeActive(): Promise<void> {
+    const id = this.activeId;
+    if (id === null) return;
+    this.flush();
+
+    const ws = findWorkspace(this.store, id);
+    if (ws) {
+      for (const entry of ws.terminals) {
+        this.terminals.get(entry.id)?.dispose();
+        this.statuses.delete(entry.id);
       }
+      ws.activeWindowId = null;
     }
-    for (const failed of report.failed) {
-      this.statuses.set(failed.key, 'error');
-      this.bus.emit('SessionFailed', { key: failed.key, reason: failed.reason });
+    this.activeId = null;
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+  }
+
+  async rename(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    const name = await vscode.window.showInputBox({
+      prompt: 'Tên workspace mới',
+      value: ws.name,
+      validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
+    });
+    if (name === undefined) return;
+    const trimmed = name.trim();
+    if (trimmed === '' || trimmed === ws.name) return;
+
+    const lower = trimmed.toLowerCase();
+    if (this.store.workspaces.some((w) => w.id !== ws.id && w.name.toLowerCase() === lower)) {
+      void vscode.window.showWarningMessage(`Tên workspace "${trimmed}" đã tồn tại.`);
+      return;
     }
-    if (this.manifestAnchor) {
-      try {
-        await writeState(this.manifestAnchor, this.state);
-      } catch (error) {
-        // Ghi state hỏng không được che mất bản tóm tắt restore của người dùng.
-        void vscode.window.showWarningMessage(
-          `Không ghi được state.json, lần mở sau có thể phải bắt đầu hội thoại mới: ${String(error)}`,
-        );
-      }
+    ws.name = trimmed;
+    this.scheduleSave();
+    this.onChanged.fire();
+  }
+
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    const answer = await vscode.window.showWarningMessage(
+      `Xóa workspace "${ws.name}"? Terminal đang mở không bị đóng.`,
+      { modal: true },
+      'Xóa',
+    );
+    if (answer !== 'Xóa') return;
+
+    // Xóa workspace KHÔNG bao giờ giết terminal thật — người dùng chỉ muốn quên danh sách,
+    // không muốn mất việc đang chạy.
+    if (this.activeId === ws.id) this.activeId = null;
+    ws.activeWindowId = null;
+    for (const entry of ws.terminals) {
+      this.terminals.release(entry.id);
+      this.statuses.delete(entry.id);
+      this.errorIds.delete(entry.id);
+    }
+    this.store.workspaces = this.store.workspaces.filter((w) => w.id !== ws.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+  }
+
+  // ------------------------------------------------------------- terminal
+
+  async newClaudeTerminal(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+
+    const name = await vscode.window.showInputBox({
+      prompt: 'Tên peer của session Claude (dùng cho cờ -n)',
+      validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
+    });
+    if (name === undefined || name.trim() === '') return;
+
+    const cwdInput = await vscode.window.showInputBox({
+      prompt: 'Thư mục làm việc của terminal',
+      value: folderCwd() ?? '',
+      validateInput: (v) => (v.trim() === '' ? 'Thư mục không được để trống' : undefined),
+    });
+    if (cwdInput === undefined) return;
+    let cwd = cwdInput.trim();
+    if (cwd === '') return;
+
+    const worktreeCwd = await this.maybeCreateWorktree(cwd);
+    if (worktreeCwd === null) return;
+    cwd = worktreeCwd;
+
+    const entry: TerminalEntry = {
+      id: randomUUID(),
+      name: name.trim(),
+      cwd,
+      kind: 'claude',
+      claudeName: name.trim(),
+    };
+    upsertTerminal(ws, entry);
+    this.scheduleSave();
+
+    if (this.activeId === ws.id) await this.launchOne(ws, entry);
+    this.flush();
+    this.onChanged.fire();
+  }
+
+  /** Trả cwd cuối cùng, hoặc null nếu người dùng hủy giữa chừng. */
+  private async maybeCreateWorktree(cwd: string): Promise<string | null> {
+    let isRepo = false;
+    try {
+      isRepo = await this.git.isRepo(cwd);
+    } catch {
+      isRepo = false;
+    }
+    if (!isRepo) return cwd;
+
+    const picked = await vscode.window.showQuickPick(
+      [
+        { label: 'Chạy tại thư mục này', choice: 'here' as const },
+        { label: '$(add) Tạo worktree mới…', choice: 'worktree' as const },
+      ],
+      { placeHolder: `${cwd} là git repository — chạy tại đây hay tạo worktree riêng?` },
+    );
+    if (!picked) return null;
+    if (picked.choice === 'here') return cwd;
+
+    const branch = await vscode.window.showInputBox({
+      prompt: 'Branch cho worktree mới (chưa có thì sẽ được tạo)',
+      validateInput: (v) => (v.trim() === '' ? 'Branch không được để trống' : undefined),
+    });
+    if (branch === undefined || branch.trim() === '') return null;
+
+    const suggested = path.resolve(
+      cwd,
+      '..',
+      `${path.basename(cwd)}-${branch.trim().replaceAll('/', '-')}`,
+    );
+    const wtPath = await vscode.window.showInputBox({ prompt: 'Đường dẫn worktree', value: suggested });
+    if (wtPath === undefined || wtPath.trim() === '') return null;
+
+    try {
+      await this.git.addWorktree(cwd, wtPath.trim(), branch.trim());
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Không tạo được worktree: ${String(error)}`);
+      return null;
+    }
+    return wtPath.trim();
+  }
+
+  /** Mở lại đúng MỘT entry, tái dùng nguyên nhánh launch của orchestrator. */
+  private async launchOne(ws: Workspace, entry: TerminalEntry): Promise<void> {
+    this.errorIds.delete(entry.id);
+    const single: Workspace = { ...ws, terminals: [entry] };
+    const report = await activateWorkspace(single, this.buildPorts(ws));
+    this.applyReport(report);
+    this.onChanged.fire();
+  }
+
+  async setStartCommand(workspaceId: string, terminalId: string): Promise<void> {
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (!entry) return;
+    const value = await vscode.window.showInputBox({
+      prompt: 'Lệnh chạy sau khi mở lại terminal (để trống để xóa)',
+      value: entry.startCommand ?? '',
+    });
+    if (value === undefined) return;
+    const trimmed = value.trim();
+    // KHÔNG tự trust lại: fingerprint đổi nên lần activate sau sẽ hỏi lại — đúng thiết kế.
+    if (trimmed === '') delete entry.startCommand;
+    else entry.startCommand = trimmed;
+    this.scheduleSave();
+    this.onChanged.fire();
+  }
+
+  async removeTerminal(workspaceId: string, terminalId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    removeTerminalEntry(ws, terminalId);
+    // Không dispose terminal thật: gỡ khỏi workspace chỉ là quên nó đi.
+    this.terminals.release(terminalId);
+    this.statuses.delete(terminalId);
+    this.errorIds.delete(terminalId);
+    this.scheduleSave();
+    this.onChanged.fire();
+    await Promise.resolve();
+  }
+
+  focusTerminal(workspaceId: string, terminalId: string): void {
+    if (this.terminals.focus(terminalId)) return;
+    const ws = findWorkspace(this.store, workspaceId);
+    const entry = ws?.terminals.find((t) => t.id === terminalId);
+    if (!ws || !entry) return;
+    if (this.activeId !== ws.id) {
+      void vscode.window.showInformationMessage(
+        `Kích hoạt workspace "${ws.name}" trước, rồi mới mở lại được terminal "${entry.name}".`,
+      );
+      return;
+    }
+    void this.launchOne(ws, entry);
+  }
+
+  private findEntry(workspaceId: string, terminalId: string): TerminalEntry | undefined {
+    return findWorkspace(this.store, workspaceId)?.terminals.find((t) => t.id === terminalId);
+  }
+
+  // ------------------------------------------------------------ adoption
+
+  private async onTerminalOpened(terminal: vscode.Terminal): Promise<void> {
+    if (this.activeId === null) return;
+    if (this.terminals.ownsTerminal(terminal) !== null) return;
+    const ws = findWorkspace(this.store, this.activeId);
+    if (!ws) return;
+
+    const decision = classifyTerminal({
+      isPty: 'pty' in terminal.creationOptions,
+      creationName: (terminal.creationOptions as vscode.TerminalOptions).name,
+    });
+
+    if (decision === 'suggest') {
+      const answer = await vscode.window.showInformationMessage(
+        `Thêm terminal "${terminal.name}" vào workspace "${ws.name}"?`,
+        'Thêm',
+      );
+      if (answer !== 'Thêm') return;
+      // Sau khi chờ người dùng bấm, workspace có thể đã bị xóa hoặc đóng.
+      if (this.activeId !== ws.id || !findWorkspace(this.store, ws.id)) return;
+      if (this.terminals.ownsTerminal(terminal) !== null) return;
+      this.adoptInto(ws, terminal);
+      return;
     }
 
-    const total = report.started.length + report.failed.length;
-    const message = `Đã dựng ${report.started.length}/${total} session.`;
-    if (report.failed.length === 0) {
-      await vscode.window.showInformationMessage(message);
-    } else {
-      const detail = report.failed.map((f) => `• ${f.key}: ${f.reason}`).join('\n');
-      await vscode.window.showWarningMessage(`${message}\n\n${detail}`, { modal: true });
+    const entry = this.adoptInto(ws, terminal);
+    if (!entry) return;
+    const answer = await vscode.window.showInformationMessage(
+      `Đã thêm "${terminal.name}" vào workspace "${ws.name}".`,
+      'Bỏ ra',
+    );
+    if (answer === 'Bỏ ra') await this.removeTerminal(ws.id, entry.id);
+  }
+
+  private adoptInto(ws: Workspace, terminal: vscode.Terminal): TerminalEntry | null {
+    const cwd = pickCwd(
+      terminal.shellIntegration?.cwd?.fsPath,
+      creationCwd(terminal),
+      folderCwd(),
+    );
+    // Không đoán cwd: entry không có cwd thì lần sau không mở lại đúng chỗ được.
+    if (cwd === null) return null;
+
+    const entry: TerminalEntry = { id: randomUUID(), name: terminal.name, cwd, kind: 'plain' };
+    upsertTerminal(ws, entry);
+    this.terminals.adopt(entry.id, terminal);
+    this.scheduleSave();
+    this.onChanged.fire();
+    return entry;
+  }
+
+  private onShellIntegrationChanged(event: vscode.TerminalShellIntegrationChangeEvent): void {
+    const key = this.terminals.ownsTerminal(event.terminal);
+    if (key === null || this.activeId === null) return;
+    const entry = this.findEntry(this.activeId, key);
+    if (!entry) return;
+    const cwd = event.shellIntegration.cwd?.fsPath ?? entry.cwd;
+    if (cwd === entry.cwd) return;
+    entry.cwd = cwd;
+    this.scheduleSave();
+  }
+
+  async addOpenTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
+    const target = terminal ?? vscode.window.activeTerminal;
+    if (!target) {
+      void vscode.window.showWarningMessage('Không có terminal nào đang mở để thêm.');
+      return;
     }
+    if (this.terminals.ownsTerminal(target) !== null) {
+      void vscode.window.showInformationMessage('Terminal đã thuộc một workspace.');
+      return;
+    }
+
+    let wsId = this.activeId;
+    if (wsId === null) {
+      wsId = await this.pickOrCreateWorkspaceId();
+      if (wsId === null) return;
+    }
+    const ws = findWorkspace(this.store, wsId);
+    if (!ws) return;
+
+    const entry = this.adoptInto(ws, target);
+    if (!entry) {
+      void vscode.window.showWarningMessage(
+        'Không xác định được thư mục làm việc của terminal nên chưa thêm được.',
+      );
+      return;
+    }
+    void vscode.window.showInformationMessage(
+      `Đã thêm "${target.name}" vào workspace "${ws.name}".`,
+    );
+  }
+
+  private async pickOrCreateWorkspaceId(): Promise<string | null> {
+    const CREATE = '__create__';
+    const items = [
+      ...this.workspaceViews().map((v) => ({ label: v.name, id: v.id })),
+      { label: '$(add) Tạo workspace mới…', id: CREATE },
+    ];
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Chọn workspace để lưu terminal này (workspace sẽ KHÔNG được kích hoạt)',
+    });
+    if (!picked) return null;
+    if (picked.id !== CREATE) return picked.id;
+
+    const name = await vscode.window.showInputBox({
+      prompt: 'Tên workspace mới',
+      validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
+    });
+    if (name === undefined) return null;
+    try {
+      const ws = createWorkspace(this.store, name.trim(), randomUUID());
+      this.scheduleSave();
+      this.onChanged.fire();
+      return ws.id;
+    } catch (error) {
+      void vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  }
+
+  // -------------------------------------------------------------- poll 3s
+
+  async refreshStatuses(): Promise<void> {
+    // QuickPick phân định ambiguity có thể mở lâu hơn một nhịp poll — không chồng lượt.
+    if (this.refreshing) return;
+    this.refreshing = true;
+    try {
+      let running: RunningSession[] = [];
+      try {
+        running = await this.agent.listRunning();
+      } catch {
+        return;
+      }
+      const bySession = new Map(running.map((r) => [r.sessionId, r]));
+
+      let changed = this.syncStatuses(bySession);
+      if (await this.matchActiveWorkspace(running)) changed = true;
+      if (changed) this.onChanged.fire();
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  private syncStatuses(bySession: Map<string, RunningSession>): boolean {
+    let changed = false;
+    for (const ws of this.store.workspaces) {
+      for (const entry of ws.terminals) {
+        const session = entry.claudeSessionId ? bySession.get(entry.claudeSessionId) : undefined;
+        const before = this.statuses.get(entry.id);
+        if (session) {
+          if (before !== session.status) {
+            this.statuses.set(entry.id, session.status);
+            changed = true;
+          }
+        } else if (before !== undefined) {
+          // Session biến mất khỏi registry: chỉ đổi hiển thị, KHÔNG gỡ sessionId (còn resume).
+          this.statuses.delete(entry.id);
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
+  private async matchActiveWorkspace(running: RunningSession[]): Promise<boolean> {
+    if (this.activeId === null) return false;
+    const ws = findWorkspace(this.store, this.activeId);
+    if (!ws) return false;
+
+    const open = ws.terminals.filter((entry) => this.terminals.has(entry.id));
+    const candidates: MatchCandidate[] = open.map((entry) => ({
+      terminalId: entry.id,
+      cwd: entry.cwd,
+      ...(entry.claudeSessionId !== undefined ? { claimedSessionId: entry.claudeSessionId } : {}),
+    }));
+    const result = matchClaudeSessions(candidates, running);
+
+    let changed = false;
+    for (const pair of result.matched) {
+      if (this.claimSession(ws, pair.terminalId, pair.session)) changed = true;
+    }
+    if (changed) this.scheduleSave();
+
+    for (const group of result.ambiguous) {
+      const key = normalizeCwd(group.cwd);
+      if (this.askedCwds.has(key)) continue;
+      // Đánh dấu TRƯỚC khi hỏi: bỏ qua (Esc) cũng tính là đã hỏi, không spam mỗi 3 giây.
+      this.askedCwds.add(key);
+      if (await this.resolveAmbiguity(ws, group.terminalIds, group.sessions)) changed = true;
+    }
+    return changed;
+  }
+
+  private async resolveAmbiguity(
+    ws: Workspace,
+    terminalIds: string[],
+    sessions: RunningSession[],
+  ): Promise<boolean> {
+    let changed = false;
+    const remaining = [...terminalIds];
+    for (const session of sessions) {
+      if (remaining.length === 0) break;
+      const items = remaining
+        .map((id) => ({ label: ws.terminals.find((t) => t.id === id)?.name ?? id, id }))
+        .filter((item) => item.label !== '');
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: `Terminal nào đang chạy session "${session.name ?? session.sessionId}"?`,
+        title: `Terminal nào đang chạy session "${session.name ?? session.sessionId}"?`,
+      });
+      if (!picked) break;
+      if (this.claimSession(ws, picked.id, session)) changed = true;
+      remaining.splice(remaining.indexOf(picked.id), 1);
+    }
+    if (changed) this.scheduleSave();
+    return changed;
+  }
+
+  private claimSession(ws: Workspace, terminalId: string, session: RunningSession): boolean {
+    const entry = ws.terminals.find((t) => t.id === terminalId);
+    if (!entry) return false;
+    entry.claudeSessionId = session.sessionId;
+    entry.claudeName = session.name ?? entry.name;
+    entry.kind = 'claude'; // thăng cấp: terminal thường hóa ra đang chạy một session
+    this.statuses.set(entry.id, session.status);
+    return true;
+  }
+
+  // --------------------------------------------------------------- dispose
+
+  dispose(): void {
+    this.flush();
+    for (const sub of this.subscriptions) sub.dispose();
+    this.subscriptions.length = 0;
+    this.onChanged.dispose();
   }
 }

@@ -1,29 +1,28 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { WorkspaceIndex } from './index/store';
-import { TrustStore } from './trust/store';
+import { ClaudeCodeAdapter } from './agent/claude';
+import { detectShellKind } from './agent/quote';
 import { TerminalManager } from './terminal/manager';
 import { WorkspaceManager } from './workspace/manager';
-import { SessionTreeProvider } from './ui/tree';
+import { WorkspaceTreeProvider } from './ui/tree';
 import { registerCommands } from './ui/commands';
 
+let manager: WorkspaceManager | null = null;
+
 export function activate(context: vscode.ExtensionContext): void {
-  const index = new WorkspaceIndex(path.join(context.globalStorageUri.fsPath, 'index.json'));
-  const trust = new TrustStore({
-    get: (key) => context.globalState.get<string>(key),
-    set: (key, value) => Promise.resolve(context.globalState.update(key, value)),
-  });
-
   const terminals = new TerminalManager();
-  const manager = new WorkspaceManager(terminals, index, trust);
-  const tree = new SessionTreeProvider(manager);
+  const agent = new ClaudeCodeAdapter(detectShellKind(process.platform, vscode.env.shell));
+  manager = new WorkspaceManager(context, terminals, agent);
 
-  const view = vscode.window.createTreeView('aiWorkspace.sessions', { treeDataProvider: tree });
+  const tree = new WorkspaceTreeProvider(manager);
+  const view = vscode.window.createTreeView('aiWorkspace.workspaces', { treeDataProvider: tree });
   view.onDidChangeVisibility((e) => (e.visible ? tree.startPolling() : tree.stopPolling()));
   if (view.visible) tree.startPolling();
 
-  registerCommands(context, manager);
-  context.subscriptions.push(view, tree, terminals);
+  context.subscriptions.push(view, tree, manager, terminals, ...registerCommands(manager));
 }
 
-export function deactivate(): void {}
+export function deactivate(): void {
+  // VS Code không đảm bảo await được async trong deactivate: ghi đồng bộ ngay tại đây.
+  manager?.flush();
+  manager = null;
+}

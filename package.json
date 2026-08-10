@@ -6,24 +6,51 @@
   "publisher": "bigdatacloud",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/bigdatacloud/vscode-workspace-saver.git" },
-  "engines": { "vscode": "^1.90.0", "node": ">=20" },
+  "engines": { "vscode": "^1.93.0", "node": ">=20" },
   "categories": ["Other"],
   "main": "./dist/extension.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
-      { "command": "aiWorkspace.newWorkspace",     "title": "AI Workspace: New Workspace" },
-      { "command": "aiWorkspace.saveWorkspace",    "title": "AI Workspace: Save Workspace" },
-      { "command": "aiWorkspace.openWorkspace",    "title": "AI Workspace: Open Workspace" },
-      { "command": "aiWorkspace.closeWorkspace",   "title": "AI Workspace: Close Workspace" },
-      { "command": "aiWorkspace.addSession",       "title": "AI Workspace: Add Session" },
-      { "command": "aiWorkspace.removeSession",    "title": "AI Workspace: Remove Session" },
-      { "command": "aiWorkspace.openSessionTerminal", "title": "AI Workspace: Open Session Terminal" },
-      { "command": "aiWorkspace.restoreSession",   "title": "AI Workspace: Restore Session" }
+      { "command": "aiWorkspace.createWorkspace", "title": "AI Workspace: Tạo workspace mới", "icon": "$(add)" },
+      { "command": "aiWorkspace.activateWorkspace", "title": "AI Workspace: Kích hoạt workspace" },
+      { "command": "aiWorkspace.closeActiveWorkspace", "title": "AI Workspace: Đóng workspace đang active" },
+      { "command": "aiWorkspace.renameWorkspace", "title": "AI Workspace: Đổi tên workspace" },
+      { "command": "aiWorkspace.deleteWorkspace", "title": "AI Workspace: Xóa workspace" },
+      { "command": "aiWorkspace.newClaudeTerminal", "title": "AI Workspace: Tạo terminal Claude mới" },
+      { "command": "aiWorkspace.setStartCommand", "title": "AI Workspace: Đặt lệnh khởi động cho terminal" },
+      { "command": "aiWorkspace.removeTerminal", "title": "AI Workspace: Bỏ terminal khỏi workspace" },
+      { "command": "aiWorkspace.focusTerminal", "title": "AI Workspace: Mở terminal" },
+      { "command": "aiWorkspace.addOpenTerminalToWorkspace", "title": "AI Workspace: Thêm terminal đang mở vào workspace" }
     ],
     "views": {
       "explorer": [
-        { "id": "aiWorkspace.sessions", "name": "AI Workspace" }
+        { "id": "aiWorkspace.workspaces", "name": "AI Workspaces" }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "aiWorkspace.createWorkspace", "when": "view == aiWorkspace.workspaces", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "aiWorkspace.activateWorkspace", "when": "view == aiWorkspace.workspaces && viewItem == aiWorkspaceInactive", "group": "1_activate" },
+        { "command": "aiWorkspace.closeActiveWorkspace", "when": "view == aiWorkspace.workspaces && viewItem == aiWorkspaceActive", "group": "1_activate" },
+        { "command": "aiWorkspace.newClaudeTerminal", "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/", "group": "2_terminal" },
+        { "command": "aiWorkspace.renameWorkspace", "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/", "group": "3_edit" },
+        { "command": "aiWorkspace.deleteWorkspace", "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/", "group": "3_edit" },
+        { "command": "aiWorkspace.setStartCommand", "when": "view == aiWorkspace.workspaces && viewItem == aiTerminalPlain", "group": "1_edit" },
+        { "command": "aiWorkspace.removeTerminal", "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/", "group": "2_remove" }
+      ],
+      "terminal/title/context": [
+        { "command": "aiWorkspace.addOpenTerminalToWorkspace" }
+      ],
+      "terminal/context": [
+        { "command": "aiWorkspace.addOpenTerminalToWorkspace" }
+      ],
+      "commandPalette": [
+        { "command": "aiWorkspace.setStartCommand", "when": "false" },
+        { "command": "aiWorkspace.removeTerminal", "when": "false" },
+        { "command": "aiWorkspace.focusTerminal", "when": "false" }
       ]
     }
   },

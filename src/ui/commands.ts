@@ -1,43 +1,55 @@
 import * as vscode from 'vscode';
 import type { WorkspaceManager } from '../workspace/manager';
-import type { SessionTreeItem } from './tree';
+import { TerminalItem, WorkspaceItem } from './tree';
 
-export function registerCommands(context: vscode.ExtensionContext, manager: WorkspaceManager): void {
-  const register = (id: string, handler: (...args: never[]) => unknown): void => {
-    context.subscriptions.push(vscode.commands.registerCommand(id, handler));
+export function registerCommands(manager: WorkspaceManager): vscode.Disposable[] {
+  const pickWorkspaceId = async (): Promise<string | null> => {
+    const views = manager.workspaceViews();
+    if (views.length === 0) {
+      void vscode.window.showInformationMessage('Chưa có workspace nào.');
+      return null;
+    }
+    const picked = await vscode.window.showQuickPick(
+      views.map((v) => ({ label: v.name, id: v.id })),
+      { placeHolder: 'Chọn workspace' },
+    );
+    return picked?.id ?? null;
   };
+  const wsArg = async (item?: WorkspaceItem): Promise<string | null> =>
+    item?.view.id ?? (await pickWorkspaceId());
 
-  register('aiWorkspace.newWorkspace', () => manager.newWorkspace());
-  register('aiWorkspace.saveWorkspace', () => manager.save());
-  register('aiWorkspace.openWorkspace', () => manager.openViaQuickPick());
-  register('aiWorkspace.closeWorkspace', () => manager.close());
-  register('aiWorkspace.addSession', () => manager.addSession());
-
-  register('aiWorkspace.removeSession', async (item?: SessionTreeItem) => {
-    const key = item?.sessionKey ?? (await pickSessionKey(manager, 'Chọn session để gỡ'));
-    if (key) await manager.removeSession(key);
-  });
-
-  register('aiWorkspace.openSessionTerminal', async (item?: SessionTreeItem) => {
-    const key = item?.sessionKey ?? (await pickSessionKey(manager, 'Chọn session để mở terminal'));
-    if (key) manager.focusSession(key);
-  });
-
-  register('aiWorkspace.restoreSession', async (item?: SessionTreeItem) => {
-    const key = item?.sessionKey ?? (await pickSessionKey(manager, 'Chọn session để dựng lại'));
-    if (key) await manager.restoreSession(key);
-  });
-}
-
-async function pickSessionKey(manager: WorkspaceManager, placeHolder: string): Promise<string | undefined> {
-  const sessions = manager.currentSessions();
-  if (sessions.length === 0) {
-    await vscode.window.showInformationMessage('Workspace chưa có session nào.');
-    return undefined;
-  }
-  const picked = await vscode.window.showQuickPick(
-    sessions.map((s) => ({ label: s.name, description: s.role, detail: s.key, key: s.key })),
-    { placeHolder },
-  );
-  return picked?.key;
+  return [
+    vscode.commands.registerCommand('aiWorkspace.createWorkspace', () => manager.createAndActivate()),
+    vscode.commands.registerCommand('aiWorkspace.activateWorkspace', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.activate(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.closeActiveWorkspace', () => manager.closeActive()),
+    vscode.commands.registerCommand('aiWorkspace.renameWorkspace', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.rename(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.deleteWorkspace', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.deleteWorkspace(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.newClaudeTerminal', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.newClaudeTerminal(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.setStartCommand', (item: TerminalItem) =>
+      manager.setStartCommand(item.view.workspaceId, item.view.id),
+    ),
+    vscode.commands.registerCommand('aiWorkspace.removeTerminal', (item: TerminalItem) =>
+      manager.removeTerminal(item.view.workspaceId, item.view.id),
+    ),
+    vscode.commands.registerCommand('aiWorkspace.focusTerminal', (item: TerminalItem) =>
+      manager.focusTerminal(item.view.workspaceId, item.view.id),
+    ),
+    // Menu chuột phải tab terminal có thể truyền hoặc không truyền `Terminal`;
+    // manager tự fallback về `window.activeTerminal` nên cả hai trường hợp đều chạy.
+    vscode.commands.registerCommand('aiWorkspace.addOpenTerminalToWorkspace', (terminal?: vscode.Terminal) =>
+      manager.addOpenTerminal(terminal),
+    ),
+  ];
 }
