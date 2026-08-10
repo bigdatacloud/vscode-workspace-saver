@@ -31,7 +31,6 @@ export interface RestorePorts {
     worktrees(missing: { key: string; path: string; branch: string }[]): Promise<boolean>;
     trust(commands: { key: string; command: string }[]): Promise<boolean>;
   };
-  clock: { now(): number };
   sleep(ms: number): Promise<void>;
   /** Số lần poll registry trước khi kết luận thất bại. */
   waitAttempts: number;
@@ -54,6 +53,9 @@ export interface RestoreReport {
   started: StartedSession[];
   failed: FailedSession[];
   skippedWorktrees: string[];
+  /** Mọi session đã được gửi lệnh launch, kể cả cái chưa kịp lên registry.
+   *  sessionId phải được ghi xuống state.json ngay, nếu không cuộc hội thoại sẽ mồ côi. */
+  launched: { key: string; sessionId: string }[];
 }
 
 const POLL_INTERVAL_MS = 1000;
@@ -63,7 +65,7 @@ export async function restoreWorkspace(
   state: WorkspaceState,
   ports: RestorePorts,
 ): Promise<RestoreReport> {
-  const report: RestoreReport = { started: [], failed: [], skippedWorktrees: [] };
+  const report: RestoreReport = { started: [], failed: [], skippedWorktrees: [], launched: [] };
 
   if (!(await ports.agent.isAvailable())) {
     for (const session of manifest.sessions) {
@@ -76,10 +78,27 @@ export async function restoreWorkspace(
   }
 
   const isRepo = await ports.git.isRepo(ports.projectRoot);
-  const entries: WorktreeEntry[] = isRepo ? await ports.git.listWorktrees(ports.projectRoot) : [];
+  // Git liệt kê worktree hỏng không được phép làm hỏng cả lượt restore: đi tiếp với danh sách rỗng.
+  let entries: WorktreeEntry[] = [];
+  let listWorktreesFailed = false;
+  if (isRepo) {
+    try {
+      entries = await ports.git.listWorktrees(ports.projectRoot);
+    } catch {
+      listWorktreesFailed = true;
+    }
+  }
 
   // Bước 1: phân loại worktree cho mọi session.
   const plans = await planSessions(manifest.sessions, entries, isRepo, ports);
+  if (listWorktreesFailed) {
+    for (const plan of plans) {
+      if (plan.session.worktree === null) continue;
+      plan.warnings.push(
+        'Git không liệt kê được danh sách worktree, nên không kiểm chứng được trạng thái worktree của session này.',
+      );
+    }
+  }
 
   // Bước 2: gom worktree thiếu, hỏi một lần.
   const missing = plans.filter((p) => p.needsWorktree !== null);
@@ -148,6 +167,9 @@ export async function restoreWorkspace(
 
       plan.launched = { name, sessionId };
       expected.push({ key: plan.session.key, sessionId });
+      // Ghi nhận ngay tại thời điểm launch: dù registry có xác nhận kịp hay không,
+      // sessionId này vẫn phải được lưu lại, nếu không cuộc hội thoại sẽ không resume được nữa.
+      report.launched.push({ key: plan.session.key, sessionId });
     } catch (error) {
       // Một session hỏng không được kéo theo các session khác: ghi nhận rồi đi tiếp.
       report.failed.push({
@@ -248,7 +270,11 @@ async function waitForSessions(expected: string[], ports: RestorePorts): Promise
   if (expected.length === 0) return seen;
 
   for (let attempt = 0; attempt < ports.waitAttempts; attempt += 1) {
-    for (const running of await ports.agent.listRunning()) seen.add(running.sessionId);
+    try {
+      for (const running of await ports.agent.listRunning()) seen.add(running.sessionId);
+    } catch {
+      // Một lần hỏi registry hỏng thì coi như lần đó không thấy gì; vẫn chờ tiếp các lần sau.
+    }
     if (expected.every((id) => seen.has(id))) return seen;
     await ports.sleep(POLL_INTERVAL_MS);
   }

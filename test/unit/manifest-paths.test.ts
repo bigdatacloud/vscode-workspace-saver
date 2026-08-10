@@ -57,7 +57,7 @@ describe('đường dẫn worktree', () => {
     const abs = path.resolve(ROOT, '../..', 'totally', 'other');
     const stored = toStoredPath(ROOT, abs);
     expect(stored.startsWith('..')).toBe(true);
-    expect(stored.replace(/\//g, path.sep)).not.toContain('/');
+    expect(stored).not.toContain('\\');
   });
 
   it.runIf(process.platform === 'win32')('toStoredPath khác ổ đĩa trả về tuyệt đối với dấu /', () => {

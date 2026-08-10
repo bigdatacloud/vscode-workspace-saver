@@ -80,7 +80,6 @@ function harness(over: Partial<RestorePorts> = {}, opts: {
       },
     },
     confirm: { worktrees: async () => true, trust: async () => true },
-    clock: { now: () => 1000 },
     sleep: async () => {},
     waitAttempts: 1,
     ...over,
@@ -253,5 +252,49 @@ describe('restoreWorkspace — trust và lỗi', () => {
     const report = await restoreWorkspace(manifest(), emptyState, h.ports);
     expect(report.started.map((s) => s.key)).toEqual(['coordinator']);
     expect(report.failed.map((f) => f.key)).toEqual(['backend']);
+  });
+
+  it('session đã launch nhưng registry chưa xác nhận vẫn giữ được sessionId trong report.launched', async () => {
+    // 'backend' được gửi lệnh launch nhưng không kịp lên registry trong cửa sổ chờ.
+    // sessionId của nó vẫn phải quay về được để ghi xuống state.json, nếu không cuộc
+    // hội thoại đang sống trong terminal sẽ vĩnh viễn không resume lại được.
+    const h = harness({}, { running: [{ sessionId: UUID_A, name: 'ERP-Coordinator' }] });
+
+    const report = await restoreWorkspace(manifest(), emptyState, h.ports);
+
+    expect(report.failed.map((f) => f.key)).toEqual(['backend']);
+    expect(report.launched).toEqual([
+      { key: 'coordinator', sessionId: UUID_A },
+      { key: 'backend', sessionId: UUID_B },
+    ]);
+  });
+
+  it('git không liệt kê được worktree thì vẫn dựng session, chỉ cảnh báo', async () => {
+    const h = harness({ git: {
+      isRepo: async () => true,
+      listWorktrees: async () => { throw new Error('git bị hỏng'); },
+      addWorktree: async () => { throw new Error('không được gọi'); },
+    } }, { running: [{ sessionId: UUID_A, name: 'ERP-Coordinator' }, { sessionId: UUID_B, name: 'ERP-Backend' }] });
+
+    const report = await restoreWorkspace(manifest(), emptyState, h.ports);
+
+    expect(report.started.map((s) => s.key)).toEqual(['coordinator', 'backend']);
+    expect(report.started[0]!.warnings.join(' ')).toContain('không liệt kê được');
+  });
+
+  it('registry ném lỗi trong lúc chờ thì không làm hỏng cả lượt restore', async () => {
+    const h = harness({}, { running: [] });
+    const goc = h.ports.agent.listRunning;
+    let lanGoi = 0;
+    // Lần gọi đầu (tính tên đã bị chiếm) vẫn chạy; các lần trong vòng chờ thì ném.
+    h.ports.agent.listRunning = async () => {
+      if (lanGoi++ === 0) return goc.call(h.ports.agent);
+      throw new Error('claude agents --json lỗi');
+    };
+
+    const report = await restoreWorkspace(manifest(), emptyState, h.ports);
+
+    expect(report.failed.map((f) => f.key)).toEqual(['coordinator', 'backend']);
+    expect(report.launched.map((l) => l.key)).toEqual(['coordinator', 'backend']);
   });
 });

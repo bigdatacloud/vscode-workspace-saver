@@ -103,6 +103,10 @@ lần mở kế tiếp phải hỏi trust lại.
   ngoài Claude Code, nên extension không cố can thiệp vào việc đó.
 - `state.json` là dữ liệu dùng-một-lần, có thể xoá bất cứ lúc nào: xoá nó nghĩa là lần mở workspace
   kế tiếp sẽ khởi động session mới thay vì resume lại cuộc hội thoại cũ.
+- `Save Workspace` ghi lại `workspace.yaml` từ mô hình đã parse, nên **comment và thứ tự khoá bạn
+  tự viết tay trong file đó sẽ mất** sau khi lưu.
+- `Restore Session` từ chối thao tác trên một session mà terminal của nó vẫn đang mở — hãy đóng
+  terminal đó trước rồi chạy lại lệnh.
 
 ## Phát triển
 

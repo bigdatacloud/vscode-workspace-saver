@@ -49,11 +49,11 @@ phải trả lời được "đạt/không đạt" mà không cần suy đoán.
 - [ ] Sidebar chuyển session sang trạng thái "rảnh"/"đang chạy" trong vòng ~3 giây
 
 ### Vòng đời terminal
-- [ ] `AI Workspace: Restore Session` trên một session đã có terminal sống → terminal cũ bị thay
-      thế, sidebar/`vscode.window.terminals` chỉ có MỘT terminal cho session đó (không phải hai
-      terminal cùng tên chạy song song). Mục này có test Extension Host tự động phủ — bước này chỉ
-      để người kiểm tra xác nhận bằng mắt là trải nghiệm nhìn ổn (không có terminal ẩn ở phía sau,
-      không nhấp nháy hai lần)
+- [ ] `AI Workspace: Restore Session` trên một session đã có terminal sống → extension TỪ CHỐI
+      dựng lại, hiện cảnh báo bảo đóng terminal trước, rồi focus vào terminal đang chạy đó. Không
+      có terminal thứ hai nào được tạo ra
+- [ ] Đóng terminal đó rồi chạy lại `AI Workspace: Restore Session` → lần này dựng lại bình thường,
+      và sidebar/`vscode.window.terminals` chỉ có MỘT terminal cho session đó
 - [ ] Đóng một terminal bằng tay (bấm dấu X hoặc gõ `exit`) → đúng session đó chuyển sang trạng
       thái "chưa chạy"/offline trong sidebar trong vòng vài giây
 - [ ] Khi đóng terminal ở trên, KHÔNG có session nào khác trong sidebar bị đổi trạng thái
@@ -76,8 +76,11 @@ phải trả lời được "đạt/không đạt" mà không cần suy đoán.
 
 ## Resume
 - [ ] Trò chuyện vài lượt trong một session, đóng workspace, mở lại → lịch sử hội thoại còn nguyên
-- [ ] Xoá thủ công file jsonl của session đó rồi restore → mở session mới, có cảnh báo, KHÔNG mất
-      manifest
+- [ ] Xoá thủ công file jsonl của session đó rồi restore → session đó bị báo là THẤT BẠI với lý do
+      rõ ràng (không lên được registry của Claude Code sau khi chờ). Bản MVP KHÔNG có cơ chế tự
+      chuyển sang hội thoại mới khi `--resume` hỏng — đó là việc của Phase 2. Kiểm thêm hai điều:
+      `workspace.yaml` không bị đụng tới, và `state.json` vẫn giữ nguyên `sessionId` cũ của session
+      đó (không bị đổi sang uuid khác)
 
 ## An toàn
 - [ ] Xoá thủ công một thư mục worktree → restore hỏi trước khi tạo lại, liệt kê đúng đường dẫn

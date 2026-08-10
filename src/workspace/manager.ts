@@ -27,6 +27,10 @@ export class WorkspaceManager {
   private state: WorkspaceState = { version: 1, sessions: {} };
   private projectRoot: string | null = null;
   private manifestPath: string | null = null;
+  /** Thư mục CHỨA `.ai-workspace` của file đang mở. Mọi thao tác đọc/ghi manifest và state
+   *  phải neo vào đây, không phải `projectRoot` — vì `project.root` có thể trỏ đi nơi khác,
+   *  và khi đó Save sẽ ghi sang một file thứ hai thay vì file vừa mở. */
+  private manifestAnchor: string | null = null;
   private statuses = new Map<string, SessionStatus>();
 
   readonly bus = new EventBus();
@@ -78,6 +82,7 @@ export class WorkspaceManager {
 
     this.projectRoot = folder.uri.fsPath;
     this.manifestPath = manifestFilePath(this.projectRoot);
+    this.manifestAnchor = path.dirname(path.dirname(this.manifestPath));
     this.manifest = ManifestSchema.parse({ version: 1, workspace: { name }, sessions: [] });
     this.state = { version: 1, sessions: {} };
     this.statuses.clear();
@@ -88,12 +93,12 @@ export class WorkspaceManager {
   }
 
   async save(): Promise<void> {
-    if (!this.manifest || !this.projectRoot || !this.manifestPath) {
+    if (!this.manifest || !this.manifestAnchor || !this.manifestPath) {
       await vscode.window.showWarningMessage('Chưa có workspace nào đang mở.');
       return;
     }
-    await writeManifest(this.projectRoot, this.manifest);
-    await writeState(this.projectRoot, this.state);
+    await writeManifest(this.manifestAnchor, this.manifest);
+    await writeState(this.manifestAnchor, this.state);
     await this.index.upsert({
       name: this.manifest.workspace.name,
       manifestPath: this.manifestPath,
@@ -120,9 +125,10 @@ export class WorkspaceManager {
 
   async open(manifestPath: string): Promise<void> {
     let manifest: Manifest;
-    const projectRoot = resolveProjectRoot(manifestPath, '.');
+    // Neo vào chính file được mở: thư mục cha của `.ai-workspace`.
+    const anchor = resolveProjectRoot(manifestPath, '.');
     try {
-      manifest = await readManifest(projectRoot);
+      manifest = await readManifest(anchor);
     } catch (error) {
       if (error instanceof ManifestError) {
         await vscode.window.showErrorMessage(`${error.message}\n${error.issues.join('\n')}`);
@@ -134,14 +140,32 @@ export class WorkspaceManager {
 
     this.manifest = manifest;
     this.manifestPath = manifestPath;
+    this.manifestAnchor = anchor;
+    // `projectRoot` chỉ dùng cho git và cwd của terminal, KHÔNG dùng để đọc/ghi manifest.
     this.projectRoot = resolveProjectRoot(manifestPath, manifest.project.root);
-    this.state = await readState(this.projectRoot);
+    this.state = await readState(this.manifestAnchor);
     this.statuses.clear();
 
-    const report = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Đang dựng lại "${manifest.workspace.name}"…` },
-      () => restoreWorkspace(manifest, this.state, this.buildPorts()),
-    );
+    let report: RestoreReport;
+    try {
+      report = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Đang dựng lại "${manifest.workspace.name}"…` },
+        () => restoreWorkspace(manifest, this.state, this.buildPorts()),
+      );
+    } catch (error) {
+      // Không để lại trạng thái dở dang: trả về đúng trạng thái "chưa mở workspace nào".
+      this.manifest = null;
+      this.manifestPath = null;
+      this.manifestAnchor = null;
+      this.projectRoot = null;
+      this.state = { version: 1, sessions: {} };
+      this.statuses.clear();
+      this.onChanged.fire();
+      await vscode.window.showErrorMessage(
+        `Không dựng lại được workspace "${manifest.workspace.name}": ${String(error)}`,
+      );
+      return;
+    }
 
     await this.applyReport(report);
     await this.index.upsert({
@@ -152,12 +176,13 @@ export class WorkspaceManager {
   }
 
   async close(): Promise<void> {
-    if (!this.manifest || !this.projectRoot) return;
-    await writeState(this.projectRoot, this.state);
+    if (!this.manifest || !this.manifestAnchor) return;
+    await writeState(this.manifestAnchor, this.state);
     this.terminals.closeAll();
     this.bus.emit('WorkspaceClosed', { name: this.manifest.workspace.name });
     this.manifest = null;
     this.manifestPath = null;
+    this.manifestAnchor = null;
     this.projectRoot = null;
     this.statuses.clear();
     this.onChanged.fire();
@@ -244,6 +269,16 @@ export class WorkspaceManager {
     if (!this.manifest || !this.projectRoot) return;
     const session = this.manifest.sessions.find((s) => s.key === key);
     if (!session) return;
+    if (this.terminals.has(key)) {
+      // Dựng lại một session đang sống sẽ resume LẠI đúng cuộc hội thoại đó lần thứ hai
+      // (và bị đổi tên thành "-2"), đồng thời giết terminal cũ khi tiến trình `claude`
+      // vẫn còn bám vào đó. Bắt người dùng đóng terminal trước.
+      await vscode.window.showWarningMessage(
+        `Session "${key}" đang chạy. Hãy đóng terminal của nó trước nếu bạn muốn dựng lại.`,
+      );
+      this.terminals.focus(key);
+      return;
+    }
     const single: Manifest = { ...this.manifest, sessions: [session] };
     const report = await restoreWorkspace(single, this.state, this.buildPorts());
     await this.applyReport(report);
@@ -272,7 +307,7 @@ export class WorkspaceManager {
       }
     }
     if (changed) {
-      if (this.projectRoot) await writeState(this.projectRoot, this.state);
+      if (this.manifestAnchor) await writeState(this.manifestAnchor, this.state);
       this.onChanged.fire();
     }
   }
@@ -312,13 +347,24 @@ export class WorkspaceManager {
           return true;
         },
       },
-      clock: { now: () => Date.now() },
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       waitAttempts: 20,
     };
   }
 
   private async applyReport(report: RestoreReport): Promise<void> {
+    // Ghi sessionId ngay khi đã gửi lệnh launch, KHÔNG chờ registry xác nhận: nếu bỏ qua bước
+    // này, một session chạy được nhưng lên registry trễ sẽ mất sessionId và cuộc hội thoại
+    // đang sống sẽ không bao giờ resume lại được nữa.
+    for (const launched of report.launched) {
+      if (this.state.sessions[launched.key]?.sessionId === launched.sessionId) continue;
+      this.state.sessions[launched.key] = {
+        sessionId: launched.sessionId,
+        pid: null,
+        lastStatus: 'offline',
+        lastActiveAt: Date.now(),
+      };
+    }
     for (const started of report.started) {
       this.state.sessions[started.key] = {
         sessionId: started.sessionId,
@@ -336,7 +382,16 @@ export class WorkspaceManager {
       this.statuses.set(failed.key, 'error');
       this.bus.emit('SessionFailed', { key: failed.key, reason: failed.reason });
     }
-    if (this.projectRoot) await writeState(this.projectRoot, this.state);
+    if (this.manifestAnchor) {
+      try {
+        await writeState(this.manifestAnchor, this.state);
+      } catch (error) {
+        // Ghi state hỏng không được che mất bản tóm tắt restore của người dùng.
+        void vscode.window.showWarningMessage(
+          `Không ghi được state.json, lần mở sau có thể phải bắt đầu hội thoại mới: ${String(error)}`,
+        );
+      }
+    }
 
     const total = report.started.length + report.failed.length;
     const message = `Đã dựng ${report.started.length}/${total} session.`;
