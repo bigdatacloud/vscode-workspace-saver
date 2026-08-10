@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import type { WorkspaceManager } from '../workspace/manager';
-// TODO(Task 16): `src/ui/tree.ts` chưa tồn tại ở Task 15. Dùng type cục bộ tạm thời;
-// Task 16 sẽ nối lại `import type { SessionTreeItem } from './tree';`.
-type SessionTreeItem = { sessionKey: string };
+import type { SessionTreeItem } from './tree';
 
 export function registerCommands(context: vscode.ExtensionContext, manager: WorkspaceManager): void {
   const register = (id: string, handler: (...args: never[]) => unknown): void => {
