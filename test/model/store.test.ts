@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { emptyStore } from '../../src/model/schema';
+import { StoreFileSchema, emptyStore, type StoreFile, type Workspace } from '../../src/model/schema';
 import {
-  createWorkspace, findWorkspace, loadStore, removeTerminal, saveStore, upsertTerminal, type StoreFs,
+  createWorkspace, findWorkspace, loadStore, mergeForSave, removeTerminal, saveStore, upsertTerminal,
+  type StoreFs,
 } from '../../src/model/store';
 
 function memFs(init: Record<string, string> = {}) {
@@ -69,6 +70,59 @@ describe('saveStore', () => {
     expect(() => saveStore(fs, P, store)).toThrow();
     expect(ops).toEqual([]);
     expect(files.size).toBe(0);
+  });
+});
+
+describe('mergeForSave', () => {
+  const uuidC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const uuidD = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const ws = (id: string, name: string, lastActiveAt: string | null = null): Workspace =>
+    ({ id, name, lastActiveAt, activeWindowId: null, terminals: [] });
+  const storeOf = (...list: Workspace[]): StoreFile => ({ version: 2, workspaces: list });
+
+  it('workspace có ở RAM thì bản RAM thắng, giữ nguyên object của RAM', () => {
+    const ramWs = ws(uuidA, 'ERP mới', '2026-08-10T00:00:00.000Z');
+    const merged = mergeForSave(storeOf(ws(uuidA, 'ERP cũ')), storeOf(ramWs), new Set());
+    expect(merged.workspaces).toHaveLength(1);
+    // Giữ nguyên tham chiếu: manager đang cầm object này trong closure (ports, entry đang mint).
+    expect(merged.workspaces[0]).toBe(ramWs);
+  });
+
+  it('workspace chỉ có trên đĩa (cửa sổ khác tạo) được giữ lại', () => {
+    const merged = mergeForSave(storeOf(ws(uuidB, 'Của cửa sổ khác')), storeOf(ws(uuidA, 'A')), new Set());
+    expect(merged.workspaces.map((w) => w.id).sort()).toEqual([uuidA, uuidB].sort());
+  });
+
+  it('workspace đã bị cửa sổ này xóa thì KHÔNG sống lại từ đĩa', () => {
+    const merged = mergeForSave(
+      storeOf(ws(uuidA, 'A'), ws(uuidB, 'Đã xóa')),
+      storeOf(ws(uuidA, 'A')),
+      new Set([uuidB]),
+    );
+    expect(merged.workspaces.map((w) => w.id)).toEqual([uuidA]);
+  });
+
+  it('trùng tên giữa bản đĩa giữ lại và bản RAM thì ĐỔI TÊN bản đĩa, không đụng tên RAM', () => {
+    const merged = mergeForSave(
+      storeOf(ws(uuidB, 'erp'), ws(uuidC, 'ERP'), ws(uuidD, 'ERP (2)')),
+      storeOf(ws(uuidA, 'ERP')),
+      new Set(),
+    );
+    const byId = new Map(merged.workspaces.map((w) => [w.id, w.name]));
+    expect(byId.get(uuidA)).toBe('ERP');
+    expect(byId.get(uuidD)).toBe('ERP (2)');
+    // uuidB và uuidC phải nhận hậu tố khác nhau và khác 'ERP (2)' đã bị chiếm.
+    const names = merged.workspaces.map((w) => w.name.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('kết quả merge luôn hợp lệ với StoreFileSchema', () => {
+    const merged = mergeForSave(
+      storeOf(ws(uuidB, 'ERP'), ws(uuidC, 'ERP')),
+      storeOf(ws(uuidA, 'ERP')),
+      new Set(),
+    );
+    expect(() => StoreFileSchema.parse(merged)).not.toThrow();
   });
 });
 

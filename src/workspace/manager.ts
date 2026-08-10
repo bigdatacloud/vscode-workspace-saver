@@ -2,17 +2,19 @@ import { randomUUID } from 'node:crypto';
 import * as nodeFs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { ZodError } from 'zod';
 
 import { classifyTerminal, pickCwd } from '../adopt/filter';
 import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
 import { realGitRunner } from '../git/exec';
 import { GitClient } from '../git/worktree';
-import type { StoreFile, TerminalEntry, Workspace } from '../model/schema';
+import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
 import {
   createWorkspace,
   findWorkspace,
   loadStore,
+  mergeForSave,
   realStoreFs,
   removeTerminal as removeTerminalEntry,
   saveStore,
@@ -78,11 +80,14 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly errorIds = new Set<string>();
   /** Nhóm cwd đã hỏi QuickPick trong phiên này — không hỏi lại dù người dùng bỏ qua. */
   private readonly askedCwds = new Set<string>();
+  /** Bia mộ: workspace cửa sổ này đã xóa, không được merge sống lại từ đĩa. */
+  private readonly deletedIds = new Set<string>();
 
   private saveTimer: NodeJS.Timeout | null = null;
   private dirty = false;
   private refreshing = false;
   private activating = false;
+  private disposed = false;
 
   private readonly subscriptions: vscode.Disposable[] = [];
   private readonly onChanged = new vscode.EventEmitter<void>();
@@ -109,11 +114,20 @@ export class WorkspaceManager implements vscode.Disposable {
         `Không tạo được thư mục lưu trữ ${dir}: ${String(error)}`,
       );
     }
-    const loaded = loadStore(realStoreFs, this.filePath, Date.now);
-    this.store = loaded.store;
-    if (loaded.recoveredFrom !== null) {
+    // loadStore chỉ nuốt ENOENT; EBUSY/EACCES (antivirus, OneDrive đang khóa file) vẫn ném ra
+    // và sẽ giết cả extension nếu không chặn ở đây.
+    try {
+      const loaded = loadStore(realStoreFs, this.filePath, Date.now);
+      this.store = loaded.store;
+      if (loaded.recoveredFrom !== null) {
+        void vscode.window.showWarningMessage(
+          `File workspaces.json bị hỏng nên đã được sao lưu sang ${loaded.recoveredFrom}; danh sách workspace bắt đầu lại từ đầu.`,
+        );
+      }
+    } catch (error) {
+      this.store = emptyStore();
       void vscode.window.showWarningMessage(
-        `File workspaces.json bị hỏng nên đã được sao lưu sang ${loaded.recoveredFrom}; danh sách workspace bắt đầu lại từ đầu.`,
+        `Không đọc được ${this.filePath}: ${String(error)}. Phiên này bắt đầu với danh sách rỗng; hãy kiểm tra quyền truy cập file trước khi tạo workspace mới.`,
       );
     }
 
@@ -195,13 +209,32 @@ export class WorkspaceManager implements vscode.Disposable {
 
   private saveNow(): void {
     try {
-      saveStore(realStoreFs, this.filePath, this.store);
+      // Cửa sổ VS Code khác có thể đã ghi file này từ lúc ta nạp: đọc lại rồi gộp theo id,
+      // nếu không lần lưu của ta sẽ xóa sạch workspace mà cửa sổ kia vừa tạo.
+      // Đĩa hỏng ở đúng thời điểm này thì loadStore đã tự backup + trả store rỗng — chấp nhận.
+      const disk = loadStore(realStoreFs, this.filePath, Date.now).store;
+      const merged = mergeForSave(disk, this.store, this.deletedIds);
+      saveStore(realStoreFs, this.filePath, merged);
+      this.store = merged;
       this.dirty = false;
+      // Tree thấy luôn workspace của cửa sổ khác sau mỗi lần lưu.
+      this.onChanged.fire();
     } catch (error) {
-      // Giữ nguyên cờ dirty: lần save sau sẽ thử lại thay vì mất trạng thái.
-      void vscode.window.showWarningMessage(
-        `Không ghi được ${this.filePath}: ${String(error)}. Sẽ thử lại ở lần lưu sau.`,
-      );
+      if (error instanceof ZodError) {
+        // Lỗi schema là lỗi lập trình, KHÔNG tự hết: nói thẳng thay vì hứa "thử lại".
+        const detail = error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ');
+        void vscode.window.showWarningMessage(
+          `Trạng thái workspace không hợp lệ nên không được ghi xuống ${this.filePath}. Lỗi này sẽ không tự hết: ${detail}`,
+        );
+      } else {
+        // Lỗi đĩa thường là tạm thời — giữ cờ dirty để lần save sau thử lại.
+        void vscode.window.showWarningMessage(
+          `Không ghi được ${this.filePath}: ${String(error)}. Sẽ thử lại ở lần lưu sau.`,
+        );
+      }
     }
   }
 
@@ -389,6 +422,8 @@ export class WorkspaceManager implements vscode.Disposable {
     // không muốn mất việc đang chạy.
     if (this.activeId === ws.id) this.activeId = null;
     ws.activeWindowId = null;
+    // Bia mộ: nếu không nhớ, lần save sau sẽ thấy nó còn trên đĩa và "cứu" nó sống lại.
+    this.deletedIds.add(ws.id);
     for (const entry of ws.terminals) {
       this.terminals.release(entry.id);
       this.statuses.delete(entry.id);
@@ -779,6 +814,18 @@ export class WorkspaceManager implements vscode.Disposable {
   // --------------------------------------------------------------- dispose
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    // Gỡ khóa V5 khi đóng cửa sổ bình thường. saveStore hoàn toàn đồng bộ (writeFileSync +
+    // renameSync) nên việc này chạy trọn vẹn trong deactivate; chỉ khi VS Code chết đột ngột
+    // mới còn khóa mồ côi — đúng như README mô tả. KHÔNG đóng terminal ở đây.
+    if (this.activeId !== null) {
+      const ws = findWorkspace(this.store, this.activeId);
+      if (ws) {
+        ws.activeWindowId = null;
+        this.scheduleSave();
+      }
+    }
     this.flush();
     for (const sub of this.subscriptions) sub.dispose();
     this.subscriptions.length = 0;

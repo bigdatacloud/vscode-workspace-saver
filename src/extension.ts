@@ -22,7 +22,9 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // VS Code không đảm bảo await được async trong deactivate: ghi đồng bộ ngay tại đây.
-  manager?.flush();
+  // VS Code không đảm bảo await được async trong deactivate, cũng không đảm bảo chạy
+  // context.subscriptions trước: gọi thẳng dispose() (idempotent) để chắc chắn khóa V5 được
+  // gỡ và store được ghi. Mọi thao tác bên trong đều đồng bộ.
+  manager?.dispose();
   manager = null;
 }

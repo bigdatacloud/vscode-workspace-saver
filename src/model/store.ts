@@ -31,6 +31,52 @@ export function saveStore(fs: StoreFs, filePath: string, store: StoreFile): void
   fs.rename(tmp, filePath);
 }
 
+/**
+ * Gộp trạng thái trong RAM của cửa sổ này với trạng thái đang nằm trên đĩa trước khi ghi đè.
+ *
+ * Mỗi cửa sổ VS Code chạy một instance extension riêng, nạp store một lần lúc khởi động rồi
+ * ghi đè cả file mỗi lần lưu. Không gộp thì cửa sổ lưu sau xóa sạch workspace mà cửa sổ kia
+ * vừa tạo. Luật:
+ *  (a) id có trong RAM  → bản RAM thắng (cửa sổ này mới là chủ của những workspace đó);
+ *  (b) id chỉ có trên đĩa → giữ lại, TRỪ KHI nằm trong `deletedIds` (bia mộ: workspace mà
+ *      chính cửa sổ này vừa xóa, không được sống lại);
+ *  (c) tên đụng nhau giữa bản đĩa giữ lại và bản RAM → đổi tên BẢN ĐĨA (' (2)', ' (3)'…),
+ *      không bao giờ đụng vào tên người dùng đang thấy trong cửa sổ này.
+ *
+ * Trả về object workspace của RAM NGUYÊN TÁC THAM CHIẾU: manager giữ tham chiếu tới chúng
+ * trong closure (ports, entry đang mint), thay bằng bản sao sẽ làm các mutation sau đó rơi
+ * vào object mồ côi.
+ */
+export function mergeForSave(
+  disk: StoreFile,
+  ram: StoreFile,
+  deletedIds: ReadonlySet<string>,
+): StoreFile {
+  const ramIds = new Set(ram.workspaces.map((w) => w.id));
+  const takenNames = new Set(ram.workspaces.map((w) => w.name.toLowerCase()));
+  const kept = disk.workspaces.filter((w) => !ramIds.has(w.id) && !deletedIds.has(w.id));
+
+  // Hai lượt: giữ chỗ cho mọi tên đĩa KHÔNG đụng độ trước, rồi mới rải hậu tố cho tên đụng
+  // độ thật. Một lượt sẽ đổi tên cả workspace vô can chỉ vì trùng với hậu tố ta vừa bịa ra.
+  const conflicting = kept.filter((w) => takenNames.has(w.name.toLowerCase()));
+  for (const w of kept) {
+    if (!takenNames.has(w.name.toLowerCase())) takenNames.add(w.name.toLowerCase());
+  }
+  for (const w of conflicting) {
+    w.name = uniqueName(w.name, takenNames);
+    takenNames.add(w.name.toLowerCase());
+  }
+  return { version: 2, workspaces: [...ram.workspaces, ...kept] };
+}
+
+function uniqueName(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let i = 2; ; i += 1) {
+    const candidate = `${base} (${i})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 export function createWorkspace(store: StoreFile, name: string, id: string): Workspace {
   const lower = name.toLowerCase();
   if (store.workspaces.some((w) => w.name.toLowerCase() === lower)) {
