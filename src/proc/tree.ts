@@ -24,6 +24,8 @@ export function parseBangTienTrinh(text: string): Map<number, number> {
 /**
  * Đi ngược từ `pidCon` qua chuỗi tổ tiên; gặp pid nào có trong `shellPids`
  * thì trả về terminalId tương ứng. Không gặp ai (hoặc đứt chuỗi/chu trình) → null.
+ * `pidCon` trùng ngay pid shell cũng TÍNH: trên POSIX, `exec claude` thay shell
+ * nhưng giữ nguyên pid — session chính là tiến trình shell của terminal đó.
  */
 export function timTerminalTheoToTien(
   pidCon: number,
@@ -37,7 +39,7 @@ export function timTerminalTheoToTien(
     if (daTham.has(pid)) return null; // chu trình dữ liệu — dừng, không treo
     daTham.add(pid);
     const terminalId = shellPids.get(pid);
-    if (terminalId !== undefined && pid !== pidCon) return terminalId;
+    if (terminalId !== undefined) return terminalId;
     pid = parentOf.get(pid);
   }
   return null;

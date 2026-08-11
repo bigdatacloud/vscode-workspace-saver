@@ -6,7 +6,15 @@ function chay(command: string, args: string[]): Promise<string> {
     execFile(
       command,
       args,
-      { encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+      // timeout bắt buộc: WMI/CIM treo là chuyện có thật trên Windows — không có timeout
+      // thì promise này treo vĩnh viễn và kéo cả vòng poll lẫn lệnh đóng workspace theo.
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: 5000,
+        killSignal: 'SIGKILL',
+      },
       (error, stdout) => resolve(error ? '' : stdout),
     );
   });

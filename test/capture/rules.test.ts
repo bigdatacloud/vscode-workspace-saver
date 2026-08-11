@@ -11,7 +11,7 @@ describe('nenBatLenh', () => {
 });
 
 describe('khiKetThucLenh', () => {
-  const p = { lenh: 'npm run dev', luuTruoc: 'lệnh cũ', batDauLuc: 1000 };
+  const p = { lenh: 'npm run dev', luuTruoc: 'lệnh cũ', batDauLuc: 1000, token: {} };
 
   it('lệnh chạy đủ lâu → giữ lệnh đó làm startCommand', () => {
     expect(khiKetThucLenh(p, 1000 + 15_000)).toBe('npm run dev');

@@ -34,8 +34,8 @@ describe('timTerminalTheoToTien', () => {
     expect(timTerminalTheoToTien(110, parentOf, new Map([[100, 'term-a']]))).toBeNull();
   });
 
-  it('chính pid con là shell thì KHÔNG tính (session không tự chứa mình)', () => {
-    expect(timTerminalTheoToTien(100, parentOf, shells)).toBeNull();
+  it('chính pid con là shell vẫn TÍNH — POSIX exec thay shell giữ nguyên pid', () => {
+    expect(timTerminalTheoToTien(100, parentOf, shells)).toBe('term-a');
   });
 
   it('chu trình dữ liệu không làm treo', () => {

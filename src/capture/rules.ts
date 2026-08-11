@@ -13,6 +13,12 @@ export interface LenhDangCho {
   /** startCommand trước khi lệnh này chiếm chỗ — để trả lại nếu lệnh hóa ra vặt. */
   luuTruoc: string | undefined;
   batDauLuc: number;
+  /**
+   * Token định danh execution (object `event.execution` của VS Code) — ghép cặp start/end
+   * PHẢI so bằng identity: API nói rõ `commandLine.value` có thể được tinh chỉnh lại giữa
+   * hai sự kiện, so chuỗi sẽ rớt cặp.
+   */
+  token: unknown;
 }
 
 /** Có nên bắt lệnh này không: chỉ terminal 'plain', và không phải lệnh của agent (Claude có đường resume riêng, tốt hơn chạy lại lệnh thô). */

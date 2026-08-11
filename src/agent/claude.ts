@@ -11,7 +11,9 @@ export interface CommandRunner {
 export const realCommandRunner: CommandRunner = {
   run(command, args) {
     return new Promise((resolve) => {
-      execFile(command, args, { encoding: 'utf8', windowsHide: true }, (error, stdout) => {
+      // timeout: CLI treo (registry kẹt, đĩa chậm) không được phép kéo vòng poll và
+      // finalClaimSweep (đang await listRunning) treo theo vĩnh viễn.
+      execFile(command, args, { encoding: 'utf8', windowsHide: true, timeout: 10_000, killSignal: 'SIGKILL' }, (error, stdout) => {
         const code = error && typeof (error as { code?: number }).code === 'number'
           ? (error as { code: number }).code
           : error ? 1 : 0;

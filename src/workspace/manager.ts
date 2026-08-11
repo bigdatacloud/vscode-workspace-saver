@@ -87,6 +87,8 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly askedCwds = new Set<string>();
   /** PID shell của từng terminal đang track (terminalId → pid) — để tra phả hệ tiến trình. */
   private readonly shellPids = new Map<string, number>();
+  /** Cache bảng tiến trình — đọc lại tốn cỡ giây, không được phép chạy mỗi nhịp poll 3s. */
+  private bangTienTrinhCache: { luc: number; bang: Map<number, number> } | null = null;
   /** Lệnh đang chạy dở trong từng terminal (terminalId → lệnh) — luật bắt startCommand. */
   private readonly pendingCommands = new Map<string, LenhDangCho>();
   /** Bia mộ: workspace cửa sổ này đã xóa, không được merge sống lại từ đĩa. */
@@ -719,6 +721,26 @@ export class WorkspaceManager implements vscode.Disposable {
     if (answer === 'Bỏ ra') await this.removeTerminal(ws.id, entry.id);
   }
 
+  /**
+   * Bảng tiến trình có cache: dùng lại khi còn tươi (TTL) VÀ đã chứa mọi pid session cần
+   * tra — session mới xuất hiện thì pid nó chưa có trong cache, buộc đọc lại ngay để không
+   * bắt trượt rồi rơi xuống QuickPick oan.
+   */
+  private async layBangTienTrinh(pidCanTra: number[]): Promise<Map<number, number>> {
+    const TTL_MS = 30_000;
+    const cache = this.bangTienTrinhCache;
+    if (
+      cache !== null &&
+      Date.now() - cache.luc < TTL_MS &&
+      pidCanTra.every((pid) => cache.bang.has(pid))
+    ) {
+      return cache.bang;
+    }
+    const bang = await docBangTienTrinh();
+    this.bangTienTrinhCache = { luc: Date.now(), bang };
+    return bang;
+  }
+
   /** Ghi PID shell của terminal (bất đồng bộ) để tra phả hệ tiến trình khi match session. */
   private ghiNhanShellPid(terminalId: string): void {
     const terminal = this.terminals.get(terminalId);
@@ -751,6 +773,7 @@ export class WorkspaceManager implements vscode.Disposable {
       lenh,
       luuTruoc: entry.startCommand,
       batDauLuc: Date.now(),
+      token: event.execution,
     });
     // Ghi NGAY lúc lệnh bắt đầu: VS Code chết giữa chừng thì app đang chạy vẫn nằm trên đĩa
     // và lần mở lại workspace sẽ chạy lại nó. Lệnh hóa ra vặt thì trả lại ở onShellExecutionEnd.
@@ -764,7 +787,9 @@ export class WorkspaceManager implements vscode.Disposable {
     const key = this.terminals.ownsTerminal(event.terminal);
     if (key === null) return;
     const p = this.pendingCommands.get(key);
-    if (!p || p.lenh !== event.execution.commandLine.value) return;
+    // Ghép cặp bằng identity của execution — commandLine.value có thể bị VS Code tinh chỉnh
+    // lại giữa start và end nên so chuỗi sẽ rớt cặp và để lệnh vặt chiếm chỗ vĩnh viễn.
+    if (!p || p.token !== event.execution) return;
     this.pendingCommands.delete(key);
 
     const ws = this.timWorkspaceChuaTerminal(key);
@@ -773,7 +798,12 @@ export class WorkspaceManager implements vscode.Disposable {
     // Entry đã thăng cấp claude trong lúc lệnh chạy → startCommand không còn ý nghĩa, để yên.
     if (!entry || entry.kind !== 'plain') return;
 
-    const gia = khiKetThucLenh(p, Date.now());
+    let gia = khiKetThucLenh(p, Date.now());
+    if (gia === p.lenh) {
+      // Giữ lệnh: ưu tiên giá trị tại thời điểm end — API nói nó chính xác hơn bản lúc start.
+      const tinhChinh = event.execution.commandLine.value.trim();
+      if (tinhChinh !== '') gia = event.execution.commandLine.value;
+    }
     if (gia === undefined) delete entry.startCommand;
     else entry.startCommand = gia;
     this.touch(ws.id);
@@ -983,35 +1013,51 @@ export class WorkspaceManager implements vscode.Disposable {
     // hệ tiến trình trước — pid của session đi ngược lên tổ tiên phải gặp pid shell của
     // đúng một terminal. Chỉ phần không tra được mới rơi xuống QuickPick hỏi người dùng.
     if (result.ambiguous.length > 0) {
-      const bangTienTrinh = await docBangTienTrinh();
-      for (const group of result.ambiguous) {
-        const shellCuaNhom = new Map<number, string>();
-        for (const tid of group.terminalIds) {
-          const pid = this.shellPids.get(tid);
-          if (pid !== undefined) shellCuaNhom.set(pid, tid);
-        }
-        const chuaGan: RunningSession[] = [];
-        const terminalDaGan = new Set<string>();
-        for (const session of group.sessions) {
-          const tid =
-            session.pid !== null
-              ? timTerminalTheoToTien(session.pid, bangTienTrinh, shellCuaNhom)
-              : null;
-          if (tid !== null && !terminalDaGan.has(tid) && this.claimSession(ws.id, tid, session)) {
-            terminalDaGan.add(tid);
-            changed = true;
-          } else {
-            chuaGan.push(session);
+      // Dựng map pid shell theo nhóm TRƯỚC: không nhóm nào có pid thì khỏi tốn một lần
+      // đọc bảng tiến trình (PowerShell CIM mất cỡ giây, không phải miễn phí).
+      const nhomCoPid = result.ambiguous
+        .map((group) => {
+          const shellCuaNhom = new Map<number, string>();
+          for (const tid of group.terminalIds) {
+            const pid = this.shellPids.get(tid);
+            if (pid !== undefined) shellCuaNhom.set(pid, tid);
           }
+          return { group, shellCuaNhom };
+        })
+        .filter((x) => x.shellCuaNhom.size > 0);
+
+      if (nhomCoPid.length > 0) {
+        const pidCanTra = nhomCoPid.flatMap((x) =>
+          x.group.sessions.map((s) => s.pid).filter((p): p is number => p !== null),
+        );
+        const bangTienTrinh = await this.layBangTienTrinh(pidCanTra);
+        for (const { group, shellCuaNhom } of nhomCoPid) {
+          const chuaGan: RunningSession[] = [];
+          const terminalDaGan = new Set<string>();
+          for (const session of group.sessions) {
+            const tid =
+              session.pid !== null
+                ? timTerminalTheoToTien(session.pid, bangTienTrinh, shellCuaNhom)
+                : null;
+            if (tid !== null && !terminalDaGan.has(tid) && this.claimSession(ws.id, tid, session)) {
+              terminalDaGan.add(tid);
+              changed = true;
+            } else {
+              chuaGan.push(session);
+            }
+          }
+          group.sessions = chuaGan;
+          group.terminalIds = group.terminalIds.filter((t) => !terminalDaGan.has(t));
         }
-        group.sessions = chuaGan;
-        group.terminalIds = group.terminalIds.filter((t) => !terminalDaGan.has(t));
       }
     }
     if (changed) this.scheduleSave();
 
     for (const group of result.ambiguous) {
       if (group.sessions.length === 0 || group.terminalIds.length === 0) continue;
+      // Phả hệ đã rút nhóm về 1-1 → nhịp poll sau matcher tự claim (matched); hỏi bây giờ
+      // là hỏi một câu mà máy tự trả lời được sau 3 giây.
+      if (group.sessions.length === 1 && group.terminalIds.length === 1) continue;
       const key = normalizeCwd(group.cwd);
       if (this.askedCwds.has(key)) continue;
       // Đánh dấu TRƯỚC khi hỏi: bỏ qua (Esc) cũng tính là đã hỏi, không spam mỗi 3 giây.
