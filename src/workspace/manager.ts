@@ -581,6 +581,41 @@ export class WorkspaceManager implements vscode.Disposable {
     this.onChanged.fire();
   }
 
+  /**
+   * Tạo terminal thường: hỏi MỘT đường dẫn → terminal mở ngay tại đó (vị trí theo setting
+   * `aiWorkspace.terminalLocation`, mặc định editor area), entry `plain` vào workspace.
+   * Lệnh chạy trong đó được auto-capture như mọi terminal thường khác.
+   */
+  async newPlainTerminal(workspaceId: string): Promise<void> {
+    if (!findWorkspace(this.store, workspaceId)) return;
+
+    const duongDan = await vscode.window.showInputBox({
+      prompt: 'Thư mục làm việc — terminal mở ngay tại đây, tên đặt theo thư mục (Rename để đổi)',
+      value: folderCwd() ?? '',
+      validateInput: (v) =>
+        v.trim() !== '' && nodeFs.existsSync(v.trim()) ? undefined : 'Đường dẫn không tồn tại',
+    });
+    if (duongDan === undefined) return;
+    const cwd = duongDan.trim();
+    const ten = path.basename(cwd) || 'terminal';
+
+    // Lấy lại object sau await rồi mới touch (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) {
+      void vscode.window.showWarningMessage('Workspace không còn tồn tại.');
+      return;
+    }
+    this.touch(wsNow.id);
+
+    const entry: TerminalEntry = { id: randomUUID(), name: ten, cwd, kind: 'plain' };
+    upsertTerminal(wsNow, entry);
+    this.scheduleSave();
+
+    this.terminals.create(entry.id, { name: entry.name, cwd });
+    this.ghiNhanShellPid(entry.id);
+    this.onChanged.fire();
+  }
+
   /** Đổi tên hiển thị của terminal trong workspace (và widget đang mở, để name-sync không kéo tên cũ về). */
   async renameTerminal(workspaceId: string, terminalId: string): Promise<void> {
     const entry = this.findEntry(workspaceId, terminalId);

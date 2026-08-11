@@ -48,6 +48,10 @@
         "title": "AI Workspace: Tạo terminal Claude mới"
       },
       {
+        "command": "aiWorkspace.newPlainTerminal",
+        "title": "AI Workspace: Tạo terminal mới"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -72,6 +76,21 @@
         "title": "AI Workspace: Đổi tên terminal"
       }
     ],
+    "configuration": {
+      "title": "AI Workspace",
+      "properties": {
+        "aiWorkspace.terminalLocation": {
+          "type": "string",
+          "enum": ["editor", "panel"],
+          "enumDescriptions": [
+            "Mở terminal thành tab trong khu editor (vùng chính)",
+            "Mở terminal trong panel dưới như mặc định của VS Code"
+          ],
+          "default": "editor",
+          "description": "Nơi mở các terminal do AI Workspace tạo hoặc khôi phục."
+        }
+      }
+    },
     "views": {
       "explorer": [
         {
@@ -102,7 +121,12 @@
         {
           "command": "aiWorkspace.newClaudeTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
-          "group": "2_terminal"
+          "group": "2_terminal@1"
+        },
+        {
+          "command": "aiWorkspace.newPlainTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "2_terminal@2"
         },
         {
           "command": "aiWorkspace.renameWorkspace",

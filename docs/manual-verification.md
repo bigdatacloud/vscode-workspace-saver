@@ -159,6 +159,15 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] `AI Workspace: Bỏ terminal khỏi workspace` trên một terminal ĐANG MỞ → entry biến mất
       khỏi cây, nhưng terminal thật KHÔNG bị đóng (vẫn còn trong `vscode.window.terminals`)
 
+## Vị trí terminal (editor area)
+- [ ] `AI Workspace: Tạo terminal mới` từ menu chuột phải workspace → hỏi một đường dẫn →
+      terminal mở thành TAB trong khu editor (không phải panel dưới), entry `plain` xuất hiện
+      trong cây; chạy một lệnh sống ≥15s trong đó → thành `startCommand` như terminal thường
+- [ ] `AI Workspace: Tạo terminal Claude mới` → terminal Claude cũng mở thành tab trong editor
+- [ ] Kích hoạt lại workspace → các terminal khôi phục đều mở thành tab trong editor area
+- [ ] Đổi setting `aiWorkspace.terminalLocation` sang `panel` → tạo terminal mới → mở ở panel
+      dưới như cũ (không cần reload window)
+
 ## Khóa một workspace active mỗi cửa sổ (V5)
 - [ ] Kích hoạt một workspace ở cửa sổ VS Code A → mở một cửa sổ VS Code B khác (cùng máy),
       cũng kích hoạt CHÍNH workspace đó → cửa sổ B hiện cảnh báo "Workspace "X" đang mở ở cửa

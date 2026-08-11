@@ -34,10 +34,15 @@ export class TerminalManager {
       this.terminals.delete(key);
       cu.dispose();
     }
+    const noiMo = vscode.workspace
+      .getConfiguration('aiWorkspace')
+      .get<string>('terminalLocation', 'editor');
     const terminal = vscode.window.createTerminal({
       name: options.name,
       cwd: options.cwd,
       env: options.env,
+      location:
+        noiMo === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor,
     });
     this.terminals.set(key, terminal);
     terminal.show(false);
