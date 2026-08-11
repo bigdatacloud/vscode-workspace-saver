@@ -1014,21 +1014,34 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   private async matchActiveWorkspace(running: RunningSession[]): Promise<boolean> {
-    if (this.activeId === null) return false;
-    const ws = findWorkspace(this.store, this.activeId);
-    if (!ws) return false;
-
-    const open = ws.terminals.filter((entry) => this.terminals.has(entry.id));
-    const candidates: MatchCandidate[] = open.map((entry) => ({
-      terminalId: entry.id,
-      cwd: entry.cwd,
-      ...(entry.claudeSessionId !== undefined ? { claimedSessionId: entry.claudeSessionId } : {}),
-    }));
+    // Ứng viên: MỌI terminal đang mở mà cửa sổ này track, bất kể workspace của nó có active
+    // hay không — terminal -c/-r tạo trên workspace chưa active cũng phải được thăng cấp,
+    // và claudeSessionId của workspace khác cũng phải được tính là "đã có chủ".
+    const chuTerminal = new Map<string, string>(); // terminalId → workspaceId
+    const candidates: MatchCandidate[] = [];
+    for (const wsBatKy of this.store.workspaces) {
+      for (const entry of wsBatKy.terminals) {
+        if (!this.terminals.has(entry.id)) continue;
+        chuTerminal.set(entry.id, wsBatKy.id);
+        candidates.push({
+          terminalId: entry.id,
+          cwd: entry.cwd,
+          ...(entry.claudeSessionId !== undefined
+            ? { claimedSessionId: entry.claudeSessionId }
+            : {}),
+        });
+      }
+    }
+    if (candidates.length === 0) return false;
+    const claim = (terminalId: string, session: RunningSession): boolean => {
+      const wsId = chuTerminal.get(terminalId);
+      return wsId !== undefined && this.claimSession(wsId, terminalId, session);
+    };
     const result = matchClaudeSessions(candidates, running);
 
     let changed = false;
     for (const pair of result.matched) {
-      if (this.claimSession(ws.id, pair.terminalId, pair.session)) changed = true;
+      if (claim(pair.terminalId, pair.session)) changed = true;
     }
 
     // Nhóm mơ hồ (nhiều terminal/nhiều session cùng cwd): thử phân giải TẤT ĐỊNH bằng phả
@@ -1061,7 +1074,7 @@ export class WorkspaceManager implements vscode.Disposable {
               session.pid !== null
                 ? timTerminalTheoToTien(session.pid, bangTienTrinh, shellCuaNhom)
                 : null;
-            if (tid !== null && !terminalDaGan.has(tid) && this.claimSession(ws.id, tid, session)) {
+            if (tid !== null && !terminalDaGan.has(tid) && claim(tid, session)) {
               terminalDaGan.add(tid);
               changed = true;
             } else {
@@ -1081,7 +1094,7 @@ export class WorkspaceManager implements vscode.Disposable {
       // `continue` chờ nhịp poll sau: ở finalClaimSweep (lúc đóng workspace) không còn
       // nhịp nào nữa — bỏ qua ở đây là mất cơ hội gắn vĩnh viễn.
       if (group.sessions.length === 1 && group.terminalIds.length === 1) {
-        if (this.claimSession(ws.id, group.terminalIds[0]!, group.sessions[0]!)) {
+        if (claim(group.terminalIds[0]!, group.sessions[0]!)) {
           changed = true;
           this.scheduleSave();
         }
@@ -1091,13 +1104,15 @@ export class WorkspaceManager implements vscode.Disposable {
       if (this.askedCwds.has(key)) continue;
       // Đánh dấu TRƯỚC khi hỏi: bỏ qua (Esc) cũng tính là đã hỏi, không spam mỗi 3 giây.
       this.askedCwds.add(key);
-      if (await this.resolveAmbiguity(ws, group.terminalIds, group.sessions)) changed = true;
+      if (await this.resolveAmbiguity(chuTerminal, group.terminalIds, group.sessions)) {
+        changed = true;
+      }
     }
     return changed;
   }
 
   private async resolveAmbiguity(
-    ws: Workspace,
+    chuTerminal: ReadonlyMap<string, string>,
     terminalIds: string[],
     sessions: RunningSession[],
   ): Promise<boolean> {
@@ -1106,14 +1121,19 @@ export class WorkspaceManager implements vscode.Disposable {
     for (const session of sessions) {
       if (remaining.length === 0) break;
       const items = remaining
-        .map((id) => ({ label: ws.terminals.find((t) => t.id === id)?.name ?? id, id }))
+        .map((id) => {
+          const wsId = chuTerminal.get(id);
+          const entry = wsId !== undefined ? this.findEntry(wsId, id) : undefined;
+          return { label: entry?.name ?? id, id };
+        })
         .filter((item) => item.label !== '');
       const picked = await vscode.window.showQuickPick(items, {
         placeHolder: `Terminal nào đang chạy session "${session.name ?? session.sessionId}"?`,
         title: `Terminal nào đang chạy session "${session.name ?? session.sessionId}"?`,
       });
       if (!picked) break;
-      if (this.claimSession(ws.id, picked.id, session)) changed = true;
+      const wsId = chuTerminal.get(picked.id);
+      if (wsId !== undefined && this.claimSession(wsId, picked.id, session)) changed = true;
       remaining.splice(remaining.indexOf(picked.id), 1);
     }
     if (changed) this.scheduleSave();

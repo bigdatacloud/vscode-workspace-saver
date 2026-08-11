@@ -104,6 +104,12 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] `AI Workspace: Đổi tên terminal` trên terminal item → nhập tên mới → cây VÀ tab terminal
       cùng đổi tên; ngược lại, đổi tên bằng Rename có sẵn của VS Code trên tab → tên trong cây
       tự khớp lại trong ~3 giây (name-sync qua poll)
+- [ ] Đổi tên bằng lệnh của extension trong khi một terminal KHÁC đang được focus → đúng tab
+      của entry được rename (không rename nhầm tab đang focus — show() phải thắng trước
+      renameWithArg)
+- [ ] Tạo terminal Claude (-c/-r) trên workspace KHÔNG active → terminal vẫn mở và chạy lệnh;
+      entry vẫn tự thăng cấp `claude` trong vài chu kỳ poll (matcher quét mọi terminal đang
+      mở, không chỉ workspace active)
 - [ ] Trò chuyện vài lượt trong terminal đó, đóng workspace, kích hoạt lại → Claude Code resume
       đúng cuộc hội thoại cũ (lịch sử còn nguyên) — kiểm bằng cách hỏi lại điều vừa nói trước
       khi đóng
