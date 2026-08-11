@@ -66,6 +66,10 @@
       {
         "command": "aiWorkspace.assignClaudeSession",
         "title": "AI Workspace: Gắn session Claude vào terminal"
+      },
+      {
+        "command": "aiWorkspace.renameTerminal",
+        "title": "AI Workspace: Đổi tên terminal"
       }
     ],
     "views": {
@@ -121,6 +125,11 @@
           "group": "1_edit"
         },
         {
+          "command": "aiWorkspace.renameTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "1_edit"
+        },
+        {
           "command": "aiWorkspace.removeTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
           "group": "2_remove"
@@ -151,6 +160,10 @@
         },
         {
           "command": "aiWorkspace.assignClaudeSession",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.renameTerminal",
           "when": "false"
         }
       ]

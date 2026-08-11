@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { parseAgentsJson } from './registry';
 import { quoteArg, type ShellKind } from './quote';
-import type { AgentAdapter, LaunchSpec, RunningSession } from './types';
+import type { AgentAdapter, LaunchOption, LaunchSpec, RunningSession } from './types';
 
 export interface CommandRunner {
   run(command: string, args: string[]): Promise<{ stdout: string; code: number }>;
@@ -48,6 +48,32 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     const r = await this.runner.run(CLAUDE_BIN, ['agents', '--json']);
     if (r.code !== 0) return [];
     return parseAgentsJson(r.stdout);
+  }
+
+  buildLaunchOptions(peerName: string): LaunchOption[] {
+    const q = (v: string): string => quoteArg(v, this.shell);
+    const moi = (label: string, flags: string[]): LaunchOption => {
+      const sessionId = this.uuid();
+      return {
+        label,
+        description: [CLAUDE_BIN, ...flags, '(resume đảm bảo)'].join(' '),
+        command: [CLAUDE_BIN, '--session-id', q(sessionId), '-n', q(peerName), ...flags].join(' '),
+        sessionId,
+      };
+    };
+    const tiep = (label: string, flags: string[]): LaunchOption => ({
+      label,
+      description: [CLAUDE_BIN, ...flags].join(' '),
+      command: [CLAUDE_BIN, ...flags].join(' '),
+    });
+    return [
+      moi('Phiên mới', []),
+      moi('Phiên mới — bỏ hỏi quyền', ['--dangerously-skip-permissions']),
+      tiep('Tiếp tục hội thoại gần nhất', ['-c']),
+      tiep('Tiếp tục gần nhất — bỏ hỏi quyền', ['--dangerously-skip-permissions', '-c']),
+      tiep('Chọn hội thoại để resume', ['-r']),
+      tiep('Resume — bỏ hỏi quyền', ['--dangerously-skip-permissions', '-r']),
+    ];
   }
 
   ownsCommand(command: string): boolean {

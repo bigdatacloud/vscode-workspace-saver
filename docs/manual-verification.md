@@ -94,9 +94,16 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       terminal chỉ mở shell
 
 ## Terminal Claude (`kind: claude`) — resume
-- [ ] `AI Workspace: Tạo terminal Claude mới` trên workspace active → nhập tên peer, cwd → có
-      hỏi "chạy tại thư mục này hay tạo worktree mới" nếu cwd là git repo; chọn "chạy tại thư
-      mục này" → terminal mở, Claude Code khởi động với `--session-id` mới (session mới)
+- [ ] `AI Workspace: Tạo terminal Claude mới` trên workspace → CHỈ hỏi một đường dẫn (validate
+      tồn tại) → QuickPick 6 biến thể lệnh (duyệt bằng phím mũi tên): 2 "Phiên mới" (mint
+      `--session-id`, resume đảm bảo) + `-c` / `-r` thường và kèm
+      `--dangerously-skip-permissions` → terminal mở NGAY tại đường dẫn, tên = tên thư mục,
+      lệnh đã chọn tự chạy
+- [ ] Chọn biến thể `-c` hoặc `-r` → entry tạo dạng `plain`, và trong vài chu kỳ poll sau khi
+      Claude hiện trong registry, entry tự thăng cấp `claude` + gắn đúng sessionId (phả hệ PID)
+- [ ] `AI Workspace: Đổi tên terminal` trên terminal item → nhập tên mới → cây VÀ tab terminal
+      cùng đổi tên; ngược lại, đổi tên bằng Rename có sẵn của VS Code trên tab → tên trong cây
+      tự khớp lại trong ~3 giây (name-sync qua poll)
 - [ ] Trò chuyện vài lượt trong terminal đó, đóng workspace, kích hoạt lại → Claude Code resume
       đúng cuộc hội thoại cũ (lịch sử còn nguyên) — kiểm bằng cách hỏi lại điều vừa nói trước
       khi đóng

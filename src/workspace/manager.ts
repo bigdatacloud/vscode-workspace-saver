@@ -10,8 +10,6 @@ import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
 import { docBangTienTrinh } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
-import { realGitRunner } from '../git/exec';
-import { GitClient } from '../git/worktree';
 import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
 import {
   createWorkspace,
@@ -77,7 +75,6 @@ export class WorkspaceManager implements vscode.Disposable {
   private activeId: string | null = null;
 
   private readonly trust: TrustStore;
-  private readonly git: GitClient;
 
   /** Trạng thái Claude gần nhất lấy từ registry, theo terminalId. */
   private readonly statuses = new Map<string, RunningStatus>();
@@ -126,9 +123,7 @@ export class WorkspaceManager implements vscode.Disposable {
     context: vscode.ExtensionContext,
     private readonly terminals: TerminalManager,
     private readonly agent: AgentAdapter,
-    git: GitClient = new GitClient(realGitRunner),
   ) {
-    this.git = git;
     this.trust = new TrustStore({
       get: (key) => context.globalState.get<string>(key),
       set: (key, value) => Promise.resolve(context.globalState.update(key, value)),
@@ -531,28 +526,27 @@ export class WorkspaceManager implements vscode.Disposable {
 
   // ------------------------------------------------------------- terminal
 
+  /**
+   * Flow tối giản: hỏi đúng MỘT đường dẫn → duyệt biến thể lệnh bằng phím mũi tên →
+   * terminal mở ngay tại đó và chạy lệnh. Tên lấy theo thư mục, đổi sau bằng Rename.
+   */
   async newClaudeTerminal(workspaceId: string): Promise<void> {
-    const ws = findWorkspace(this.store, workspaceId);
-    if (!ws) return;
+    if (!findWorkspace(this.store, workspaceId)) return;
 
-    const name = await vscode.window.showInputBox({
-      prompt: 'Tên peer của session Claude (dùng cho cờ -n)',
-      validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
-    });
-    if (name === undefined || name.trim() === '') return;
-
-    const cwdInput = await vscode.window.showInputBox({
-      prompt: 'Thư mục làm việc của terminal',
+    const duongDan = await vscode.window.showInputBox({
+      prompt: 'Thư mục làm việc — terminal mở ngay tại đây, tên đặt theo thư mục (Rename để đổi)',
       value: folderCwd() ?? '',
-      validateInput: (v) => (v.trim() === '' ? 'Thư mục không được để trống' : undefined),
+      validateInput: (v) =>
+        v.trim() !== '' && nodeFs.existsSync(v.trim()) ? undefined : 'Đường dẫn không tồn tại',
     });
-    if (cwdInput === undefined) return;
-    let cwd = cwdInput.trim();
-    if (cwd === '') return;
+    if (duongDan === undefined) return;
+    const cwd = duongDan.trim();
+    const ten = path.basename(cwd) || 'claude';
 
-    const worktreeCwd = await this.maybeCreateWorktree(cwd);
-    if (worktreeCwd === null) return;
-    cwd = worktreeCwd;
+    const luaChon = await vscode.window.showQuickPick(this.agent.buildLaunchOptions(ten), {
+      placeHolder: 'Chạy Claude thế nào?',
+    });
+    if (!luaChon) return;
 
     // Lấy lại object sau chuỗi input/quickpick rồi mới touch (xem ghi chú ở activate()).
     const wsNow = findWorkspace(this.store, workspaceId);
@@ -562,62 +556,56 @@ export class WorkspaceManager implements vscode.Disposable {
     }
     this.touch(wsNow.id);
 
-    const entry: TerminalEntry = {
-      id: randomUUID(),
-      name: name.trim(),
-      cwd,
-      kind: 'claude',
-      claudeName: name.trim(),
-    };
+    // Phiên mới có sessionId mint sẵn → entry claude, resume đảm bảo. Biến thể -c/-r nối vào
+    // hội thoại có sẵn nên không biết trước id → entry plain, matcher phả hệ PID sẽ thăng cấp
+    // nó trong vài giây khi claude hiện trong registry.
+    const entry: TerminalEntry =
+      luaChon.sessionId !== undefined
+        ? {
+            id: randomUUID(),
+            name: ten,
+            cwd,
+            kind: 'claude',
+            claudeSessionId: luaChon.sessionId,
+            claudeName: ten,
+          }
+        : { id: randomUUID(), name: ten, cwd, kind: 'plain' };
     upsertTerminal(wsNow, entry);
     this.scheduleSave();
-
-    if (this.activeId === wsNow.id) await this.launchOne(wsNow, entry);
+    // Id mint phải nằm trên đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại).
     this.flush();
+
+    const handle = this.terminals.create(entry.id, { name: entry.name, cwd });
+    this.ghiNhanShellPid(entry.id);
+    handle.sendText(luaChon.command);
     this.onChanged.fire();
   }
 
-  /** Trả cwd cuối cùng, hoặc null nếu người dùng hủy giữa chừng. */
-  private async maybeCreateWorktree(cwd: string): Promise<string | null> {
-    let isRepo = false;
-    try {
-      isRepo = await this.git.isRepo(cwd);
-    } catch {
-      isRepo = false;
-    }
-    if (!isRepo) return cwd;
-
-    const picked = await vscode.window.showQuickPick(
-      [
-        { label: 'Chạy tại thư mục này', choice: 'here' as const },
-        { label: '$(add) Tạo worktree mới…', choice: 'worktree' as const },
-      ],
-      { placeHolder: `${cwd} là git repository — chạy tại đây hay tạo worktree riêng?` },
-    );
-    if (!picked) return null;
-    if (picked.choice === 'here') return cwd;
-
-    const branch = await vscode.window.showInputBox({
-      prompt: 'Branch cho worktree mới (chưa có thì sẽ được tạo)',
-      validateInput: (v) => (v.trim() === '' ? 'Branch không được để trống' : undefined),
+  /** Đổi tên hiển thị của terminal trong workspace (và widget đang mở, để name-sync không kéo tên cũ về). */
+  async renameTerminal(workspaceId: string, terminalId: string): Promise<void> {
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (!entry) return;
+    const ten = await vscode.window.showInputBox({
+      prompt: 'Tên mới cho terminal',
+      value: entry.name,
+      validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
     });
-    if (branch === undefined || branch.trim() === '') return null;
+    if (ten === undefined || ten.trim() === '') return;
 
-    const suggested = path.resolve(
-      cwd,
-      '..',
-      `${path.basename(cwd)}-${branch.trim().replaceAll('/', '-')}`,
-    );
-    const wtPath = await vscode.window.showInputBox({ prompt: 'Đường dẫn worktree', value: suggested });
-    if (wtPath === undefined || wtPath.trim() === '') return null;
+    const entryNow = this.findEntry(workspaceId, terminalId);
+    if (!entryNow) return;
+    entryNow.name = ten.trim();
+    this.touch(workspaceId);
+    this.scheduleSave();
 
-    try {
-      await this.git.addWorktree(cwd, wtPath.trim(), branch.trim());
-    } catch (error) {
-      void vscode.window.showErrorMessage(`Không tạo được worktree: ${String(error)}`);
-      return null;
+    const terminal = this.terminals.get(terminalId);
+    if (terminal) {
+      terminal.show(false);
+      await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', {
+        name: ten.trim(),
+      });
     }
-    return wtPath.trim();
+    this.onChanged.fire();
   }
 
   /** Mở lại đúng MỘT entry, tái dùng nguyên nhánh launch của orchestrator. */
@@ -940,9 +928,32 @@ export class WorkspaceManager implements vscode.Disposable {
     }
     const bySession = new Map(running.map((r) => [r.sessionId, r]));
 
-    let changed = this.syncStatuses(bySession);
+    let changed = this.syncTerminalNames();
+    if (this.syncStatuses(bySession)) changed = true;
     if (await this.matchActiveWorkspace(running)) changed = true;
     if (changed) this.onChanged.fire();
+  }
+
+  /**
+   * Người dùng đổi tên terminal bằng menu Rename CÓ SẴN của VS Code → không có event API
+   * nào báo — đồng bộ tên widget về entry qua poll để tên trong cây và tên tab luôn khớp.
+   */
+  private syncTerminalNames(): boolean {
+    let changed = false;
+    for (const ws of this.store.workspaces) {
+      for (const entry of ws.terminals) {
+        const terminal = this.terminals.get(entry.id);
+        if (!terminal) continue;
+        const ten = terminal.name.trim();
+        if (ten !== '' && ten !== entry.name) {
+          entry.name = ten;
+          this.touch(ws.id);
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.scheduleSave();
+    return changed;
   }
 
   private startActivePoll(): void {

@@ -11,7 +11,8 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 ## Yêu cầu
 
 - VS Code ≥ 1.93 (dùng Terminal Shell Integration API để bắt cwd chính xác)
-- `git` có sẵn trong PATH (chỉ cần khi tạo terminal Claude có worktree riêng)
+- Shell Integration của VS Code hoạt động (mặc định có với PowerShell/bash/zsh) — cần cho
+  tự nhớ app đang chạy và cập nhật cwd chính xác
 - Claude Code ≥ 2.1 (lệnh `claude` có sẵn trong PATH) — chỉ cần cho terminal `kind: claude`
 
 ## Tính năng chính
@@ -72,7 +73,8 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Đóng workspace đang active | `aiWorkspace.closeActiveWorkspace` | Palette / context menu workspace active |
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
-| AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace |
+| AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — chỉ hỏi MỘT đường dẫn, rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
+| AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
 | AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
 | AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal |
 | AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây |

@@ -49,6 +49,9 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
     vscode.commands.registerCommand('aiWorkspace.assignClaudeSession', (item: TerminalItem) =>
       manager.assignClaudeSession(item.view.workspaceId, item.view.id),
     ),
+    vscode.commands.registerCommand('aiWorkspace.renameTerminal', (item: TerminalItem) =>
+      manager.renameTerminal(item.view.workspaceId, item.view.id),
+    ),
     // Menu chuột phải tab terminal có thể truyền hoặc không truyền `Terminal`;
     // manager tự fallback về `window.activeTerminal` nên cả hai trường hợp đều chạy.
     vscode.commands.registerCommand('aiWorkspace.addOpenTerminalToWorkspace', (terminal?: vscode.Terminal) =>

@@ -7,6 +7,40 @@ const stubRunner = (stdout: string, code = 0): CommandRunner => ({
   run: async () => ({ stdout, code }),
 });
 
+describe('buildLaunchOptions', () => {
+  const adapter = new ClaudeCodeAdapter('powershell', stubRunner('[]'), () => UUID);
+  const options = adapter.buildLaunchOptions('erp');
+
+  it('đủ 6 biến thể: 2 phiên mới (mint) + 4 tiếp tục/resume', () => {
+    expect(options).toHaveLength(6);
+    expect(options.filter((o) => o.sessionId !== undefined)).toHaveLength(2);
+  });
+
+  it('phiên mới mint id, quote id và tên peer, kèm cờ tùy chọn', () => {
+    expect(options[0]?.command).toBe(`claude --session-id '${UUID}' -n 'erp'`);
+    expect(options[0]?.sessionId).toBe(UUID);
+    expect(options[1]?.command).toBe(
+      `claude --session-id '${UUID}' -n 'erp' --dangerously-skip-permissions`,
+    );
+  });
+
+  it('biến thể tiếp tục/resume là lệnh thô đúng cờ, không sessionId', () => {
+    expect(options.map((o) => o.command)).toEqual(
+      expect.arrayContaining([
+        'claude -c',
+        'claude --dangerously-skip-permissions -c',
+        'claude -r',
+        'claude --dangerously-skip-permissions -r',
+      ]),
+    );
+    expect(options[2]?.sessionId).toBeUndefined();
+  });
+
+  it('mọi command đều được ownsCommand nhận (capture sẽ bỏ qua, không nhớ lệnh thô)', () => {
+    for (const o of options) expect(adapter.ownsCommand(o.command)).toBe(true);
+  });
+});
+
 describe('ownsCommand', () => {
   const adapter = new ClaudeCodeAdapter('powershell', stubRunner('[]'), () => UUID);
 
