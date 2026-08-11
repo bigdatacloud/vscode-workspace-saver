@@ -1,7 +1,7 @@
 {
   "name": "ai-workspace-session-manager",
   "displayName": "AI Workspace Session Manager",
-  "description": "Lưu và khôi phục workspace gồm nhiều terminal, git worktree và Claude Code session",
+  "description": "Manage global workspaces of terminals — auto-save state, restore terminals, and resume Claude Code sessions right where you left off",
   "version": "0.0.1",
   "publisher": "bigdatacloud",
   "license": "MIT",

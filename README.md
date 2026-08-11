@@ -1,134 +1,151 @@
 # AI Workspace Session Manager
 
-Extension VS Code quản lý **nhiều workspace toàn cục**, mỗi workspace giữ **nhiều terminal
-đang mở** — kể cả terminal bạn tự mở tay lẫn terminal chạy Claude Code. Không còn manifest
-sống trong repo: toàn bộ danh sách workspace được lưu ở global storage của extension
-(`workspaces.json`), tự động cập nhật trong suốt quá trình làm việc — không có nút Save thủ
-công. Mở VS Code lên, cây "AI Workspaces" hiện danh sách workspace đã có; bấm vào một
-workspace để kích hoạt nó, extension mở lại đúng các terminal của lần làm việc trước, resume
-đúng cuộc hội thoại Claude Code (nếu có) hoặc chạy lại `startCommand` đã khai báo.
+**English** | [Tiếng Việt](README.vi.md)
 
-## Yêu cầu
+A VS Code extension that manages **multiple global workspaces**, each holding **multiple open
+terminals** — both terminals you open by hand and terminals running Claude Code. No manifest
+lives inside your repo: the entire workspace list is stored in the extension's global storage
+(`workspaces.json`) and updates itself continuously while you work — there is no manual Save
+button. Open VS Code, and the "AI Workspaces" tree shows your existing workspaces; click one
+to activate it, and the extension reopens exactly the terminals from your last session,
+resuming the right Claude Code conversation (if any) or re-running the recorded
+`startCommand`.
 
-- VS Code ≥ 1.93 (dùng Terminal Shell Integration API để bắt cwd chính xác)
-- Shell Integration của VS Code hoạt động (mặc định có với PowerShell/bash/zsh) — cần cho
-  tự nhớ app đang chạy và cập nhật cwd chính xác
-- Claude Code ≥ 2.1 (lệnh `claude` có sẵn trong PATH) — chỉ cần cho terminal `kind: claude`
+## Requirements
 
-## Tính năng chính
+- VS Code ≥ 1.93 (uses the Terminal Shell Integration API for accurate cwd tracking)
+- VS Code Shell Integration working (on by default with PowerShell/bash/zsh) — needed for
+  auto-remembering running apps and accurate cwd updates
+- Claude Code ≥ 2.1 (the `claude` command available on PATH) — only needed for
+  `kind: claude` terminals
 
-- **Danh sách workspace toàn cục**: không gắn với một thư mục/repo cụ thể; một workspace có
-  thể chứa terminal trỏ tới nhiều repo/thư mục khác nhau.
-- **Adoption (nhận nuôi terminal)**: khi có workspace đang active,
-  - terminal bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> (không tên, không phải task runner) →
-    **tự động thêm ngay** vào workspace active, kèm toast có nút "Bỏ ra" nếu thêm nhầm;
-  - terminal do task runner/extension khác tạo (có tên riêng) → toast gợi ý, bấm "Thêm" mới
-    được thêm vào workspace;
-  - có thể thêm thủ công bất kỳ terminal đang mở nào qua menu chuột phải trên tab terminal
-    (**AI Workspace: Thêm terminal đang mở vào workspace**) — nếu chưa có workspace active,
-    lệnh hỏi chọn/tạo workspace (không tự kích hoạt nó).
-- **Auto-save**: mọi biến động (thêm/bỏ terminal, đổi tên, gắn session, đổi cwd,
-  kích hoạt/đóng workspace) tự lưu debounce 500ms xuống `workspaces.json`, ghi qua
-  temp+rename (atomic) — không có thao tác Save thủ công nào.
-- **Kích hoạt / chuyển workspace**: bấm một workspace chưa active → mở lại từng terminal đã
-  lưu. Nếu đang có workspace khác active, extension hỏi modal "Lưu và đóng X trước khi mở
-  Y?" trước khi chuyển; hủy modal thì không làm gì.
-- **Terminal Claude** (`kind: claude`): khi mở lại, gửi `claude --resume '<sessionId>' -n
-  '<claudeName>'`; nếu entry chưa từng có sessionId (mới tạo), extension mint uuid mới, gửi
-  `--session-id`, và lưu ngay lập tức xuống đĩa TRƯỚC khi gửi lệnh (chống mồ côi nếu VS Code
-  tắt đột ngột).
-- **Terminal thường** (`kind: plain`): track vỏ (tên + cwd) và **tự nhớ app đang chạy** —
-  extension nghe sự kiện Shell Integration: lệnh nào chạy từ 15 giây trở lên (dev server, ssh,
-  watcher…) tự trở thành `startCommand`, ghi xuống đĩa ngay lúc lệnh *bắt đầu* (VS Code chết
-  giữa chừng vẫn không mất); lệnh vặt (`ls`, `git status`…) tự loại. Lần mở lại workspace sẽ
-  chạy lại đúng app đó — không cần khai báo gì. Vẫn có thể đặt/sửa tay qua **AI Workspace:
-  Đặt lệnh khởi động cho terminal**. Khi mở lại, nếu `startCommand` chưa được tin tưởng,
-  extension hiện modal liệt kê nguyên văn lệnh, chọn "Tin và chạy" hoặc "Chỉ mở shell". Đổi
-  `startCommand` (kể cả do tự bắt) làm mất trust cũ (vân tay đổi) — lần mở kế tiếp hỏi trust lại.
-- **Bắt Claude session tự động**: mỗi ~3 giây, extension đối chiếu cwd của các terminal đang
-  mở trong workspace active với `claude agents --json` (chỉ hàng `kind: interactive`). Khớp
-  duy nhất → tự gắn `claudeSessionId`/tên peer, terminal `plain` "thăng cấp" thành `claude`.
-  Nhiều terminal cùng cwd/nhiều session cùng cwd → extension **tra phả hệ tiến trình** (pid
-  của session đi ngược lên tổ tiên phải gặp pid shell của đúng một terminal) để phân giải
-  tất định; chỉ phần không tra được mới hiện QuickPick, hỏi một lần cho mỗi cụm cwd (không
-  lặp lại mỗi chu kỳ poll nếu bạn bỏ qua); riêng lúc **đóng workspace**, extension quét bắt
-  lần cuối và hỏi lại cả những cụm bạn đã bỏ qua — sau khi đóng là hết đường bắt. Máy không
-  tự bắt được thì gắn tay bằng menu **"Gắn session Claude vào terminal"** trên terminal item
-  trong cây.
-- **Một workspace active mỗi cửa sổ VS Code**: khóa best-effort theo `activeWindowId`; mở
-  cùng một workspace ở cửa sổ thứ hai sẽ bị cảnh báo, có nút "Vẫn mở" để ghi đè.
-- **Đóng terminal không xóa khỏi workspace**: đóng tay một terminal (bấm X hoặc `exit`) chỉ
-  chuyển entry sang trạng thái "chưa mở" trong cây — workspace vẫn nhớ nó, mở lại workspace
-  sẽ mở lại terminal đó. Muốn loại hẳn khỏi workspace, dùng **AI Workspace: Bỏ terminal khỏi
-  workspace**.
-- **Xóa workspace không đóng terminal thật**: xóa một workspace khỏi danh sách chỉ quên nó đi
-  — các terminal thật đang mở của nó vẫn chạy nguyên, không bị đóng.
+## Key features
 
-## Các lệnh
+- **Global workspace list**: not tied to a specific folder/repo; one workspace can hold
+  terminals pointing at many different repos/folders.
+- **Adoption**: while a workspace is active,
+  - a terminal you open yourself with <kbd>Ctrl+Shift+`</kbd> (unnamed, not a task runner) →
+    **added automatically** to the active workspace, with a toast offering "Remove" in case
+    it was added by mistake;
+  - a terminal created by a task runner/another extension (custom name) → a toast suggests
+    adding it; it only joins the workspace if you click "Add";
+  - any open terminal can be added manually via the terminal tab's right-click menu
+    (**AI Workspace: Add open terminal to workspace**) — if no workspace is active, the
+    command asks you to pick/create one (without activating it).
+- **Auto-save**: every change (add/remove terminal, rename, session attach, cwd change,
+  workspace activate/close) is saved with a 500 ms debounce to `workspaces.json`, written
+  via temp+rename (atomic) — there is no manual Save action anywhere.
+- **Activate / switch workspaces**: click an inactive workspace → each saved terminal is
+  reopened. If another workspace is currently active, the extension shows a modal
+  "Save and close X before opening Y?" before switching; cancelling does nothing.
+- **Claude terminals** (`kind: claude`): on reopen the extension sends
+  `claude --resume '<sessionId>' -n '<claudeName>'`; if the entry never had a sessionId
+  (freshly created), the extension mints a new uuid, sends `--session-id`, and flushes to
+  disk BEFORE sending the command (no orphaned sessions if VS Code dies mid-launch).
+- **Plain terminals** (`kind: plain`): tracks the shell (name + cwd) and **auto-remembers
+  the running app** — the extension listens to Shell Integration events: any command that
+  runs for 15 seconds or more (dev server, ssh, watcher…) automatically becomes the
+  `startCommand`, written to disk the moment the command *starts* (nothing is lost if
+  VS Code dies mid-run); trivial commands (`ls`, `git status`…) are filtered out. The next
+  workspace activation re-runs exactly that app — no explicit declaration needed. You can
+  still set/edit it manually via **AI Workspace: Set start command for terminal**. On
+  reopen, if the `startCommand` is not yet trusted, the extension shows a modal quoting the
+  command verbatim, with "Trust and run" or "Open shell only". Changing the `startCommand`
+  (including via auto-capture) invalidates the old trust (fingerprint changes) — the next
+  activation asks for trust again.
+- **Automatic Claude session capture**: every ~3 seconds the extension matches the cwd of
+  open terminals in the active workspace against `claude agents --json` (only
+  `kind: interactive` rows). A unique match → `claudeSessionId`/peer name attached
+  automatically, and the `plain` terminal is "promoted" to `claude`. Multiple terminals with
+  the same cwd / multiple sessions in the same cwd → the extension **walks the process
+  ancestry** (the session's pid, walked up its ancestor chain, must reach exactly one
+  terminal's shell pid) to resolve deterministically; only what remains unresolvable shows a
+  QuickPick, asked once per cwd group (not re-asked every poll cycle if you dismiss it).
+  When you **close a workspace**, the extension runs one final capture sweep and re-asks
+  even the groups you previously dismissed — after closing there is no way left to capture.
+  If the machine can't resolve it, attach manually via **"Assign Claude session to
+  terminal"** on the terminal item in the tree.
+- **One active workspace per VS Code window**: best-effort lock via `activeWindowId`;
+  opening the same workspace in a second window shows a warning with an "Open anyway"
+  override.
+- **Closing a terminal does not remove it from the workspace**: closing a terminal by hand
+  (the X button or `exit`) only moves the entry to the "not open" state in the tree — the
+  workspace still remembers it, and reactivating the workspace reopens it. To remove it for
+  good, use **AI Workspace: Remove terminal from workspace**.
+- **Deleting a workspace does not close real terminals**: deleting a workspace from the list
+  only forgets it — its real open terminals keep running untouched.
 
-| Lệnh | Command ID | Ngữ cảnh |
+## Commands
+
+| Command | Command ID | Context |
 |---|---|---|
-| AI Workspace: Tạo workspace mới | `aiWorkspace.createWorkspace` | Palette / nút "+" trên view |
-| AI Workspace: Kích hoạt workspace | `aiWorkspace.activateWorkspace` | Click item / context menu workspace chưa active |
-| AI Workspace: Đóng workspace đang active | `aiWorkspace.closeActiveWorkspace` | Palette / context menu workspace active |
-| AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
-| AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
-| AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — chỉ hỏi MỘT đường dẫn, rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
-| AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
-| AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
-| AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal |
-| AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây |
-| AI Workspace: Thêm terminal đang mở vào workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Menu chuột phải tab terminal / palette |
-| AI Workspace: Gắn session Claude vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây |
+| AI Workspace: Create new workspace | `aiWorkspace.createWorkspace` | Palette / "+" button on the view |
+| AI Workspace: Activate workspace | `aiWorkspace.activateWorkspace` | Click item / context menu of an inactive workspace |
+| AI Workspace: Close active workspace | `aiWorkspace.closeActiveWorkspace` | Palette / context menu of the active workspace |
+| AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
+| AI Workspace: Delete workspace | `aiWorkspace.deleteWorkspace` | Workspace context menu (with confirmation modal) |
+| AI Workspace: New Claude terminal | `aiWorkspace.newClaudeTerminal` | Palette / workspace context menu — asks for ONE path only, then arrow-key through command variants (new session / `-c` / `-r`, each with a `--dangerously-skip-permissions` twin); the terminal opens there immediately, named after the folder |
+| AI Workspace: Rename terminal | `aiWorkspace.renameTerminal` | Terminal item context menu — or use VS Code's built-in Rename on the terminal tab; the name syncs back to the tree within ~3 seconds |
+| AI Workspace: Set start command for terminal | `aiWorkspace.setStartCommand` | `plain` terminal context menu |
+| AI Workspace: Remove terminal from workspace | `aiWorkspace.removeTerminal` | Terminal context menu |
+| AI Workspace: Open terminal | `aiWorkspace.focusTerminal` | Click a terminal item in the tree |
+| AI Workspace: Add open terminal to workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Terminal tab right-click menu / palette |
+| AI Workspace: Assign Claude session to terminal | `aiWorkspace.assignClaudeSession` | Terminal item context menu in the tree |
 
-Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
-danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
-các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / đang chờ / đang mở / chưa
-mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển thị (dừng poll khi view bị ẩn).
+The "AI Workspaces" tree (in Explorer, view id `aiWorkspace.workspaces`) has 2 levels:
+level 1 is the workspace list (sorted by most recently active, the active workspace gets its
+own badge), level 2 is each workspace's terminals with a status label (running / idle /
+waiting / open / not open / error), refreshed every ~3 seconds while the view is visible
+(polling stops when the view is hidden).
 
-## Nguyên tắc an toàn
+## Safety principles
 
-- Không tự chạy `startCommand` nào chưa được xác nhận tin tưởng (trust theo vân tay nội dung
-  lệnh, đổi lệnh là mất trust cũ).
-- Không tự đóng terminal thật khi xóa workspace hay khi gỡ terminal khỏi workspace.
-- `workspaces.json` hỏng/parse lỗi → sao lưu sang `workspaces.json.bak-<epoch>` rồi khởi tạo
-  lại danh sách rỗng, kèm cảnh báo một lần — không bao giờ âm thầm vứt dữ liệu hỏng.
-- Terminal có `--resume` id không còn hội thoại: extension không tự xử lý, terminal vẫn mở và
-  lỗi hiển thị trực tiếp trong terminal đó; entry vẫn giữ nguyên id để có thể sửa tay/thử lại.
+- Never runs a `startCommand` that has not been explicitly trusted (trust is fingerprinted
+  on the command's content; changing the command invalidates the old trust).
+- Never closes real terminals when deleting a workspace or removing a terminal from one.
+- A corrupt/unparseable `workspaces.json` → backed up to `workspaces.json.bak-<epoch>` and
+  the list is re-initialised empty, with a one-time warning — corrupt data is never silently
+  discarded.
+- A terminal whose `--resume` id no longer maps to a conversation: the extension does not
+  intervene; the terminal still opens and the error shows directly inside it; the entry
+  keeps its id so you can fix it by hand / retry.
 
-## Giới hạn đã biết
+## Known limitations
 
-- Không có migration từ dữ liệu MVP (manifest `workspace.yaml` cũ) — v2 là mô hình dữ liệu
-  hoàn toàn khác (global storage, không phải file trong repo).
-- Không restore được nội dung/lịch sử shell — chỉ resume được hội thoại Claude Code qua
-  `--resume`, terminal thường chỉ mở lại đúng cwd rồi chạy `startCommand` (nếu có).
-- Không tự kích hoạt workspace nào khi mở VS Code — cây chỉ hiện danh sách, bạn phải bấm chọn.
-- Khóa "một workspace active mỗi cửa sổ" chỉ best-effort (không heartbeat, không lock cứng);
-  đóng cửa sổ đột ngột có thể để lại khóa cũ — cửa sổ khác dùng nút "Vẫn mở" để thoát tình
-  huống đó.
-- Hai entry ở hai workspace khác nhau có thể cùng trỏ về một `claudeSessionId`: việc đối chiếu
-  session chỉ nhìn workspace đang active, nên nó không biết session đó đã bị workspace khác
-  nhận. Kích hoạt cả hai workspace sẽ `--resume` cùng một hội thoại hai lần.
-- Nhiều cửa sổ VS Code: mỗi lần lưu là gộp theo id, và **mỗi cửa sổ chỉ ghi đè những workspace
-  mà chính nó đã đụng tới** (tạo, đổi tên, kích hoạt, thêm/bỏ terminal…). Workspace nó không
-  đụng tới sẽ đi theo bản mới nhất trên đĩa, nên việc cửa sổ khác đang làm không bị ghi đè.
-  Trạng thái của mỗi workspace vì thế là của cửa sổ cuối cùng đụng tới nó.
-- Xóa một workspace ở cửa sổ này có thể bị cửa sổ khác — đang giữ workspace đó trong RAM và
-  đã từng đụng tới nó — ghi sống lại ở lần lưu sau của nó.
-- Không quản lý workspace từ nhiều máy, không chia sẻ workspace qua git.
+- No migration from the MVP data model (the old in-repo `workspace.yaml` manifest) — v2 is a
+  completely different data model (global storage, not a file in the repo).
+- Shell content/history is not restored — only Claude Code conversations resume via
+  `--resume`; plain terminals just reopen at the right cwd and run the `startCommand`
+  (if any).
+- No workspace auto-activates when VS Code opens — the tree only shows the list; you pick.
+- The "one active workspace per window" lock is best-effort only (no heartbeat, no hard
+  lock); killing a window abruptly can leave a stale lock — the other window uses "Open
+  anyway" to get out of that state.
+- Two entries in two different workspaces can point at the same `claudeSessionId`: session
+  matching only looks at the active workspace, so it can't know a session was already
+  claimed by another workspace. Activating both workspaces will `--resume` the same
+  conversation twice.
+- Multiple VS Code windows: every save merges by id, and **each window only overwrites the
+  workspaces it has touched itself** (created, renamed, activated, added/removed
+  terminals…). Untouched workspaces follow the latest copy on disk, so another window's
+  ongoing work is not clobbered. Each workspace's state is therefore that of the last window
+  to touch it.
+- Deleting a workspace in one window can be undone by another window that still holds it in
+  RAM and has touched it — its next save may resurrect it.
+- No multi-machine workspace management, no workspace sharing via git.
 
-## Phát triển
+## Development
 
 ```bash
 npm install
-npm test              # 95 unit/integration test (vitest) — pure core, không đụng vscode API
-npm run test:vscode   # 6 smoke test chạy trong Extension Host thật
+npm test              # 116 unit/integration tests (vitest) — pure core, no vscode API
+npm run test:vscode   # 6 smoke tests running inside a real Extension Host
 npm run typecheck     # tsc --noEmit
-npm run build         # bundle bằng esbuild ra dist/extension.js
+npm run build         # bundle with esbuild into dist/extension.js
 ```
 
-Nhấn <kbd>F5</kbd> trong VS Code (dùng cấu hình "Chạy Extension" có sẵn trong
-`.vscode/launch.json`) để mở một cửa sổ Extension Host với extension đang chạy ở chế độ
-debug — dùng cửa sổ đó để chạy checklist kiểm thử tay ở `docs/manual-verification.md`, vì
-phần lớn các luồng có hộp thoại (modal, toast, QuickPick) không thể kiểm thử tự động trong
-Extension Host chạy headless.
+Press <kbd>F5</kbd> in VS Code (using the "Run Extension" configuration in
+`.vscode/launch.json`) to open an Extension Host window with the extension running in debug
+mode — use that window to run the manual test checklist in `docs/manual-verification.md`,
+since most dialog-driven flows (modals, toasts, QuickPicks) cannot be tested automatically
+in a headless Extension Host.
