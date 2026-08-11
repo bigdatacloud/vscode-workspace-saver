@@ -82,6 +82,7 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Create new workspace | `aiWorkspace.createWorkspace` | Palette / "+" button on the view |
 | AI Workspace: Activate workspace | `aiWorkspace.activateWorkspace` | Click item / context menu of an inactive workspace |
 | AI Workspace: Close active workspace | `aiWorkspace.closeActiveWorkspace` | Palette / context menu of the active workspace |
+| AI Workspace: Workspace settings | `aiWorkspace.workspaceSettings` | Workspace context menu — per-workspace terminal location (follow global / editor area / bottom panel) |
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
 | AI Workspace: Delete workspace | `aiWorkspace.deleteWorkspace` | Workspace context menu (with confirmation modal) |
 | AI Workspace: New Claude terminal | `aiWorkspace.newClaudeTerminal` | Palette / workspace context menu — asks for ONE path only, then arrow-key through command variants (new session / `-c` / `-r`, each with a `--dangerously-skip-permissions` twin); the terminal opens there immediately, named after the folder |
@@ -101,8 +102,11 @@ waiting / open / not open / error), refreshed every ~3 seconds while the view is
 
 **Terminal location**: every terminal the extension creates or restores opens as a **tab in
 the editor area** by default (setting `aiWorkspace.terminalLocation`, switch to `panel` to
-get the classic bottom panel). For terminals you open yourself with <kbd>Ctrl+Shift+`</kbd>,
-use VS Code's own setting `terminal.integrated.defaultLocation: "editor"`.
+get the classic bottom panel). Each workspace can override this via **AI Workspace:
+Workspace settings** in its context menu — the choice is saved with the workspace and
+applies to both new and restored terminals. For terminals you open yourself with
+<kbd>Ctrl+Shift+`</kbd>, use VS Code's own setting
+`terminal.integrated.defaultLocation: "editor"`.
 
 ## Safety principles
 

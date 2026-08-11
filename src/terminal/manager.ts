@@ -8,6 +8,8 @@ export interface CreateTerminalOptions {
   name: string;
   cwd: string;
   env?: Record<string, string>;
+  /** Đè setting chung `aiWorkspace.terminalLocation` — dùng cho cài đặt riêng từng workspace. */
+  location?: 'editor' | 'panel';
 }
 
 export class TerminalManager {
@@ -34,9 +36,9 @@ export class TerminalManager {
       this.terminals.delete(key);
       cu.dispose();
     }
-    const noiMo = vscode.workspace
-      .getConfiguration('aiWorkspace')
-      .get<string>('terminalLocation', 'editor');
+    const noiMo =
+      options.location ??
+      vscode.workspace.getConfiguration('aiWorkspace').get<string>('terminalLocation', 'editor');
     const terminal = vscode.window.createTerminal({
       name: options.name,
       cwd: options.cwd,

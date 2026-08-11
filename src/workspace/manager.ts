@@ -402,7 +402,11 @@ export class WorkspaceManager implements vscode.Disposable {
     const trustKey = `ws:${ws.id}`;
     return {
       createTerminal: (entry) => {
-        const handle = this.terminals.create(entry.id, { name: entry.name, cwd: entry.cwd });
+        const handle = this.terminals.create(entry.id, {
+          name: entry.name,
+          cwd: entry.cwd,
+          location: ws.terminalLocation,
+        });
         this.ghiNhanShellPid(entry.id);
         return handle;
       },
@@ -575,7 +579,11 @@ export class WorkspaceManager implements vscode.Disposable {
     // Id mint phải nằm trên đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại).
     this.flush();
 
-    const handle = this.terminals.create(entry.id, { name: entry.name, cwd });
+    const handle = this.terminals.create(entry.id, {
+      name: entry.name,
+      cwd,
+      location: wsNow.terminalLocation,
+    });
     this.ghiNhanShellPid(entry.id);
     handle.sendText(luaChon.command);
     this.onChanged.fire();
@@ -611,9 +619,57 @@ export class WorkspaceManager implements vscode.Disposable {
     upsertTerminal(wsNow, entry);
     this.scheduleSave();
 
-    this.terminals.create(entry.id, { name: entry.name, cwd });
+    this.terminals.create(entry.id, {
+      name: entry.name,
+      cwd,
+      location: wsNow.terminalLocation,
+    });
     this.ghiNhanShellPid(entry.id);
     this.onChanged.fire();
+  }
+
+  /**
+   * Cài đặt riêng của workspace — hiện có một mục: vị trí mở terminal (đè setting chung
+   * `aiWorkspace.terminalLocation`). Áp cho terminal tạo mới lẫn khôi phục của workspace này.
+   */
+  async workspaceSettings(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+
+    const setingChung = vscode.workspace
+      .getConfiguration('aiWorkspace')
+      .get<string>('terminalLocation', 'editor');
+    const hienTai = ws.terminalLocation;
+    const danhDau = (v: 'editor' | 'panel' | undefined) => (v === hienTai ? ' — hiện tại' : '');
+    const luaChon = await vscode.window.showQuickPick(
+      [
+        {
+          label: `Theo setting chung (${setingChung === 'panel' ? 'panel dưới' : 'editor area'})`,
+          description: `aiWorkspace.terminalLocation${danhDau(undefined)}`,
+          value: undefined as 'editor' | 'panel' | undefined,
+        },
+        {
+          label: 'Editor area',
+          description: `tab trong vùng chính${danhDau('editor')}`,
+          value: 'editor' as const,
+        },
+        {
+          label: 'Panel dưới',
+          description: `panel terminal cổ điển${danhDau('panel')}`,
+          value: 'panel' as const,
+        },
+      ],
+      { placeHolder: `Vị trí mở terminal của workspace "${ws.name}"` },
+    );
+    if (!luaChon) return;
+
+    // Lấy lại object sau QuickPick rồi mới touch (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) return;
+    this.touch(wsNow.id);
+    if (luaChon.value === undefined) delete wsNow.terminalLocation;
+    else wsNow.terminalLocation = luaChon.value;
+    this.scheduleSave();
   }
 
   /** Đổi tên hiển thị của terminal trong workspace (và widget đang mở, để name-sync không kéo tên cũ về). */

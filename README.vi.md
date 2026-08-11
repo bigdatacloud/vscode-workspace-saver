@@ -73,6 +73,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Tạo workspace mới | `aiWorkspace.createWorkspace` | Palette / nút "+" trên view |
 | AI Workspace: Kích hoạt workspace | `aiWorkspace.activateWorkspace` | Click item / context menu workspace chưa active |
 | AI Workspace: Đóng workspace đang active | `aiWorkspace.closeActiveWorkspace` | Palette / context menu workspace active |
+| AI Workspace: Cài đặt workspace | `aiWorkspace.workspaceSettings` | Context menu workspace — vị trí mở terminal riêng từng workspace (theo setting chung / editor area / panel dưới) |
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — chỉ hỏi MỘT đường dẫn, rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
@@ -91,7 +92,9 @@ mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển thị (d�
 
 **Vị trí mở terminal**: mọi terminal do extension tạo/khôi phục mặc định mở thành **tab trong
 khu editor** (setting `aiWorkspace.terminalLocation`, đổi sang `panel` nếu muốn panel dưới
-như cũ). Terminal bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn của VS Code
+như cũ). Từng workspace có thể đè riêng qua **AI Workspace: Cài đặt workspace** trong menu
+chuột phải — lựa chọn lưu theo workspace, áp cho cả terminal tạo mới lẫn khôi phục. Terminal
+bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn của VS Code
 `terminal.integrated.defaultLocation: "editor"`.
 
 ## Nguyên tắc an toàn
