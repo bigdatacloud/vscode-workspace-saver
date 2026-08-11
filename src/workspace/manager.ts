@@ -6,7 +6,10 @@ import { ZodError } from 'zod';
 
 import { classifyTerminal, pickCwd } from '../adopt/filter';
 import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
+import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
+import { docBangTienTrinh } from '../proc/real';
+import { timTerminalTheoToTien } from '../proc/tree';
 import { realGitRunner } from '../git/exec';
 import { GitClient } from '../git/worktree';
 import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
@@ -82,6 +85,10 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly errorIds = new Set<string>();
   /** Nhóm cwd đã hỏi QuickPick trong phiên này — không hỏi lại dù người dùng bỏ qua. */
   private readonly askedCwds = new Set<string>();
+  /** PID shell của từng terminal đang track (terminalId → pid) — để tra phả hệ tiến trình. */
+  private readonly shellPids = new Map<string, number>();
+  /** Lệnh đang chạy dở trong từng terminal (terminalId → lệnh) — luật bắt startCommand. */
+  private readonly pendingCommands = new Map<string, LenhDangCho>();
   /** Bia mộ: workspace cửa sổ này đã xóa, không được merge sống lại từ đĩa. */
   private readonly deletedIds = new Set<string>();
   /**
@@ -147,8 +154,10 @@ export class WorkspaceManager implements vscode.Disposable {
     }
 
     this.subscriptions.push(
-      this.terminals.onClosed(() => {
+      this.terminals.onClosed((key) => {
         // V7: đóng terminal bằng tay KHÔNG gỡ entry khỏi workspace, chỉ đổi trạng thái hiển thị.
+        this.shellPids.delete(key);
+        this.pendingCommands.delete(key);
         this.onChanged.fire();
       }),
       vscode.window.onDidOpenTerminal((terminal) => {
@@ -156,6 +165,13 @@ export class WorkspaceManager implements vscode.Disposable {
       }),
       vscode.window.onDidChangeTerminalShellIntegration((event) => {
         this.onShellIntegrationChanged(event);
+      }),
+      // Bắt "app đang chạy" để lần sau tự mở lại — không cần người dùng khai báo gì.
+      vscode.window.onDidStartTerminalShellExecution((event) => {
+        this.onShellExecutionStart(event);
+      }),
+      vscode.window.onDidEndTerminalShellExecution((event) => {
+        this.onShellExecutionEnd(event);
       }),
     );
   }
@@ -383,8 +399,11 @@ export class WorkspaceManager implements vscode.Disposable {
   private buildPorts(ws: Workspace): ActivatePorts {
     const trustKey = `ws:${ws.id}`;
     return {
-      createTerminal: (entry) =>
-        this.terminals.create(entry.id, { name: entry.name, cwd: entry.cwd }),
+      createTerminal: (entry) => {
+        const handle = this.terminals.create(entry.id, { name: entry.name, cwd: entry.cwd });
+        this.ghiNhanShellPid(entry.id);
+        return handle;
+      },
       agent: this.agent,
       fsExists: (p) => nodeFs.existsSync(p),
       isTrusted: (commands) => this.trust.isTrusted(trustKey, commands),
@@ -700,6 +719,68 @@ export class WorkspaceManager implements vscode.Disposable {
     if (answer === 'Bỏ ra') await this.removeTerminal(ws.id, entry.id);
   }
 
+  /** Ghi PID shell của terminal (bất đồng bộ) để tra phả hệ tiến trình khi match session. */
+  private ghiNhanShellPid(terminalId: string): void {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal) return;
+    void terminal.processId.then((pid) => {
+      if (typeof pid === 'number' && this.terminals.has(terminalId)) {
+        this.shellPids.set(terminalId, pid);
+      }
+    });
+  }
+
+  /** Workspace đang chứa terminal này (terminal có thể thuộc workspace không active). */
+  private timWorkspaceChuaTerminal(terminalId: string): Workspace | undefined {
+    return this.store.workspaces.find((ws) => ws.terminals.some((t) => t.id === terminalId));
+  }
+
+  // ------------------------------------------------- bắt app đang chạy
+
+  private onShellExecutionStart(event: vscode.TerminalShellExecutionStartEvent): void {
+    const key = this.terminals.ownsTerminal(event.terminal);
+    if (key === null) return;
+    const ws = this.timWorkspaceChuaTerminal(key);
+    if (!ws) return;
+    const entry = ws.terminals.find((t) => t.id === key);
+    if (!entry) return;
+    const lenh = event.execution.commandLine.value;
+    if (!nenBatLenh(entry.kind, this.agent.ownsCommand(lenh), lenh)) return;
+
+    this.pendingCommands.set(key, {
+      lenh,
+      luuTruoc: entry.startCommand,
+      batDauLuc: Date.now(),
+    });
+    // Ghi NGAY lúc lệnh bắt đầu: VS Code chết giữa chừng thì app đang chạy vẫn nằm trên đĩa
+    // và lần mở lại workspace sẽ chạy lại nó. Lệnh hóa ra vặt thì trả lại ở onShellExecutionEnd.
+    entry.startCommand = lenh;
+    this.touch(ws.id);
+    this.scheduleSave();
+    this.onChanged.fire();
+  }
+
+  private onShellExecutionEnd(event: vscode.TerminalShellExecutionEndEvent): void {
+    const key = this.terminals.ownsTerminal(event.terminal);
+    if (key === null) return;
+    const p = this.pendingCommands.get(key);
+    if (!p || p.lenh !== event.execution.commandLine.value) return;
+    this.pendingCommands.delete(key);
+
+    const ws = this.timWorkspaceChuaTerminal(key);
+    if (!ws) return;
+    const entry = ws.terminals.find((t) => t.id === key);
+    // Entry đã thăng cấp claude trong lúc lệnh chạy → startCommand không còn ý nghĩa, để yên.
+    if (!entry || entry.kind !== 'plain') return;
+
+    const gia = khiKetThucLenh(p, Date.now());
+    if (gia === undefined) delete entry.startCommand;
+    else entry.startCommand = gia;
+    this.touch(ws.id);
+    this.scheduleSave();
+    this.onChanged.fire();
+  }
+
   private adoptInto(ws: Workspace, terminal: vscode.Terminal): TerminalEntry | null {
     const cwd = pickCwd(
       nonEmpty(terminal.shellIntegration?.cwd?.fsPath),
@@ -714,6 +795,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry: TerminalEntry = { id: randomUUID(), name, cwd, kind: 'plain' };
     upsertTerminal(ws, entry);
     this.terminals.adopt(entry.id, terminal);
+    this.ghiNhanShellPid(entry.id);
     this.touch(ws.id);
     this.scheduleSave();
     this.onChanged.fire();
@@ -896,9 +978,40 @@ export class WorkspaceManager implements vscode.Disposable {
     for (const pair of result.matched) {
       if (this.claimSession(ws.id, pair.terminalId, pair.session)) changed = true;
     }
+
+    // Nhóm mơ hồ (nhiều terminal/nhiều session cùng cwd): thử phân giải TẤT ĐỊNH bằng phả
+    // hệ tiến trình trước — pid của session đi ngược lên tổ tiên phải gặp pid shell của
+    // đúng một terminal. Chỉ phần không tra được mới rơi xuống QuickPick hỏi người dùng.
+    if (result.ambiguous.length > 0) {
+      const bangTienTrinh = await docBangTienTrinh();
+      for (const group of result.ambiguous) {
+        const shellCuaNhom = new Map<number, string>();
+        for (const tid of group.terminalIds) {
+          const pid = this.shellPids.get(tid);
+          if (pid !== undefined) shellCuaNhom.set(pid, tid);
+        }
+        const chuaGan: RunningSession[] = [];
+        const terminalDaGan = new Set<string>();
+        for (const session of group.sessions) {
+          const tid =
+            session.pid !== null
+              ? timTerminalTheoToTien(session.pid, bangTienTrinh, shellCuaNhom)
+              : null;
+          if (tid !== null && !terminalDaGan.has(tid) && this.claimSession(ws.id, tid, session)) {
+            terminalDaGan.add(tid);
+            changed = true;
+          } else {
+            chuaGan.push(session);
+          }
+        }
+        group.sessions = chuaGan;
+        group.terminalIds = group.terminalIds.filter((t) => !terminalDaGan.has(t));
+      }
+    }
     if (changed) this.scheduleSave();
 
     for (const group of result.ambiguous) {
+      if (group.sessions.length === 0 || group.terminalIds.length === 0) continue;
       const key = normalizeCwd(group.cwd);
       if (this.askedCwds.has(key)) continue;
       // Đánh dấu TRƯỚC khi hỏi: bỏ qua (Esc) cũng tính là đã hỏi, không spam mỗi 3 giây.

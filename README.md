@@ -36,19 +36,24 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   '<claudeName>'`; nếu entry chưa từng có sessionId (mới tạo), extension mint uuid mới, gửi
   `--session-id`, và lưu ngay lập tức xuống đĩa TRƯỚC khi gửi lệnh (chống mồ côi nếu VS Code
   tắt đột ngột).
-- **Terminal thường** (`kind: plain`): chỉ track vỏ (tên + cwd); có thể khai báo
-  `startCommand` tùy chọn qua **AI Workspace: Đặt lệnh khởi động cho terminal**. Khi mở lại,
-  nếu có `startCommand` chưa được tin tưởng, extension hiện modal liệt kê nguyên văn lệnh,
-  chọn "Tin và chạy" hoặc "Chỉ mở shell". Đổi `startCommand` sẽ làm mất trust cũ (vân tay đổi)
-  — lần mở kế tiếp phải hỏi trust lại.
+- **Terminal thường** (`kind: plain`): track vỏ (tên + cwd) và **tự nhớ app đang chạy** —
+  extension nghe sự kiện Shell Integration: lệnh nào chạy từ 15 giây trở lên (dev server, ssh,
+  watcher…) tự trở thành `startCommand`, ghi xuống đĩa ngay lúc lệnh *bắt đầu* (VS Code chết
+  giữa chừng vẫn không mất); lệnh vặt (`ls`, `git status`…) tự loại. Lần mở lại workspace sẽ
+  chạy lại đúng app đó — không cần khai báo gì. Vẫn có thể đặt/sửa tay qua **AI Workspace:
+  Đặt lệnh khởi động cho terminal**. Khi mở lại, nếu `startCommand` chưa được tin tưởng,
+  extension hiện modal liệt kê nguyên văn lệnh, chọn "Tin và chạy" hoặc "Chỉ mở shell". Đổi
+  `startCommand` (kể cả do tự bắt) làm mất trust cũ (vân tay đổi) — lần mở kế tiếp hỏi trust lại.
 - **Bắt Claude session tự động**: mỗi ~3 giây, extension đối chiếu cwd của các terminal đang
   mở trong workspace active với `claude agents --json` (chỉ hàng `kind: interactive`). Khớp
   duy nhất → tự gắn `claudeSessionId`/tên peer, terminal `plain` "thăng cấp" thành `claude`.
-  Nhiều terminal cùng cwd/nhiều session cùng cwd → hiện QuickPick hỏi một lần cho mỗi cụm cwd
-  (không hỏi lặp lại mỗi chu kỳ poll nếu bạn bỏ qua); riêng lúc **đóng workspace**, extension
-  quét bắt lần cuối và hỏi lại cả những cụm bạn đã bỏ qua — sau khi đóng là hết đường bắt.
-  Máy không tự bắt được thì gắn tay bằng menu **"Gắn session Claude vào terminal"** trên
-  terminal item trong cây.
+  Nhiều terminal cùng cwd/nhiều session cùng cwd → extension **tra phả hệ tiến trình** (pid
+  của session đi ngược lên tổ tiên phải gặp pid shell của đúng một terminal) để phân giải
+  tất định; chỉ phần không tra được mới hiện QuickPick, hỏi một lần cho mỗi cụm cwd (không
+  lặp lại mỗi chu kỳ poll nếu bạn bỏ qua); riêng lúc **đóng workspace**, extension quét bắt
+  lần cuối và hỏi lại cả những cụm bạn đã bỏ qua — sau khi đóng là hết đường bắt. Máy không
+  tự bắt được thì gắn tay bằng menu **"Gắn session Claude vào terminal"** trên terminal item
+  trong cây.
 - **Một workspace active mỗi cửa sổ VS Code**: khóa best-effort theo `activeWindowId`; mở
   cùng một workspace ở cửa sổ thứ hai sẽ bị cảnh báo, có nút "Vẫn mở" để ghi đè.
 - **Đóng terminal không xóa khỏi workspace**: đóng tay một terminal (bấm X hoặc `exit`) chỉ

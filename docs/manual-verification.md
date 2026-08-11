@@ -125,6 +125,18 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       workspace resume đúng hội thoại
 - [ ] Gắn tay khi không có session nào đang chạy → thông báo "Không có session Claude nào
       đang chạy (chưa bị gắn) để chọn.", không có QuickPick rỗng
+- [ ] **Phân giải mơ hồ bằng phả hệ PID**: HAI terminal của workspace active cùng một cwd,
+      mỗi terminal tự gõ `claude` chạy một session riêng → trong vài chu kỳ poll, CẢ HAI
+      entry tự gắn đúng session của mình mà KHÔNG hiện QuickPick nào (pid session đối chiếu
+      ngược lên pid shell)
+- [ ] **Tự nhớ app đang chạy**: trong terminal `plain` của workspace, chạy `npm run dev`
+      (hoặc lệnh sống >15 giây bất kỳ) → cây đổi mô tả có lệnh khởi động; đóng workspace, mở
+      lại → terminal mở ra và (sau khi "Tin và chạy") tự chạy lại đúng lệnh đó — KHÔNG cần
+      đặt tay bằng menu
+- [ ] Lệnh vặt không bị nhớ nhầm: sau khi dừng dev server, chạy `git status` (kết thúc ngay)
+      → lệnh khởi động vẫn là `npm run dev`, không bị `git status` chiếm chỗ
+- [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
+      riêng của Claude xử lý, không chạy lại lệnh thô)
 
 ## Vòng đời terminal thủ công
 - [ ] Đóng một terminal bằng tay (bấm dấu X hoặc gõ `exit`) trong workspace active → entry đó

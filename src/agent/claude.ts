@@ -47,4 +47,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     if (r.code !== 0) return [];
     return parseAgentsJson(r.stdout);
   }
+
+  ownsCommand(command: string): boolean {
+    const dau = command.trimStart();
+    return dau === CLAUDE_BIN || dau.startsWith(`${CLAUDE_BIN} `);
+  }
 }

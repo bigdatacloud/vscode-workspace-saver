@@ -7,6 +7,22 @@ const stubRunner = (stdout: string, code = 0): CommandRunner => ({
   run: async () => ({ stdout, code }),
 });
 
+describe('ownsCommand', () => {
+  const adapter = new ClaudeCodeAdapter('powershell', stubRunner('[]'), () => UUID);
+
+  it('nhận diện lệnh claude (trần, có cờ, có khoảng trắng đầu)', () => {
+    expect(adapter.ownsCommand('claude')).toBe(true);
+    expect(adapter.ownsCommand('claude --resume abc -n x')).toBe(true);
+    expect(adapter.ownsCommand('  claude')).toBe(true);
+  });
+
+  it('không nhận nhầm lệnh khác có tiền tố giống', () => {
+    expect(adapter.ownsCommand('claudette --help')).toBe(false);
+    expect(adapter.ownsCommand('npm run claude')).toBe(false);
+    expect(adapter.ownsCommand('')).toBe(false);
+  });
+});
+
 describe('buildLaunchCommand', () => {
   const adapter = new ClaudeCodeAdapter('powershell', stubRunner('[]'), () => UUID);
 

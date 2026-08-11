@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const PURE_DIRS = ['git', 'agent', 'model', 'adopt', 'claude', 'trust'];
+const PURE_DIRS = ['git', 'agent', 'model', 'adopt', 'claude', 'trust', 'proc', 'capture'];
 /** Module thuần nằm lẻ trong thư mục có cả code lớp vscode (src/workspace). */
 const PURE_FILES = [join('src', 'workspace', 'activate.ts')];
 
