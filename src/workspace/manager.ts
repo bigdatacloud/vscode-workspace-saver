@@ -88,7 +88,12 @@ export class WorkspaceManager implements vscode.Disposable {
   /** PID shell của từng terminal đang track (terminalId → pid) — để tra phả hệ tiến trình. */
   private readonly shellPids = new Map<string, number>();
   /** Cache bảng tiến trình — đọc lại tốn cỡ giây, không được phép chạy mỗi nhịp poll 3s. */
-  private bangTienTrinhCache: { luc: number; bang: Map<number, number> } | null = null;
+  private bangTienTrinhCache: {
+    luc: number;
+    bang: Map<number, number>;
+    /** Pid đã tra mà vẫn vắng mặt ngay sau lần đọc mới — cache âm, khỏi ép đọc lại mỗi nhịp. */
+    vangMat: Set<number>;
+  } | null = null;
   /** Lệnh đang chạy dở trong từng terminal (terminalId → lệnh) — luật bắt startCommand. */
   private readonly pendingCommands = new Map<string, LenhDangCho>();
   /** Bia mộ: workspace cửa sổ này đã xóa, không được merge sống lại từ đĩa. */
@@ -732,12 +737,16 @@ export class WorkspaceManager implements vscode.Disposable {
     if (
       cache !== null &&
       Date.now() - cache.luc < TTL_MS &&
-      pidCanTra.every((pid) => cache.bang.has(pid))
+      pidCanTra.every((pid) => cache.bang.has(pid) || cache.vangMat.has(pid))
     ) {
       return cache.bang;
     }
     const bang = await docBangTienTrinh();
-    this.bangTienTrinhCache = { luc: Date.now(), bang };
+    // Cache cả kết quả ÂM: pid vắng mặt ngay sau lần đọc MỚI nghĩa là hàng registry chết
+    // hoặc ngoài tầm nhìn — nếu không ghi nhớ, một pid như vậy sẽ ép đọc lại bảng (cỡ giây)
+    // ở MỌI nhịp poll 3s cho tới hết phiên. Đọc fail (bang rỗng) cũng rơi vào nhánh này.
+    const vangMat = new Set(pidCanTra.filter((pid) => !bang.has(pid)));
+    this.bangTienTrinhCache = { luc: Date.now(), bang, vangMat };
     return bang;
   }
 
@@ -799,10 +808,12 @@ export class WorkspaceManager implements vscode.Disposable {
     if (!entry || entry.kind !== 'plain') return;
 
     let gia = khiKetThucLenh(p, Date.now());
+    // `gia === p.lenh` cũng đúng khi luuTruoc trùng lenh (chạy lại cùng một lệnh) — vô hại,
+    // vì hai giá trị như nhau; điểm chính là: giữ lệnh thì ưu tiên bản tại thời điểm end
+    // (API nói nó chính xác hơn bản lúc start).
     if (gia === p.lenh) {
-      // Giữ lệnh: ưu tiên giá trị tại thời điểm end — API nói nó chính xác hơn bản lúc start.
       const tinhChinh = event.execution.commandLine.value.trim();
-      if (tinhChinh !== '') gia = event.execution.commandLine.value;
+      if (tinhChinh !== '') gia = tinhChinh;
     }
     if (gia === undefined) delete entry.startCommand;
     else entry.startCommand = gia;
@@ -1055,9 +1066,16 @@ export class WorkspaceManager implements vscode.Disposable {
 
     for (const group of result.ambiguous) {
       if (group.sessions.length === 0 || group.terminalIds.length === 0) continue;
-      // Phả hệ đã rút nhóm về 1-1 → nhịp poll sau matcher tự claim (matched); hỏi bây giờ
-      // là hỏi một câu mà máy tự trả lời được sau 3 giây.
-      if (group.sessions.length === 1 && group.terminalIds.length === 1) continue;
+      // Phả hệ đã rút nhóm về 1-1 → gán bằng loại trừ, không cần hỏi. KHÔNG được chỉ
+      // `continue` chờ nhịp poll sau: ở finalClaimSweep (lúc đóng workspace) không còn
+      // nhịp nào nữa — bỏ qua ở đây là mất cơ hội gắn vĩnh viễn.
+      if (group.sessions.length === 1 && group.terminalIds.length === 1) {
+        if (this.claimSession(ws.id, group.terminalIds[0]!, group.sessions[0]!)) {
+          changed = true;
+          this.scheduleSave();
+        }
+        continue;
+      }
       const key = normalizeCwd(group.cwd);
       if (this.askedCwds.has(key)) continue;
       // Đánh dấu TRƯỚC khi hỏi: bỏ qua (Esc) cũng tính là đã hỏi, không spam mỗi 3 giây.
