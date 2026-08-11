@@ -10,6 +10,7 @@ const EXPECTED_COMMANDS = [
   'aiWorkspace.renameWorkspace',
   'aiWorkspace.deleteWorkspace',
   'aiWorkspace.newClaudeTerminal',
+  'aiWorkspace.newPlainTerminal',
   'aiWorkspace.setStartCommand',
   'aiWorkspace.removeTerminal',
   'aiWorkspace.focusTerminal',
@@ -43,7 +44,7 @@ suite('AI Workspace extension', () => {
     if (!ext.isActive) await ext.activate();
   });
 
-  test('đăng ký đủ 10 lệnh của v2 và activate() đã chạy xong', async () => {
+  test('đăng ký đủ lệnh và activate() đã chạy xong', async () => {
     const all = await vscode.commands.getCommands(true);
     for (const command of EXPECTED_COMMANDS) {
       assert.ok(all.includes(command), `thiếu lệnh ${command}`);

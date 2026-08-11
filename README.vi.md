@@ -76,6 +76,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — chỉ hỏi MỘT đường dẫn, rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
+| AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
 | AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
 | AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
 | AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal |
@@ -87,6 +88,11 @@ Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
 các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / đang chờ / đang mở / chưa
 mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển thị (dừng poll khi view bị ẩn).
+
+**Vị trí mở terminal**: mọi terminal do extension tạo/khôi phục mặc định mở thành **tab trong
+khu editor** (setting `aiWorkspace.terminalLocation`, đổi sang `panel` nếu muốn panel dưới
+như cũ). Terminal bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn của VS Code
+`terminal.integrated.defaultLocation: "editor"`.
 
 ## Nguyên tắc an toàn
 
