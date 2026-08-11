@@ -19,6 +19,8 @@ export const WorkspaceSchema = z
     name: z.string().min(1),
     lastActiveAt: z.string().nullable(),
     activeWindowId: z.string().nullable(),
+    /** Vị trí mở terminal riêng của workspace — không có thì theo setting chung. */
+    terminalLocation: z.enum(['editor', 'panel']).optional(),
     terminals: z.array(TerminalEntrySchema),
   })
   .superRefine((ws, ctx) => {

@@ -53,4 +53,11 @@ describe('WorkspaceSchema', () => {
     expect(WorkspaceSchema.safeParse({ ...wsValid, id: 'abc' }).success).toBe(false);
     expect(WorkspaceSchema.safeParse({ ...wsValid, name: '' }).success).toBe(false);
   });
+
+  it('terminalLocation: nhận editor/panel/vắng mặt, từ chối giá trị lạ', () => {
+    expect(WorkspaceSchema.safeParse({ ...wsValid, terminalLocation: 'editor' }).success).toBe(true);
+    expect(WorkspaceSchema.safeParse({ ...wsValid, terminalLocation: 'panel' }).success).toBe(true);
+    expect(WorkspaceSchema.safeParse(wsValid).success).toBe(true);
+    expect(WorkspaceSchema.safeParse({ ...wsValid, terminalLocation: 'window' }).success).toBe(false);
+  });
 });

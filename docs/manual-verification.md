@@ -167,6 +167,10 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Kích hoạt lại workspace → các terminal khôi phục đều mở thành tab trong editor area
 - [ ] Đổi setting `aiWorkspace.terminalLocation` sang `panel` → tạo terminal mới → mở ở panel
       dưới như cũ (không cần reload window)
+- [ ] `AI Workspace: Cài đặt workspace` → chọn "Panel dưới" cho workspace A (setting chung vẫn
+      editor) → terminal mới/khôi phục của A mở ở panel; workspace B không đụng gì vẫn mở ở
+      editor; mở lại QuickPick thấy dấu "hiện tại" đúng mục đã chọn; chọn "Theo setting chung"
+      → A quay về theo setting chung
 
 ## Khóa một workspace active mỗi cửa sổ (V5)
 - [ ] Kích hoạt một workspace ở cửa sổ VS Code A → mở một cửa sổ VS Code B khác (cùng máy),

@@ -52,6 +52,10 @@
         "title": "AI Workspace: Tạo terminal mới"
       },
       {
+        "command": "aiWorkspace.workspaceSettings",
+        "title": "AI Workspace: Cài đặt workspace"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -129,14 +133,19 @@
           "group": "2_terminal@2"
         },
         {
+          "command": "aiWorkspace.workspaceSettings",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "3_edit@1"
+        },
+        {
           "command": "aiWorkspace.renameWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
-          "group": "3_edit"
+          "group": "3_edit@2"
         },
         {
           "command": "aiWorkspace.deleteWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
-          "group": "3_edit"
+          "group": "3_edit@3"
         },
         {
           "command": "aiWorkspace.setStartCommand",
