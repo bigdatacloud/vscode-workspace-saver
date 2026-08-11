@@ -51,7 +51,50 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   ownsCommand(command: string): boolean {
-    const dau = command.trimStart();
-    return dau === CLAUDE_BIN || dau.startsWith(`${CLAUDE_BIN} `);
+    const ts = tachToken(command);
+    if (ts.length === 0) return false;
+
+    // Runner npm: chương trình thật là token SAU runner (bỏ qua cờ của runner).
+    const runner = tenChuongTrinh(ts[0] ?? '');
+    let idx = -1;
+    if (runner === 'npx' || runner === 'bunx') idx = 1;
+    else if ((runner === 'pnpm' || runner === 'yarn') && boNhay(ts[1] ?? '').toLowerCase() === 'dlx') idx = 2;
+
+    if (idx > 0) {
+      while (idx < ts.length && boNhay(ts[idx] ?? '').startsWith('-')) idx += 1;
+      const muc = ts[idx];
+      return muc !== undefined && laChuongTrinhClaude(muc);
+    }
+    return laChuongTrinhClaude(ts[0] ?? '');
   }
+}
+
+/** Package npm chứa binary claude — `npx @anthropic-ai/claude-code` chính là chạy claude. */
+const CLAUDE_PKG = '@anthropic-ai/claude-code';
+
+/** Tách token tôn trọng nháy đôi/nháy đơn (đường dẫn có khoảng trắng). */
+function tachToken(command: string): string[] {
+  return command.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+}
+
+function boNhay(token: string): string {
+  return token.replace(/^["']|["']$/g, '');
+}
+
+/** Tên chương trình từ một token: bỏ nháy, bỏ đường dẫn, bỏ đuôi Windows, thường hóa. */
+function tenChuongTrinh(token: string): string {
+  const ten = boNhay(token).toLowerCase().split(/[\\/]/).pop() ?? '';
+  return ten.replace(/\.(exe|cmd|bat|ps1)$/, '');
+}
+
+/** Token này có phải cách gọi claude không: tên trần/đường dẫn/.cmd/.exe, `ten@version`, hoặc package spec. */
+function laChuongTrinhClaude(tokenTho: string): boolean {
+  const token = boNhay(tokenTho).toLowerCase();
+  if (token.startsWith('@')) {
+    return token === CLAUDE_PKG || token.startsWith(`${CLAUDE_PKG}@`);
+  }
+  let ten = tenChuongTrinh(tokenTho);
+  const viTriVersion = ten.indexOf('@');
+  if (viTriVersion > 0) ten = ten.slice(0, viTriVersion);
+  return ten === CLAUDE_BIN;
 }
