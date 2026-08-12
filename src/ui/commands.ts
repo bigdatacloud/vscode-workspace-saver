@@ -47,6 +47,10 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.workspaceSettings(id);
     }),
+    vscode.commands.registerCommand('aiWorkspace.showWorkspaceInfo', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.showWorkspaceInfo(id);
+    }),
     vscode.commands.registerCommand('aiWorkspace.setStartCommand', (item: TerminalItem) =>
       manager.setStartCommand(item.view.workspaceId, item.view.id),
     ),
