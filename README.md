@@ -37,6 +37,13 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 - **Auto-save**: every change (add/remove terminal, rename, session attach, cwd change,
   workspace activate/close) is saved with a 500 ms debounce to `workspaces.json`, written
   via temp+rename (atomic) — there is no manual Save action anywhere.
+- **Reattach instead of resuming twice**: after a VS Code window reload, VS Code revives the
+  old terminals with the Claude processes still running inside them. Activating a workspace
+  first reattaches to those terminals — by process ancestry for entries whose session is
+  live, by unique terminal name (plus matching cwd when known) for the rest — and only opens
+  what is genuinely missing. Without this, every reload adds another `--resume` process to a
+  conversation that is already running, and several processes end up writing the same
+  session file.
 - **Activate / switch workspaces**: click an inactive workspace → each saved terminal is
   reopened. If another workspace is currently active, the extension shows a modal
   "Save and close X before opening Y?" before switching; cancelling does nothing.

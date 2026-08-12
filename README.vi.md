@@ -34,6 +34,12 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 - **Auto-save**: mọi biến động (thêm/bỏ terminal, đổi tên, gắn session, đổi cwd,
   kích hoạt/đóng workspace) tự lưu debounce 500ms xuống `workspaces.json`, ghi qua
   temp+rename (atomic) — không có thao tác Save thủ công nào.
+- **Nối lại thay vì resume lần hai**: sau khi reload cửa sổ VS Code, VS Code hồi sinh các
+  terminal cũ kèm tiến trình Claude vẫn đang chạy bên trong. Kích hoạt workspace giờ nối lại
+  vào chính những terminal đó trước — theo phả hệ tiến trình với entry có session đang sống,
+  theo tên terminal duy nhất (kèm cwd khớp nếu biết) với phần còn lại — rồi mới mở những cái
+  thực sự còn thiếu. Không có bước này thì mỗi lần reload lại thêm một tiến trình `--resume`
+  vào hội thoại đang chạy dở, nhiều tiến trình cùng ghi một file phiên.
 - **Kích hoạt / chuyển workspace**: bấm một workspace chưa active → mở lại từng terminal đã
   lưu. Nếu đang có workspace khác active, extension hỏi modal "Lưu và đóng X trước khi mở
   Y?" trước khi chuyển; hủy modal thì không làm gì.

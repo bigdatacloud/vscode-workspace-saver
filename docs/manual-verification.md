@@ -151,6 +151,23 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Nối lại terminal sau khi reload cửa sổ (chống resume hai lần)
+- [ ] Đang có workspace active với vài terminal Claude → `Developer: Reload Window` → sau khi
+      VS Code hồi sinh terminal, bấm kích hoạt lại workspace đó → hiện toast "Đã nối lại N
+      terminal đang chạy sẵn", KHÔNG mở thêm terminal trùng
+- [ ] `claude agents --json` sau đó: mỗi sessionId chỉ còn ĐÚNG MỘT tiến trình (trước bản sửa
+      có hội thoại chạy tới 3 tiến trình)
+- [ ] Terminal thường có `startCommand` được nối lại thì KHÔNG bị chạy lại lệnh (app đang
+      chạy dở không bị nhân đôi)
+- [ ] Terminal đang mở nhưng KHÔNG thuộc workspace (tên khác) không bị nhận nuôi nhầm
+- [ ] Terminal riêng của bạn TRÙNG TÊN với một entry (vd đều tên `pwsh`) nhưng khác thư mục →
+      KHÔNG bị nhận nuôi (đóng workspace không được giết nó)
+- [ ] Đổi tên `claude` trong PATH cho hỏng tạm (hoặc tắt CLI) rồi kích hoạt workspace →
+      hành vi phải là "mở terminal mới + resume" (chấp nhận trùng), KHÔNG được im lặng bỏ
+      qua entry hay treo
+- [ ] Có hội thoại đang chạy nhiều tiến trình → hiện cảnh báo "nên đóng bớt terminal Claude
+      không nằm trong cây"
+
 ## Chọn thư mục làm việc bằng tìm kiếm
 - [ ] Tạo terminal mới → hộp thoại hiện danh sách thư mục đã dùng (cwd của các terminal đang
       có xuất hiện trong đó); gõ vài ký tự GIỮA đường dẫn (vd `qualipa`) vẫn lọc ra đúng dòng
