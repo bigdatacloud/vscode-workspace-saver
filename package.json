@@ -120,7 +120,7 @@
         {
           "command": "aiWorkspace.closeActiveWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem == aiWorkspaceActive",
-          "group": "1_activate"
+          "group": "9_close"
         },
         {
           "command": "aiWorkspace.newClaudeTerminal",

@@ -54,7 +54,7 @@ suite('AI Workspace extension', () => {
     // activate() đã đăng ký handler. Cố tình chỉ dùng lệnh KHÔNG mở hộp thoại nào:
     // mọi showInputBox/showWarningMessage trong Extension Host headless sẽ không có ai
     // bấm, await sẽ treo tới hết timeout. 'closeActiveWorkspace' khi chưa có workspace
-    // active thì return ngay (xem WorkspaceManager.closeActive()).
+    // active thì return ngay TRƯỚC khi mở modal confirm (xem closeActiveConfirmed()).
     await vscode.commands.executeCommand('aiWorkspace.closeActiveWorkspace');
   });
 
