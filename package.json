@@ -54,7 +54,8 @@
       },
       {
         "command": "aiWorkspace.newPlainTerminal",
-        "title": "AI Workspace: Tạo terminal mới"
+        "title": "AI Workspace: Tạo terminal mới",
+        "icon": "$(add)"
       },
       {
         "command": "aiWorkspace.workspaceSettings",
@@ -144,6 +145,11 @@
           "command": "aiWorkspace.newPlainTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "2_terminal@2"
+        },
+        {
+          "command": "aiWorkspace.newPlainTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "inline"
         },
         {
           "command": "aiWorkspace.showWorkspaceInfo",
