@@ -172,6 +172,15 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       editor; mở lại QuickPick thấy dấu "hiện tại" đúng mục đã chọn; chọn "Theo setting chung"
       → A quay về theo setting chung
 
+## Trạng thái "đang tải phiên" (spinner)
+- [ ] Kích hoạt workspace có terminal Claude → NGAY khi terminal mở, item trong cây hiện
+      icon xoay + "đang tải phiên…"; khi claude boot xong và registry thấy session (vài
+      giây) → tự đổi sang "rảnh"/"đang chạy"
+- [ ] Terminal thường (plain) khi kích hoạt KHÔNG hiện "đang tải" (chỉ "đang mở")
+- [ ] `Tạo terminal Claude mới` → item mới hiện "đang tải phiên…" cho tới khi bắt được session
+- [ ] Claude thoát ngay sau mở (vd resume id hỏng) → spinner tự tắt sau tối đa 90 giây,
+      quay về "đang mở"
+
 ## Gắn session tay & đóng workspace có confirm
 - [ ] Terminal có claude đang chạy nhưng session đã bị entry khác giữ →
       `Gắn session Claude vào terminal`: session vẫn hiện trong danh sách kèm nhãn

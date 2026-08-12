@@ -25,7 +25,7 @@ import { TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
 
-export type TerminalState = 'busy' | 'idle' | 'blocked' | 'open' | 'closed' | 'error';
+export type TerminalState = 'busy' | 'idle' | 'blocked' | 'loading' | 'open' | 'closed' | 'error';
 
 export interface WorkspaceView {
   id: string;
@@ -48,6 +48,8 @@ const SAVE_DEBOUNCE_MS = 500;
 const STORE_FILE = 'workspaces.json';
 /** Cùng nhịp với poll của tree; hai timer chạy song song vô hại nhờ guard refreshPromise. */
 const ACTIVE_POLL_MS = 3000;
+/** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
+const LOADING_TIMEOUT_MS = 90_000;
 
 /**
  * `pickCwd` cố tình chỉ bỏ qua `undefined` (chuỗi rỗng là lỗi của caller — đã ghim bằng test).
@@ -78,6 +80,9 @@ export class WorkspaceManager implements vscode.Disposable {
 
   /** Trạng thái Claude gần nhất lấy từ registry, theo terminalId. */
   private readonly statuses = new Map<string, RunningStatus>();
+  /** Entry đang chờ session hiện trong registry — hiện spinner "đang tải" trong cây. */
+  private readonly loadingIds = new Set<string>();
+  private loadingTimer: NodeJS.Timeout | null = null;
   /** Terminal không mở được ở lần activate gần nhất (cwd mất, lỗi tạo…). */
   private readonly errorIds = new Set<string>();
   /** Nhóm cwd đã hỏi QuickPick trong phiên này — không hỏi lại dù người dùng bỏ qua. */
@@ -217,7 +222,36 @@ export class WorkspaceManager implements vscode.Disposable {
   private terminalState(entry: TerminalEntry): TerminalState {
     if (this.errorIds.has(entry.id)) return 'error';
     if (!this.terminals.has(entry.id)) return 'closed';
-    return this.statuses.get(entry.id) ?? 'open';
+    const trangThai = this.statuses.get(entry.id);
+    if (trangThai !== undefined) return trangThai;
+    // Registry chưa thấy session (claude còn đang boot/resume) — báo "đang tải" thay vì
+    // "đang mở" để người dùng biết extension vẫn đang làm việc, không phải đơ.
+    if (this.loadingIds.has(entry.id)) return 'loading';
+    return 'open';
+  }
+
+  /**
+   * Đánh dấu các entry "đang tải" — trạng thái thật từ registry tự thay khi poll bắt được
+   * (statuses có ưu tiên cao hơn), trần LOADING_TIMEOUT_MS để không xoay vĩnh viễn khi
+   * session không bao giờ hiện (claude thoát ngay, resume id hỏng…).
+   */
+  private batDauLoading(ids: string[]): void {
+    if (ids.length === 0) return;
+    for (const id of ids) this.loadingIds.add(id);
+    if (this.loadingTimer !== null) clearTimeout(this.loadingTimer);
+    this.loadingTimer = setTimeout(() => {
+      this.loadingTimer = null;
+      this.loadingIds.clear();
+      this.onChanged.fire();
+    }, LOADING_TIMEOUT_MS);
+  }
+
+  private ketThucLoading(): void {
+    if (this.loadingTimer !== null) {
+      clearTimeout(this.loadingTimer);
+      this.loadingTimer = null;
+    }
+    this.loadingIds.clear();
   }
 
   // ------------------------------------------------------------- lưu trữ
@@ -370,6 +404,12 @@ export class WorkspaceManager implements vscode.Disposable {
         ...wsNow,
         terminals: wsNow.terminals.filter((entry) => !this.terminals.has(entry.id)),
       };
+      // Claude cần nhiều giây boot + resume trước khi registry thấy session — đánh dấu
+      // "đang tải" ngay để cây có phản hồi tức thì, không trông như đơ.
+      this.batDauLoading(
+        toOpen.terminals.filter((t) => t.kind === 'claude').map((t) => t.id),
+      );
+      this.onChanged.fire();
       const report = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${wsNow.name}"…` },
         () => activateWorkspace(toOpen, this.buildPorts(wsNow)),
@@ -469,6 +509,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // Quét bắt session lần cuối TRƯỚC khi dispose terminal — dispose xong là hết đường bắt.
     await this.finalClaimSweep();
     this.stopActivePoll();
+    this.ketThucLoading();
     this.flush();
 
     const ws = findWorkspace(this.store, id);
@@ -606,6 +647,8 @@ export class WorkspaceManager implements vscode.Disposable {
     });
     this.ghiNhanShellPid(entry.id);
     handle.sendText(luaChon.command);
+    // Claude boot mất nhiều giây trước khi registry thấy — spinner cho tới khi có trạng thái.
+    this.batDauLoading([entry.id]);
     this.onChanged.fire();
   }
 
@@ -1375,6 +1418,7 @@ export class WorkspaceManager implements vscode.Disposable {
     if (this.disposed) return;
     this.disposed = true;
     this.stopActivePoll();
+    this.ketThucLoading();
     // Gỡ khóa V5 khi đóng cửa sổ bình thường. saveStore hoàn toàn đồng bộ (writeFileSync +
     // renameSync) nên việc này chạy trọn vẹn trong deactivate; chỉ khi VS Code chết đột ngột
     // mới còn khóa mồ côi — đúng như README mô tả. KHÔNG đóng terminal ở đây.

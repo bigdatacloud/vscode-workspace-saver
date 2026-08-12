@@ -7,6 +7,8 @@ const STATE_ICONS: Record<TerminalState, { id: string; color: string }> = {
   busy: { id: 'circle-filled', color: 'charts.green' },
   idle: { id: 'circle-filled', color: 'charts.blue' },
   blocked: { id: 'circle-filled', color: 'charts.yellow' },
+  // `loading~spin` là codicon có animation xoay sẵn của VS Code — cây tự chạy animation.
+  loading: { id: 'loading~spin', color: 'charts.purple' },
   open: { id: 'terminal', color: 'charts.blue' },
   closed: { id: 'circle-outline', color: 'disabledForeground' },
   error: { id: 'error', color: 'charts.red' },
@@ -16,6 +18,7 @@ const STATE_LABELS: Record<TerminalState, string> = {
   busy: 'đang chạy',
   idle: 'rảnh',
   blocked: 'đang chờ',
+  loading: 'đang tải phiên…',
   open: 'đang mở',
   closed: 'chưa mở',
   error: 'lỗi',

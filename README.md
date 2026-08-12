@@ -97,8 +97,10 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 The "AI Workspaces" tree (in Explorer, view id `aiWorkspace.workspaces`) has 2 levels:
 level 1 is the workspace list (sorted by most recently active, the active workspace gets its
 own badge), level 2 is each workspace's terminals with a status label (running / idle /
-waiting / open / not open / error), refreshed every ~3 seconds while the view is visible
-(polling stops when the view is hidden).
+waiting / **loading session… with a spinning icon** / open / not open / error), refreshed
+every ~3 seconds while the view is visible (polling stops when the view is hidden). The
+loading state shows from the moment a Claude terminal is opened/restored until its session
+appears in the registry (capped at 90 s), so a slow workspace activation never looks frozen.
 
 **Terminal location**: every terminal the extension creates or restores opens as a **tab in
 the editor area** by default (setting `aiWorkspace.terminalLocation`, switch to `panel` to

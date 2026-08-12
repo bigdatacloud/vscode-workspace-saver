@@ -87,8 +87,11 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 
 Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
-các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / đang chờ / đang mở / chưa
-mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển thị (dừng poll khi view bị ẩn).
+các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / đang chờ / **đang tải
+phiên… kèm icon xoay** / đang mở / chưa mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển
+thị (dừng poll khi view bị ẩn). Trạng thái "đang tải" hiện từ lúc terminal Claude được
+mở/khôi phục cho tới khi session hiện trong registry (trần 90 giây) — kích hoạt workspace
+chậm không còn trông như bị đơ.
 
 **Vị trí mở terminal**: mọi terminal do extension tạo/khôi phục mặc định mở thành **tab trong
 khu editor** (setting `aiWorkspace.terminalLocation`, đổi sang `panel` nếu muốn panel dưới
