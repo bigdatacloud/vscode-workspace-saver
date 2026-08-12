@@ -166,16 +166,21 @@ export function docSessionMeta(
   try {
     const o = JSON.parse(dong) as {
       type?: string;
-      payload?: { session_id?: string; cwd?: string; timestamp?: string };
+      payload?: { session_id?: string; id?: string; cwd?: string; timestamp?: string };
     };
     if (o.type !== 'session_meta') return null;
     const p = o.payload;
-    if (!p || typeof p.session_id !== 'string' || typeof p.cwd !== 'string') return null;
+    if (!p || typeof p.cwd !== 'string') return null;
+    // Codex 0.147: với luồng subagent, `session_id` là id của luồng CHA còn `id` mới là id
+    // của chính phiên này (trùng id trong tên file). Resume phải dùng id của chính nó; với
+    // phiên thường hai trường bằng nhau nên ưu tiên `id` là an toàn cho cả hai.
+    const sessionId = typeof p.id === 'string' && p.id !== '' ? p.id : p.session_id;
+    if (typeof sessionId !== 'string') return null;
     // Id đi thẳng vào chuỗi lệnh shell. `quoteArg` đã escape, nhưng lọc ngay ở cửa ĐỌC là lớp
     // phòng thủ rẻ và không phụ thuộc vào việc trích dẫn của shell nào cũng kín.
-    if (!/^[\w.:-]{1,128}$/.test(p.session_id)) return null;
+    if (!/^[\w.:-]{1,128}$/.test(sessionId)) return null;
     const luc = p.timestamp !== undefined ? Date.parse(p.timestamp) : Number.NaN;
-    return { sessionId: p.session_id, cwd: p.cwd, luc: Number.isNaN(luc) ? 0 : luc };
+    return { sessionId, cwd: p.cwd, luc: Number.isNaN(luc) ? 0 : luc };
   } catch {
     return null;
   }
@@ -209,15 +214,27 @@ export const realCodexFs: CodexFs = {
   },
   docDongDau(duongDan) {
     // Chỉ đọc phần đầu: file rollout của một phiên dài có thể tới hàng chục MB, mà thứ ta
-    // cần nằm ở dòng đầu tiên.
+    // cần nằm ở dòng đầu tiên. NHƯNG dòng đầu không hề ngắn: Codex 0.147 nhét cả cấu hình
+    // và chỉ dẫn vào `session_meta` nên nó cỡ 19 KB. Đọc cứng 16 KB như trước là cắt cụt
+    // dòng → JSON hỏng → KHÔNG BAO GIỜ tìm thấy phiên nào (đo trên máy người dùng). Đọc lớn
+    // dần tới khi gặp xuống dòng, có trần để một file không có `\n` nào không nuốt hết RAM.
+    const KHOI = 64 * 1024;
+    const TRAN = 4 * 1024 * 1024;
     let fd: number | null = null;
     try {
       fd = nodeFs.openSync(duongDan, 'r');
-      const buf = Buffer.alloc(16 * 1024);
-      const n = nodeFs.readSync(fd, buf, 0, buf.length, 0);
-      const s = buf.subarray(0, n).toString('utf8');
-      const i = s.indexOf('\n');
-      return i >= 0 ? s.slice(0, i) : s;
+      const buf = Buffer.alloc(KHOI);
+      let daDoc = '';
+      let viTri = 0;
+      for (;;) {
+        const n = nodeFs.readSync(fd, buf, 0, buf.length, viTri);
+        if (n <= 0) return daDoc === '' ? null : daDoc;
+        viTri += n;
+        daDoc += buf.subarray(0, n).toString('utf8');
+        const i = daDoc.indexOf('\n');
+        if (i >= 0) return daDoc.slice(0, i);
+        if (daDoc.length >= TRAN) return daDoc.slice(0, TRAN);
+      }
     } catch {
       return null;
     } finally {

@@ -38,6 +38,7 @@ function makePorts(over: Partial<ActivatePorts> = {}) {
     // Bằng chứng theo ENTRY, không theo chuỗi lệnh (xem ghi chú ở ActivatePorts).
     laLenhAgent: (e) => e.kind === 'claude' || e.agentId === 'codex',
     lenhTiepTucAgent: () => null,
+    coPhienDangChayNgoai: () => false,
     onMinted: async () => { calls.push('minted'); },
     warn: () => {},
     ...over,
@@ -134,5 +135,30 @@ describe('activateWorkspace', () => {
     const r = await activateWorkspace(ws([claudeResume, plainCmd]), ports);
     expect(r.failed).toEqual([{ id: claudeResume.id, reason: 'nổ' }]);
     expect(sent.get(plainCmd.id)).toEqual(['npm run dev']);
+  });
+});
+
+describe('activateWorkspace — không bao giờ nối `-c` vào hội thoại đang có tiến trình khác', () => {
+  const claudeA: TerminalEntry = { id: U('a'), name: 'a', cwd: 'D:\\x', kind: 'claude' };
+  const claudeB: TerminalEntry = { id: U('b'), name: 'b', cwd: 'D:\\x', kind: 'claude' };
+
+  it('thư mục còn phiên đang chạy mà ta không nhận nuôi được → mint phiên MỚI, không `-c`', async () => {
+    const { ports, sent, calls } = makePorts({ coPhienDangChayNgoai: () => true });
+    await activateWorkspace(ws([claudeA]), ports);
+    expect(sent.get(claudeA.id)).toEqual([`LAUNCH new ${U('9')} AS a`]);
+    expect(calls).toContain('minted');
+  });
+
+  it('hai entry CÙNG thư mục: chỉ cái đầu được `-c`, cái sau mint mới', async () => {
+    const { ports, sent } = makePorts();
+    await activateWorkspace(ws([claudeA, claudeB]), ports);
+    expect(sent.get(claudeA.id)).toEqual(['LAUNCH continue AS a']);
+    expect(sent.get(claudeB.id)).toEqual([`LAUNCH new ${U('9')} AS b`]);
+  });
+
+  it('id mint phải nằm trên đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại)', async () => {
+    const { ports, calls } = makePorts({ coPhienDangChayNgoai: () => true });
+    await activateWorkspace(ws([claudeA]), ports);
+    expect(calls.indexOf('minted')).toBeLessThan(calls.indexOf(`send:${claudeA.id}`));
   });
 });

@@ -8,6 +8,11 @@ describe('boKyHieuTrangThai', () => {
     expect(boKyHieuTrangThai('◓  vscode-workspace-saver-a6')).toBe('vscode-workspace-saver-a6');
   });
 
+  it('cắt spinner Braille của Codex', () => {
+    expect(boKyHieuTrangThai('⠏ quality-glance-report-builder')).toBe('quality-glance-report-builder');
+    expect(boKyHieuTrangThai('⠹ codex')).toBe('codex');
+  });
+
   it('giữ nguyên tên bình thường và tên có emoji khác', () => {
     expect(boKyHieuTrangThai('backend')).toBe('backend');
     expect(boKyHieuTrangThai('🚀 deploy')).toBe('🚀 deploy');

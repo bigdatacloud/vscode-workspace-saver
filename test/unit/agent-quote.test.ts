@@ -58,3 +58,26 @@ describe('detectShellKind', () => {
     expect(detectShellKind('darwin', '/bin/zsh')).toBe('posix');
   });
 });
+
+describe('quoteArg — nháy đơn Unicode (PowerShell coi chúng như dấu nháy thật)', () => {
+  // Đo trên PowerShell 7: `Write-Output 'abc’; Write-Output PWNED; ‘x'` chạy thành BA lệnh.
+  // Chỉ escape U+0027 là để hở đường chèn lệnh — và một tên copy từ Word cũng đủ làm hỏng lệnh.
+  it('nhân đôi cả bốn ký tự nháy đơn mà PowerShell chấp nhận', () => {
+    expect(quoteArg('a’b', 'powershell')).toBe("'a’’b'");
+    expect(quoteArg('a‘b', 'powershell')).toBe("'a‘‘b'");
+    expect(quoteArg('a‚b', 'powershell')).toBe("'a‚‚b'");
+    expect(quoteArg('a‛b', 'powershell')).toBe("'a‛‛b'");
+  });
+
+  it('chặn được chuỗi chèn lệnh dùng nháy cong', () => {
+    const doc = "x’; Write-Output PWNED; ‘y";
+    const ra = quoteArg(doc, 'powershell');
+    // Sau khi escape, không còn cặp nháy nào ĐƠN LẺ để đóng chuỗi giữa chừng.
+    const than = ra.slice(1, -1);
+    expect(than.replace(/(['‘’‚‛])\1/g, '')).not.toMatch(/['‘’‚‛]/);
+  });
+
+  it('posix chỉ cần lo U+0027, nháy cong là ký tự thường', () => {
+    expect(quoteArg('a’b', 'posix')).toBe("'a’b'");
+  });
+});

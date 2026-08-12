@@ -1,10 +1,132 @@
 import * as nodeFs from 'node:fs';
-import { StoreFileSchema, emptyStore, type StoreFile, type TerminalEntry, type Workspace } from './schema';
+import {
+  StoreFileSchema,
+  WorkspaceSchema,
+  emptyStore,
+  type StoreFile,
+  type TerminalEntry,
+  type Workspace,
+} from './schema';
 
 export interface StoreFs {
   readFile(path: string): string | null;
   writeFile(path: string, content: string): void;
   rename(from: string, to: string): void;
+  /** Tên các mục con; thư mục không tồn tại → mảng rỗng, KHÔNG ném. */
+  list(dir: string): string[];
+  /** Xóa file; không tồn tại → im lặng bỏ qua. */
+  remove(path: string): void;
+  mkdirp(dir: string): void;
+}
+
+/**
+ * MỖI WORKSPACE MỘT FILE (`<thư mục>/<id>.json`) thay vì gộp tất cả vào một file.
+ *
+ * Lý do: cả file dùng chung là nguồn của gần hết lớp lỗi đa cửa sổ. Mỗi lần lưu phải đọc lại
+ * cả file rồi gộp bằng heuristic ("cửa sổ này đã đụng workspace nào") — chính đoạn đó đã sinh
+ * ra lỗi ghi đè việc của cửa sổ khác, lỗi workspace bị xóa sống lại, và lỗi một workspace sai
+ * tên làm CẢ file không ghi được nữa. Tách file thì hai cửa sổ làm việc trên hai workspace
+ * khác nhau không bao giờ chạm cùng một file: không cần gộp, không cần bia mộ, và một file
+ * hỏng chỉ mất đúng workspace đó chứ không mất cả danh sách.
+ */
+export interface ShardResult {
+  workspaces: Workspace[];
+  /** File hỏng đã được đổi tên để giữ lại, kèm đường dẫn bản sao lưu. */
+  hong: string[];
+}
+
+const DUOI = '.json';
+
+export function tenFileWorkspace(dir: string, id: string, sep = '/'): string {
+  return `${dir}${sep}${id}${DUOI}`;
+}
+
+export function loadShards(fs: StoreFs, dir: string, epoch: () => number, sep = '/'): ShardResult {
+  const ra: ShardResult = { workspaces: [], hong: [] };
+  for (const ten of fs.list(dir)) {
+    if (!ten.endsWith(DUOI)) continue;
+    const duongDan = `${dir}${sep}${ten}`;
+    const raw = fs.readFile(duongDan);
+    if (raw === null) continue;
+    try {
+      ra.workspaces.push(WorkspaceSchema.parse(JSON.parse(raw)));
+    } catch {
+      // Một file hỏng KHÔNG được kéo cả danh sách xuống: giữ lại bản sao rồi đi tiếp.
+      const backup = `${duongDan}.bak-${epoch()}`;
+      fs.rename(duongDan, backup);
+      ra.hong.push(backup);
+    }
+  }
+  return ra;
+}
+
+export function saveShard(fs: StoreFs, dir: string, ws: Workspace, sep = '/'): void {
+  // Cửa ghi vẫn là chốt chặn dữ liệu hỏng, nhưng giờ chỉ chặn ĐÚNG workspace này: một
+  // workspace sai schema không còn khoá luôn việc lưu của các workspace khác.
+  WorkspaceSchema.parse(ws);
+  fs.mkdirp(dir);
+  const dich = tenFileWorkspace(dir, ws.id, sep);
+  // Tên file tạm phải DUY NHẤT cho mỗi lần ghi: dùng chung một tên `.tmp` thì hai cửa sổ ghi
+  // cùng lúc sẽ trộn nội dung vào nhau rồi rename ra file thật.
+  const tmp = `${dich}.tmp-${Math.random().toString(36).slice(2)}`;
+  try {
+    fs.writeFile(tmp, JSON.stringify(ws, null, 2));
+    fs.rename(tmp, dich);
+  } catch (e) {
+    fs.remove(tmp);
+    throw e;
+  }
+}
+
+export function deleteShard(fs: StoreFs, dir: string, id: string, sep = '/'): void {
+  fs.remove(tenFileWorkspace(dir, id, sep));
+}
+
+/**
+ * Gộp bản RAM của cửa sổ này với bản trên đĩa của CÙNG workspace trước khi ghi đè.
+ *
+ * Chỉ còn một luật, và nó phản ánh đúng thực tế: cửa sổ này là chủ những gì nó đang mở.
+ * Terminal chỉ có trên đĩa (cửa sổ khác vừa thêm vào chính workspace này) được giữ lại thay
+ * vì bị xoá; mọi thứ còn lại lấy theo bản của ta.
+ */
+export function gopShard(disk: Workspace | null, ram: Workspace): Workspace {
+  if (disk === null) return ram;
+  const coTrongRam = new Set(ram.terminals.map((t) => t.id));
+  const chiCoTrenDia = disk.terminals.filter((t) => !coTrongRam.has(t.id));
+  if (chiCoTrenDia.length === 0) return ram;
+  return { ...ram, terminals: [...ram.terminals, ...chiCoTrenDia] };
+}
+
+/**
+ * Chuyển dữ liệu từ file gộp cũ sang thư mục shard. Chạy đúng một lần: sau khi ghi xong, file
+ * cũ được đổi tên (KHÔNG xoá — người dùng còn muốn xem lại thì vẫn còn).
+ *
+ * @returns số workspace đã chuyển, hoặc null nếu không có gì để chuyển.
+ */
+export function migrateLegacy(
+  fs: StoreFs,
+  legacyPath: string,
+  dir: string,
+  epoch: () => number,
+  sep = '/',
+): number | null {
+  const raw = fs.readFile(legacyPath);
+  if (raw === null) return null;
+  let store: StoreFile;
+  try {
+    store = StoreFileSchema.parse(JSON.parse(raw));
+  } catch {
+    fs.rename(legacyPath, `${legacyPath}.bak-${epoch()}`);
+    return null;
+  }
+  fs.mkdirp(dir);
+  for (const ws of store.workspaces) {
+    // File shard đã có (chuyển dở lần trước) thì giữ bản mới hơn trên đĩa, không đè lại.
+    if (fs.readFile(tenFileWorkspace(dir, ws.id, sep)) !== null) continue;
+    saveShard(fs, dir, ws, sep);
+  }
+  fs.rename(legacyPath, `${legacyPath}.migrated-${epoch()}`);
+  return store.workspaces.length;
 }
 
 export interface LoadResult { store: StoreFile; recoveredFrom: string | null; }
@@ -172,4 +294,19 @@ export const realStoreFs: StoreFs = {
   },
   writeFile(p, c) { nodeFs.writeFileSync(p, c, 'utf8'); },
   rename(a, b) { nodeFs.renameSync(a, b); },
+  list(dir) {
+    try {
+      return nodeFs.readdirSync(dir);
+    } catch {
+      return [];
+    }
+  },
+  remove(p) {
+    try {
+      nodeFs.rmSync(p, { force: true });
+    } catch {
+      // Xoá không được (file đang bị khoá) thì thôi — caller không có gì làm thêm.
+    }
+  },
+  mkdirp(dir) { nodeFs.mkdirSync(dir, { recursive: true }); },
 };
