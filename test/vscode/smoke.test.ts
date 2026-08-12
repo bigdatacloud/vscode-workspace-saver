@@ -11,6 +11,7 @@ const EXPECTED_COMMANDS = [
   'aiWorkspace.deleteWorkspace',
   'aiWorkspace.newClaudeTerminal',
   'aiWorkspace.newPlainTerminal',
+  'aiWorkspace.newCodexTerminal',
   'aiWorkspace.workspaceSettings',
   'aiWorkspace.showTerminalPath',
   'aiWorkspace.showWorkspaceInfo',

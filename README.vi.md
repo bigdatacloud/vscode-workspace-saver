@@ -55,6 +55,14 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   Đặt lệnh khởi động cho terminal**. Khi mở lại, nếu `startCommand` chưa được tin tưởng,
   extension hiện modal liệt kê nguyên văn lệnh, chọn "Tin và chạy" hoặc "Chỉ mở shell". Đổi
   `startCommand` (kể cả do tự bắt) làm mất trust cũ (vân tay đổi) — lần mở kế tiếp hỏi trust lại.
+- **Không chỉ Claude — Codex cũng khôi phục được hội thoại**: lệnh *Tạo terminal Codex mới*
+  mở terminal rồi **dò id phiên** từ `~/.codex/sessions` (Codex không có cờ đặt trước id như
+  `--session-id` của Claude, nên phải dò sau khi chạy); có id rồi thì lần khôi phục sau chạy
+  `codex resume <id>`. Chưa dò ra (bạn chưa gõ gì, hoặc hai phiên Codex cùng thư mục nên mơ
+  hồ) thì entry vẫn giữ lệnh khởi chạy ban đầu — mở lại được, chỉ là phiên mới. Codex không
+  có registry phiên đang chạy nên **không có trạng thái bận/rảnh**, chỉ "đang mở".
+  Công cụ khác (gemini, opencode…) vẫn được khôi phục ở mức ứng dụng qua `startCommand`, và
+  nếu chúng có lệnh resume riêng thì đặt tay bằng *Đặt lệnh khởi động cho terminal*.
 - **Bắt Claude session tự động**: mỗi ~3 giây, extension đối chiếu cwd của các terminal đang
   mở trong workspace active với `claude agents --json` (chỉ hàng `kind: interactive`). Khớp
   duy nhất → tự gắn `claudeSessionId`/tên peer, terminal `plain` "thăng cấp" thành `claude`.
@@ -91,6 +99,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — chỉ hỏi MỘT đường dẫn, rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
+| AI Workspace: Tạo terminal Codex mới | `aiWorkspace.newCodexTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn rồi chọn cách chạy (`codex`, `codex resume --last`, `codex resume`); id phiên được dò từ `~/.codex/sessions` sau đó, lần sau khôi phục bằng `codex resume <id>` |
 | AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | **Nút "+" ngay trên dòng workspace** (hiện khi rê chuột) / palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
 | AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
 | AI Workspace: Xem đường dẫn terminal | `aiWorkspace.showTerminalPath` | Context menu terminal item — hiện đầy đủ cwd kèm nút "Sao chép đường dẫn" / "Mở thư mục" (hover vào item cũng thấy đường dẫn) |
@@ -98,7 +107,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal |
 | AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây |
 | AI Workspace: Thêm terminal đang mở vào workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Menu chuột phải tab terminal / palette |
-| AI Workspace: Gắn session Claude vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây |
+| AI Workspace: Gắn session AI vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây — terminal Claude thì chọn trong các session đang chạy, terminal Codex thì chọn trong các phiên gần đây đọc từ `~/.codex/sessions` (phiên cùng thư mục xếp trước) |
 
 Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
@@ -149,6 +158,14 @@ bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn củ
   Trạng thái của mỗi workspace vì thế là của cửa sổ cuối cùng đụng tới nó.
 - Xóa một workspace ở cửa sổ này có thể bị cửa sổ khác — đang giữ workspace đó trong RAM và
   đã từng đụng tới nó — ghi sống lại ở lần lưu sau của nó.
+- Codex không có registry phiên đang chạy nên terminal Codex **không có trạng thái bận/rảnh**
+  (chỉ "đang mở"), và không được đối chiếu bằng phả hệ tiến trình như Claude.
+- Trường `agentId`/`agentSessionId` (dành cho Codex) là **thêm mới**: cửa sổ VS Code nào còn
+  chạy bản extension cũ — kể cả cửa sổ **chưa reload sau khi cập nhật** — sẽ bỏ qua hai trường
+  này và xoá chúng ở lần lưu kế tiếp của nó, **kể cả với workspace nó không sở hữu** (bản đĩa
+  nó đọc lên đã bị lược mất). Hội thoại KHÔNG mất: id vẫn nằm trong `startCommand`
+  (`codex resume <id>`) nên vẫn khôi phục đúng cuộc hội thoại — chỉ mất nhãn `Codex` và việc
+  chọn đúng nhánh gắn session. Reload mọi cửa sổ sau khi cập nhật extension là hết.
 - Không quản lý workspace từ nhiều máy, không chia sẻ workspace qua git.
 
 ## Phát triển

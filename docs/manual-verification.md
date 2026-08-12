@@ -151,6 +151,21 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Terminal Codex
+- [ ] `Tạo terminal Codex mới` → chọn "Phiên mới" → terminal mở chạy `codex`; gõ vài câu rồi
+      đợi ~5 giây → mở `workspaces.json` thấy entry có `agentId: "codex"` và `agentSessionId`,
+      `startCommand` đổi thành `codex resume '<id>'`
+- [ ] Đóng workspace rồi kích hoạt lại → terminal Codex mở lại ĐÚNG hội thoại cũ (không phải
+      phiên mới), và KHÔNG hỏi hộp thoại tin cậy cho lệnh này
+- [ ] Chọn "Tiếp tục phiên gần nhất" → sau khi gõ một câu, id vẫn được dò ra (Codex ghi tiếp
+      file rollout cũ nên nhận diện qua lần ghi cuối)
+- [ ] Hai terminal Codex cùng một thư mục → KHÔNG gắn id bừa cho cái nào (thà để trống)
+- [ ] Chuột phải terminal Codex → `Gắn session AI vào terminal` → hiện danh sách phiên gần
+      đây, phiên cùng thư mục xếp trước; chọn xong `startCommand` đổi theo id đã chọn
+- [ ] Nhãn trong cây hiện `Codex` (không phải `AI` hay `shell`)
+- [ ] Máy chưa từng chạy Codex (không có `~/.codex/sessions`) → lệnh vẫn chạy được, chỉ là
+      không dò ra id, không văng lỗi
+
 ## Nối lại terminal sau khi reload cửa sổ (chống resume hai lần)
 - [ ] Đang có workspace active với vài terminal Claude → `Developer: Reload Window` → sau khi
       VS Code hồi sinh terminal, bấm kích hoạt lại workspace đó → hiện toast "Đã nối lại N

@@ -39,6 +39,10 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.newClaudeTerminal(id);
     }),
+    vscode.commands.registerCommand('aiWorkspace.newCodexTerminal', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.newCodexTerminal(id);
+    }),
     vscode.commands.registerCommand('aiWorkspace.newPlainTerminal', async (item?: WorkspaceItem) => {
       const id = await wsArg(item);
       if (id) await manager.newPlainTerminal(id);

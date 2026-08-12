@@ -94,24 +94,34 @@ export function mergeForSave(
  * clone rồi mới sửa.
  */
 function khuTrungSession(list: Workspace[], touchedIds: ReadonlySet<string>): Workspace[] {
-  const daGiu = new Set<string>();
+  // Hai loại id, khử độc lập nhau: Claude (`claudeSessionId`) và agent khác (`agentSessionId`).
+  const daGiu = { claude: new Set<string>(), agent: new Set<string>() };
   for (const w of list) {
     if (!touchedIds.has(w.id)) continue;
-    for (const t of w.terminals) if (t.claudeSessionId !== undefined) daGiu.add(t.claudeSessionId);
+    for (const t of w.terminals) {
+      if (t.claudeSessionId !== undefined) daGiu.claude.add(t.claudeSessionId);
+      if (t.agentSessionId !== undefined) daGiu.agent.add(t.agentSessionId);
+    }
   }
   return list.map((w) => {
     if (touchedIds.has(w.id)) return w;
     let coTrung = false;
     const terminals = w.terminals.map((t) => {
-      const id = t.claudeSessionId;
-      if (id === undefined) return t;
-      if (!daGiu.has(id)) {
-        daGiu.add(id);
-        return t;
+      let ban = t;
+      if (t.claudeSessionId !== undefined) {
+        if (daGiu.claude.has(t.claudeSessionId)) {
+          coTrung = true;
+          ban = { ...ban };
+          delete ban.claudeSessionId;
+        } else daGiu.claude.add(t.claudeSessionId);
       }
-      coTrung = true;
-      const ban = { ...t };
-      delete ban.claudeSessionId;
+      if (t.agentSessionId !== undefined) {
+        if (daGiu.agent.has(t.agentSessionId)) {
+          coTrung = true;
+          ban = { ...ban };
+          delete ban.agentSessionId;
+        } else daGiu.agent.add(t.agentSessionId);
+      }
       return ban;
     });
     return coTrung ? { ...w, terminals } : w;
