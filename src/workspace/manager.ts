@@ -7,6 +7,7 @@ import { ZodError } from 'zod';
 import { classifyTerminal, pickCwd } from '../adopt/filter';
 import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
 import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
+import { CodexAdapter } from '../agent/codex';
 import { chonSessionChoTerminal, gomSessionTheoTerminal } from '../claude/ancestry';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
 import { docBangTienTrinh } from '../proc/real';
@@ -44,6 +45,8 @@ export interface TerminalView {
   state: TerminalState;
   hasStartCommand: boolean;
   cwd: string;
+  /** Agent đang chạy trong terminal này (nếu có) — quyết định nhãn trong cây. */
+  agent?: 'claude' | 'codex';
 }
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -55,6 +58,9 @@ const LICH_SU_CWD_TOI_DA = 20;
 const ACTIVE_POLL_MS = 3000;
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
 const LOADING_TIMEOUT_MS = 90_000;
+/** Dò id phiên Codex: mỗi nhịp chừng này, tối đa chừng này lần (~2 phút). */
+const CODEX_DO_NHIP_MS = 3000;
+const CODEX_DO_SO_LAN = 40;
 /** Hạn giờ chờ `Terminal.processId` — terminal chưa gắn tiến trình có thể không bao giờ trả. */
 const DOI_PROCESS_ID_MS = 2500;
 /** Đọc bảng tiến trình hỏng thì nghỉ chừng này rồi mới thử lại (mỗi lần thử tốn tới 5 giây). */
@@ -79,12 +85,6 @@ function creationCwd(terminal: vscode.Terminal): string | undefined {
   return nonEmpty(typeof cwd === 'string' ? cwd : cwd.fsPath);
 }
 
-/** Tập lệnh khởi động của CẢ workspace — nguồn duy nhất cho vân tay trust (xem buildPorts). */
-function lenhToanWorkspace(ws: Workspace): string[] {
-  return ws.terminals
-    .filter((t) => t.kind === 'plain' && t.startCommand)
-    .map((t) => t.startCommand as string);
-}
 
 function folderCwd(): string | undefined {
   return nonEmpty(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
@@ -160,6 +160,7 @@ export class WorkspaceManager implements vscode.Disposable {
     context: vscode.ExtensionContext,
     private readonly terminals: TerminalManager,
     private readonly agent: AgentAdapter,
+    private readonly codex: CodexAdapter,
   ) {
     this.boNhoChung = context.globalState;
     this.trust = new TrustStore({
@@ -248,6 +249,7 @@ export class WorkspaceManager implements vscode.Disposable {
       state: this.terminalState(entry),
       hasStartCommand: entry.startCommand !== undefined,
       cwd: entry.cwd,
+      agent: this.agentCuaEntry(entry),
     }));
   }
 
@@ -621,14 +623,15 @@ export class WorkspaceManager implements vscode.Disposable {
       },
       agent: this.agent,
       fsExists: (p) => nodeFs.existsSync(p),
+      laLenhAgent: (entry) => this.laEntryAgent(entry),
       // Vân tay trust tính trên TOÀN workspace, không phải tập sắp mở: hôm nay mở 5 terminal,
       // hôm sau 2 cái đã chạy sẵn nên chỉ mở 3 — cùng một workspace mà tập lệnh khác nhau thì
       // vân tay trượt và người dùng bị hỏi tin cậy lại mỗi lần.
-      isTrusted: () => this.trust.isTrusted(trustKey, lenhToanWorkspace(ws)),
+      isTrusted: () => this.trust.isTrusted(trustKey, this.lenhCanTinCay(ws)),
       confirmTrust: async () => {
         // Hiện ĐÚNG tập lệnh sẽ được ghi vào vân tay (cả workspace), không phải tập sắp chạy:
         // tin một tập rộng hơn những gì người dùng nhìn thấy là mở đường chạy ngầm sau này.
-        const tatCa = lenhToanWorkspace(ws);
+        const tatCa = this.lenhCanTinCay(ws);
         const lines = tatCa.map((c) => `• ${c}`).join('\n');
         const answer = await vscode.window.showWarningMessage(
           `Workspace "${ws.name}" có các lệnh khởi động sau; chúng chạy mỗi khi terminal tương ứng được mở:\n\n${lines}`,
@@ -825,6 +828,140 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   /**
+   * Tạo terminal Codex. Khác luồng Claude ở chỗ Codex KHÔNG cho đặt trước session id, nên
+   * không thể "mint rồi chạy" — phải chạy trước rồi khám phá id từ file rollex mà Codex ghi
+   * ra (`~/.codex/sessions/…`). Lệnh khởi chạy được lưu vào `startCommand` để lần khôi phục
+   * sau vẫn mở đúng thứ ngay cả khi chưa kịp khám phá ra id.
+   */
+  async newCodexTerminal(workspaceId: string): Promise<void> {
+    if (!findWorkspace(this.store, workspaceId)) return;
+
+    const duongDan = await this.hoiDuongDan();
+    if (duongDan === undefined) return;
+    const cwd = duongDan;
+    const ten = path.basename(cwd) || 'codex';
+
+    const luaChon = await vscode.window.showQuickPick(this.codex.buildLaunchOptions(), {
+      placeHolder: 'Chạy Codex thế nào?',
+    });
+    if (!luaChon) return;
+
+    // Lấy lại object sau chuỗi hộp thoại rồi mới touch (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) {
+      void vscode.window.showWarningMessage('Workspace không còn tồn tại.');
+      return;
+    }
+    this.touch(wsNow.id);
+
+    const entry: TerminalEntry = {
+      id: randomUUID(),
+      name: ten,
+      cwd,
+      kind: 'plain',
+      agentId: 'codex',
+      startCommand: luaChon.command,
+    };
+    upsertTerminal(wsNow, entry);
+    this.scheduleSave();
+
+    const truocKhiChay = Date.now();
+    const handle = this.terminals.create(entry.id, {
+      name: entry.name,
+      cwd,
+      location: wsNow.terminalLocation,
+    });
+    this.ghiNhanShellPid(entry.id);
+    handle.sendText(luaChon.command);
+    this.batDauLoading([entry.id]);
+    this.onChanged.fire();
+    void this.nhoCwd(cwd);
+    // Chỉ biến thể resume mới được nhận diện qua "file cũ vừa được ghi tiếp"; với phiên MỚI
+    // thì bắt buộc phải có file rollout mới, nếu không sẽ vơ nhầm phiên của terminal khác
+    // đang chạy trong cùng thư mục.
+    const laResume = luaChon.command !== this.codex.buildLaunchOptions()[0]?.command;
+    void this.khamPhaSessionCodex(workspaceId, entry.id, cwd, truocKhiChay, laResume);
+  }
+
+  /**
+   * Dò id phiên Codex vừa mở. Codex ghi file rollout ngay khi phiên bắt đầu, nhưng có độ trễ
+   * (và người dùng có thể còn đang chọn phiên ở màn hình `codex resume`), nên dò lặp lại
+   * trong một khoảng thời gian rồi thôi — không tìm được thì entry vẫn khôi phục bằng lệnh
+   * khởi chạy đã lưu, chỉ là mở phiên mới thay vì phiên cũ.
+   */
+  private async khamPhaSessionCodex(
+    workspaceId: string,
+    terminalId: string,
+    cwd: string,
+    tuLuc: number,
+    laResume: boolean,
+  ): Promise<void> {
+    for (let lan = 0; lan < CODEX_DO_SO_LAN; lan += 1) {
+      await new Promise((r) => setTimeout(r, CODEX_DO_NHIP_MS));
+      if (this.disposed || !this.terminals.has(terminalId)) return;
+      const entry = this.findEntry(workspaceId, terminalId);
+      if (!entry || entry.agentId !== 'codex') return;
+      if (entry.agentSessionId !== undefined) return;
+
+      const phien = this.codex.timSessionMoi(cwd, tuLuc, Date.now(), {
+        chapNhanFileCu: laResume,
+        boQua: this.sessionCodexDaCoChu(terminalId),
+      });
+      if (!phien) continue;
+      this.ganSessionCodexVaoEntry(workspaceId, terminalId, phien.sessionId);
+      this.loadingIds.delete(terminalId);
+      this.onChanged.fire();
+      return;
+    }
+  }
+
+  /** Các phiên Codex đã thuộc entry khác — không được gắn lần hai cho terminal này. */
+  private sessionCodexDaCoChu(trongterminalId: string): Set<string> {
+    const ra = new Set<string>();
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.id !== trongterminalId && t.agentSessionId !== undefined) ra.add(t.agentSessionId);
+      }
+    }
+    return ra;
+  }
+
+  /**
+   * Ghi phiên Codex vào entry, giữ bất biến MỘT hội thoại chỉ thuộc MỘT entry — y như
+   * `claimSession` làm cho Claude: hai entry cùng id là hai `codex resume <id>` cùng ghi một
+   * file rollout. Chỉ đụng phần thuộc cửa sổ này (touch workspace lạ là leo thang quyền sở hữu).
+   * Toàn bộ đồng bộ, không await xen giữa tra lại entry và `touch`.
+   */
+  private ganSessionCodexVaoEntry(
+    workspaceId: string,
+    terminalId: string,
+    sessionId: string,
+  ): boolean {
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (!entry) return false;
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.id === terminalId || t.agentSessionId !== sessionId) continue;
+        if (!this.touchedIds.has(w.id) && !this.terminals.has(t.id)) continue;
+        delete t.agentSessionId;
+        if (t.startCommand === this.codex.buildResumeCommand(sessionId)) {
+          // Không XÓA lệnh: entry còn là terminal Codex, xóa đi là lần mở lại chỉ có shell
+          // trống. Hạ về "phiên mới" — mất hội thoại cũ (nó thuộc terminal khác) nhưng vẫn
+          // mở đúng công cụ.
+          t.startCommand = this.codex.buildLaunchOptions()[0]?.command;
+        }
+        this.touch(w.id);
+      }
+    }
+    entry.agentId = 'codex';
+    entry.agentSessionId = sessionId;
+    entry.startCommand = this.codex.buildResumeCommand(sessionId);
+    this.touch(workspaceId);
+    this.scheduleSave();
+    return true;
+  }
+
+  /**
    * Tạo terminal thường: hỏi MỘT đường dẫn → terminal mở ngay tại đó (vị trí theo setting
    * `aiWorkspace.terminalLocation`, mặc định editor area), entry `plain` vào workspace.
    * Lệnh chạy trong đó được auto-capture như mọi terminal thường khác.
@@ -904,6 +1041,53 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   // --------------------------------------------------------- chọn đường dẫn
+
+  /**
+   * Entry này có phải terminal agent do chính extension dựng lệnh khởi chạy không.
+   *
+   * Đòi HAI bằng chứng: (1) `agentId` — chỉ code của extension đặt, người dùng/repo không
+   * chạm được; (2) chuỗi lệnh khớp ĐÚNG một lệnh mà adapter sinh ra. Chỉ dựa vào chuỗi là
+   * thủng: auto-capture ghi lại `./codex` của một repo lạ rồi lệnh đó chạy mỗi lần activate
+   * mà không bao giờ qua modal tin cậy. Chỉ dựa vào `agentId` cũng thủng: auto-capture có thể
+   * thay `startCommand` của chính entry codex bằng một lệnh bất kỳ.
+   */
+  /**
+   * Agent đang chạy trong terminal này. MỘT vị từ dùng chung cho nhãn trong cây lẫn lệnh gắn
+   * session — hai nơi nhận diện lệch nhau thì người dùng thấy nhãn `shell` mà menu lại xử như
+   * Codex. `agentId` là bằng chứng mạnh (do extension đặt); lệnh đã bắt được là bằng chứng
+   * yếu hơn nhưng đủ để hiển thị và để chọn nhánh gắn session.
+   */
+  private agentCuaEntry(entry: TerminalEntry): 'claude' | 'codex' | undefined {
+    if (entry.kind === 'claude') return 'claude';
+    if (entry.agentId === 'codex') return 'codex';
+    if (entry.startCommand !== undefined && this.codex.ownsCommand(entry.startCommand)) {
+      return 'codex';
+    }
+    return undefined;
+  }
+
+  private laEntryAgent(entry: TerminalEntry): boolean {
+    // Nhánh này hiện là dự phòng: cả hai chỗ gọi đều đã lọc `kind === 'plain'` từ trước.
+    // Giữ lại để hàm đúng nghĩa khi đứng một mình, đừng tưởng nó đang gánh việc.
+    if (entry.kind === 'claude') return true;
+    if (entry.agentId !== 'codex' || entry.startCommand === undefined) return false;
+    const hopLe = new Set(this.codex.buildLaunchOptions().map((o) => o.command));
+    if (entry.agentSessionId !== undefined) {
+      hopLe.add(this.codex.buildResumeCommand(entry.agentSessionId));
+    }
+    return hopLe.has(entry.startCommand);
+  }
+
+  /**
+   * Tập lệnh khởi động CẦN tin cậy của cả workspace — nguồn duy nhất cho vân tay trust.
+   * Lệnh agent bị loại, và bộ lọc phải khớp ĐÚNG bộ lọc trong `activateWorkspace`, nếu không
+   * vân tay hai bên lệch nhau và người dùng bị hỏi tin cậy lại mỗi lần.
+   */
+  private lenhCanTinCay(ws: Workspace): string[] {
+    return ws.terminals
+      .filter((t) => t.kind === 'plain' && t.startCommand && !this.laEntryAgent(t))
+      .map((t) => t.startCommand as string);
+  }
 
   private lichSuCwd(): string[] {
     return this.boNhoChung.get<string[]>(KHOA_LICH_SU_CWD) ?? [];
@@ -1271,8 +1455,13 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry = ws.terminals.find((t) => t.id === key);
     if (!entry) return;
     const lenh = event.execution.commandLine.value;
-    const laLenhAgent = this.agent.ownsCommand(lenh);
-    if (laLenhAgent) {
+    const laLenhClaude = this.agent.ownsCommand(lenh);
+    // Entry codex: lệnh codex KHÔNG được auto-capture, nếu không nó ghi đè `codex resume <id>`
+    // mà ta vừa gài, mất luôn cái chốt phiên. Terminal thường mà người dùng tự gõ `codex` thì
+    // VẪN bắt như mọi app khác — và vì entry đó không có `agentId`, lệnh ấy vẫn phải qua cổng
+    // tin cậy ở lần khôi phục.
+    const boQuaBat = laLenhClaude || (entry.agentId === 'codex' && this.codex.ownsCommand(lenh));
+    if (laLenhClaude) {
       // Vừa chạy claude trong terminal này → kết luận "đã tra, không có claude" và cặp phả hệ
       // đã xác nhận của lần trước hết hiệu lực. CHỈ xóa cho lệnh claude: xóa cho mọi lệnh vặt
       // (`ls`, `git status`) mở lại cổng đọc bảng tiến trình mà chẳng thêm khả năng phát hiện
@@ -1280,7 +1469,7 @@ export class WorkspaceManager implements vscode.Disposable {
       this.daTraKhongThayClaude.delete(key);
       this.phaHeDaXacNhan.delete(key);
     }
-    if (!nenBatLenh(entry.kind, laLenhAgent, lenh)) return;
+    if (!nenBatLenh(entry.kind, boQuaBat, lenh)) return;
 
     this.pendingCommands.set(key, {
       lenh,
@@ -1819,7 +2008,13 @@ export class WorkspaceManager implements vscode.Disposable {
    * Registry đọc không được thì vẫn còn đường nhập session ID tay (/status trong Claude).
    */
   async assignClaudeSession(workspaceId: string, terminalId: string): Promise<void> {
-    if (!this.findEntry(workspaceId, terminalId)) return;
+    const entryDau = this.findEntry(workspaceId, terminalId);
+    if (!entryDau) return;
+    // Terminal thường mà người dùng tự gõ `codex` cũng đi nhánh Codex — cùng vị từ với nhãn
+    // hiển thị trong cây, không để hai nơi nhận diện lệch nhau.
+    if (this.agentCuaEntry(entryDau) === 'codex') {
+      return await this.ganSessionCodex(workspaceId, terminalId);
+    }
 
     let running: RunningSession[] = [];
     try {
@@ -1891,6 +2086,48 @@ export class WorkspaceManager implements vscode.Disposable {
     // store hiện hành chứ không tin snapshot chuCu tính trước QuickPick.
     if (this.claimSession(workspaceId, terminalId, session)) {
       this.scheduleSave();
+      this.onChanged.fire();
+    }
+  }
+
+  /**
+   * Gắn tay một phiên Codex vào terminal. Codex không có registry phiên đang chạy, nên danh
+   * sách lấy từ các file rollout gần đây; phiên của ĐÚNG thư mục này được đẩy lên đầu.
+   */
+  private async ganSessionCodex(workspaceId: string, terminalId: string): Promise<void> {
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (!entry) return;
+    const ganDay = this.codex.lietKeGanDay();
+    if (ganDay.length === 0) {
+      void vscode.window.showInformationMessage(
+        'Không thấy phiên Codex nào gần đây trong ~/.codex/sessions.',
+      );
+      return;
+    }
+    const cungThuMuc = (p: string) => normalizeCwd(p) === normalizeCwd(entry.cwd);
+    const sapXep = [...ganDay].sort(
+      (a, b) => Number(cungThuMuc(b.cwd)) - Number(cungThuMuc(a.cwd)),
+    );
+    const daCoChu = this.sessionCodexDaCoChu(terminalId);
+    const picked = await vscode.window.showQuickPick(
+      sapXep.map((s) => ({
+        label: new Date(s.luc).toLocaleString('vi-VN'),
+        description: [
+          cungThuMuc(s.cwd) ? '✓ cùng thư mục' : s.cwd,
+          daCoChu.has(s.sessionId) ? '— đang gắn ở terminal khác, chọn để CHUYỂN về đây' : '',
+        ]
+          .filter((x) => x !== '')
+          .join(' '),
+        detail: s.sessionId,
+        phien: s,
+      })),
+      { placeHolder: 'Phiên Codex nào thuộc terminal này? (phiên cùng thư mục xếp trước)' },
+    );
+    if (!picked) return;
+
+    // ganSessionCodexVaoEntry tự tra lại entry và tự gỡ id khỏi entry khác (bất biến
+    // re-resolve-rồi-touch + một-hội-thoại-một-entry).
+    if (this.ganSessionCodexVaoEntry(workspaceId, terminalId, picked.phien.sessionId)) {
       this.onChanged.fire();
     }
   }

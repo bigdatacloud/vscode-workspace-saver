@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import * as nodePath from 'node:path';
 import { ClaudeCodeAdapter } from './agent/claude';
+import { CodexAdapter, codexHomeMacDinh, realCodexFs } from './agent/codex';
 import { detectShellKind } from './agent/quote';
 import { TerminalManager } from './terminal/manager';
 import { WorkspaceManager } from './workspace/manager';
@@ -10,8 +12,10 @@ let manager: WorkspaceManager | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
   const terminals = new TerminalManager();
-  const agent = new ClaudeCodeAdapter(detectShellKind(process.platform, vscode.env.shell));
-  manager = new WorkspaceManager(context, terminals, agent);
+  const shell = detectShellKind(process.platform, vscode.env.shell);
+  const agent = new ClaudeCodeAdapter(shell);
+  const codex = new CodexAdapter(shell, realCodexFs, codexHomeMacDinh(), nodePath.sep);
+  manager = new WorkspaceManager(context, terminals, agent, codex);
 
   const tree = new WorkspaceTreeProvider(manager);
   const view = vscode.window.createTreeView('aiWorkspace.workspaces', { treeDataProvider: tree });

@@ -53,6 +53,10 @@
         "title": "AI Workspace: Tạo terminal Claude mới"
       },
       {
+        "command": "aiWorkspace.newCodexTerminal",
+        "title": "AI Workspace: Tạo terminal Codex mới"
+      },
+      {
         "command": "aiWorkspace.newPlainTerminal",
         "title": "AI Workspace: Tạo terminal mới",
         "icon": "$(add)"
@@ -79,7 +83,7 @@
       },
       {
         "command": "aiWorkspace.assignClaudeSession",
-        "title": "AI Workspace: Gắn session Claude vào terminal"
+        "title": "AI Workspace: Gắn session AI vào terminal"
       },
       {
         "command": "aiWorkspace.renameTerminal",
@@ -142,9 +146,14 @@
           "group": "2_terminal@1"
         },
         {
-          "command": "aiWorkspace.newPlainTerminal",
+          "command": "aiWorkspace.newCodexTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "2_terminal@2"
+        },
+        {
+          "command": "aiWorkspace.newPlainTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "2_terminal@3"
         },
         {
           "command": "aiWorkspace.newPlainTerminal",

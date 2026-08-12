@@ -55,7 +55,8 @@ export class TerminalItem extends vscode.TreeItem {
   constructor(readonly view: TerminalView) {
     super(view.name, vscode.TreeItemCollapsibleState.None);
     this.id = `term:${view.id}`;
-    const kindLabel = view.kind === 'claude' ? 'AI' : 'shell';
+    const kindLabel =
+      view.agent === 'claude' ? 'AI' : view.agent === 'codex' ? 'Codex' : 'shell';
     this.description = `${kindLabel} · ${STATE_LABELS[view.state]}`;
     // Đường dẫn nằm ngay trong tooltip: hover là thấy, không phải mở menu. Menu "Xem đường
     // dẫn" vẫn cần cho việc sao chép (tooltip không bôi đen copy được).

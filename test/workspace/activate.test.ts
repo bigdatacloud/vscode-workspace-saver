@@ -32,6 +32,8 @@ function makePorts(over: Partial<ActivatePorts> = {}) {
     fsExists: () => true,
     isTrusted: () => true,
     confirmTrust: async () => true,
+    // Bằng chứng theo ENTRY, không theo chuỗi lệnh (xem ghi chú ở ActivatePorts).
+    laLenhAgent: (e) => e.kind === 'claude' || e.agentId === 'codex',
     onMinted: async () => { calls.push('minted'); },
     warn: () => {},
     ...over,
@@ -69,6 +71,23 @@ describe('activateWorkspace', () => {
     await activateWorkspace(ws([plainCmd, claudeResume]), ports);
     expect(sent.get(plainCmd.id)).toEqual([]);
     expect(sent.get(claudeResume.id)).toHaveLength(1);
+  });
+
+  it('lệnh agent (codex resume) chạy mà KHÔNG qua cổng trust, kể cả khi người dùng từ chối', async () => {
+    // Entry codex là `plain` + startCommand do extension dựng: người dùng đã chủ động tạo nó,
+    // còn trust sinh ra để chặn lệnh tự bắt được hoặc gõ tay.
+    const confirmTrust = vi.fn(async () => false);
+    const { ports, sent } = makePorts({ isTrusted: () => false, confirmTrust });
+    const codex: TerminalEntry = {
+      id: U('8'), name: 'codex', cwd: 'D:\\x', kind: 'plain',
+      agentId: 'codex', agentSessionId: U('5'), startCommand: `codex resume '${U('5')}'`,
+    };
+    await activateWorkspace(ws([codex, plainCmd]), ports);
+    expect(sent.get(U('8'))).toEqual([`codex resume '${U('5')}'`]);
+    // Lệnh thường vẫn bị chặn vì người dùng từ chối.
+    expect(sent.get(plainCmd.id)).toEqual([]);
+    // Và lệnh agent KHÔNG lọt vào danh sách xin tin cậy.
+    expect(confirmTrust).toHaveBeenCalledWith(['npm run dev']);
   });
 
   it('không có startCommand nào → không hỏi trust', async () => {

@@ -11,6 +11,18 @@ export const TerminalEntrySchema = z.object({
   startCommand: z.string().min(1).optional(),
   claudeSessionId: uuid.optional(),
   claudeName: z.string().min(1).optional(),
+  /**
+   * Terminal chạy một agent KHÔNG phải Claude. Cố ý để `kind` vẫn là `plain`: bản extension
+   * cũ đọc file này sẽ coi nó là terminal thường (mở shell, chạy startCommand) thay vì hỏng
+   * schema — thêm giá trị mới vào enum `kind` là làm bản cũ parse lỗi cả file rồi backup và
+   * khởi tạo rỗng, tức mất dữ liệu thật.
+   */
+  agentId: z.enum(['codex']).optional(),
+  /**
+   * Id phiên của agent đó. KHÔNG ràng buộc dạng uuid: `codex resume` nhận cả tên phiên, và
+   * chặn ở cửa ghi nghĩa là save hỏng → mất dữ liệu, tệ hơn hẳn một id lạ dạng.
+   */
+  agentSessionId: z.string().min(1).optional(),
 });
 
 export const WorkspaceSchema = z

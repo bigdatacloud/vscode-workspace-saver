@@ -62,6 +62,15 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
   command verbatim, with "Trust and run" or "Open shell only". Changing the `startCommand`
   (including via auto-capture) invalidates the old trust (fingerprint changes) — the next
   activation asks for trust again.
+- **Not Claude-only — Codex conversations are restored too**: *New Codex terminal* opens the
+  terminal and then **discovers the session id** from `~/.codex/sessions` (Codex has no
+  pin-the-id flag like Claude's `--session-id`, so it must be found after the fact); once
+  known, later restores run `codex resume <id>`. If it can't be determined (you haven't typed
+  anything yet, or two Codex sessions share the folder so it is ambiguous) the entry keeps its
+  original launch command — it still reopens, just as a new session. Codex has no
+  running-session registry, so there is **no busy/idle status**, only "open". Other tools
+  (gemini, opencode…) are still restored at the app level through `startCommand`, and if they
+  have their own resume command you can set it via *Set start command for terminal*.
 - **Automatic Claude session capture**: every ~3 seconds the extension matches the cwd of
   open terminals in the active workspace against `claude agents --json` (only
   `kind: interactive` rows). A unique match → `claudeSessionId`/peer name attached
@@ -102,6 +111,7 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
 | AI Workspace: Delete workspace | `aiWorkspace.deleteWorkspace` | Workspace context menu (with confirmation modal) |
 | AI Workspace: New Claude terminal | `aiWorkspace.newClaudeTerminal` | Palette / workspace context menu — asks for ONE path only, then arrow-key through command variants (new session / `-c` / `-r`, each with a `--dangerously-skip-permissions` twin); the terminal opens there immediately, named after the folder |
+| AI Workspace: New Codex terminal | `aiWorkspace.newCodexTerminal` | Palette / workspace context menu — asks for ONE path, then how to run (`codex`, `codex resume --last`, `codex resume`); the session id is discovered from `~/.codex/sessions` afterwards and restored later with `codex resume <id>` |
 | AI Workspace: New terminal | `aiWorkspace.newPlainTerminal` | **"+" button on the workspace row** (hover) / palette / workspace context menu — asks for ONE path, opens a plain terminal there (added to the workspace, apps auto-captured as usual) |
 | AI Workspace: Rename terminal | `aiWorkspace.renameTerminal` | Terminal item context menu — or use VS Code's built-in Rename on the terminal tab; the name syncs back to the tree within ~3 seconds |
 | AI Workspace: Show terminal path | `aiWorkspace.showTerminalPath` | Terminal item context menu — shows the full cwd with "Copy path" / "Open folder" (also visible in the item's hover tooltip) |
@@ -109,7 +119,7 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Remove terminal from workspace | `aiWorkspace.removeTerminal` | Terminal context menu |
 | AI Workspace: Open terminal | `aiWorkspace.focusTerminal` | Click a terminal item in the tree |
 | AI Workspace: Add open terminal to workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Terminal tab right-click menu / palette |
-| AI Workspace: Assign Claude session to terminal | `aiWorkspace.assignClaudeSession` | Terminal item context menu in the tree |
+| AI Workspace: Assign AI session to terminal | `aiWorkspace.assignClaudeSession` | Terminal item context menu — a Claude terminal picks from running sessions; a Codex terminal picks from recent sessions read out of `~/.codex/sessions` (same-cwd first) |
 
 The "AI Workspaces" tree (in Explorer, view id `aiWorkspace.workspaces`) has 2 levels:
 level 1 is the workspace list (sorted by most recently active, the active workspace gets its
@@ -167,6 +177,15 @@ applies to both new and restored terminals. For terminals you open yourself with
   to touch it.
 - Deleting a workspace in one window can be undone by another window that still holds it in
   RAM and has touched it — its next save may resurrect it.
+- Codex has no running-session registry, so Codex terminals have **no busy/idle status** (only
+  "open") and are not matched by process ancestry the way Claude terminals are.
+- The `agentId`/`agentSessionId` fields (used by Codex) are **new**: any VS Code window still
+  running an older build — including a window **not yet reloaded after the update** — ignores
+  them and drops them on its next save, **even for workspaces it does not own** (the on-disk
+  copy it reads has already been stripped). The conversation is not lost: the id also lives in
+  `startCommand` (`codex resume <id>`), so it still restores the right conversation — only the
+  `Codex` label and the session-assignment branch fall back to a plain terminal. Reload every
+  window after updating the extension and it goes away.
 - No multi-machine workspace management, no workspace sharing via git.
 
 ## Development
