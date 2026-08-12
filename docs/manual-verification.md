@@ -310,9 +310,11 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 ## Worktree khi tạo terminal agent
 - [ ] `Tạo terminal Claude mới` trên một thư mục là repo git → sau khi chọn đường dẫn, hộp
       thoại hỏi tên worktree; để TRỐNG → làm thẳng trên thư mục đã chọn
-- [ ] Nhập tên worktree mới → tạo `<repo>/.worktrees/<tên>` + nhánh cùng tên, terminal mở tại
-      đó, tên terminal lấy theo tên worktree
-- [ ] `git status` trong repo KHÔNG hiện `.worktrees/` (đã thêm vào `.git/info/exclude`)
+- [ ] Nhập tên worktree mới → tạo `<repo>-worktrees/<tên>` NGOÀI repo (cạnh thư mục repo) +
+      nhánh cùng tên, terminal mở tại đó, tên terminal lấy theo tên worktree
+- [ ] `git status` trong repo sạch (worktree nằm ngoài nên không cần khai báo ignore gì)
+- [ ] Hỏi worktree diễn ra SAU khi chọn xong lệnh chạy; Esc ở bước chọn lệnh KHÔNG để lại
+      thư mục/nhánh rác nào
 - [ ] Nhập lại đúng tên worktree đã có → dùng lại thư mục đó, không lỗi, không ghi đè
 - [ ] Thư mục KHÔNG phải repo git → không hỏi worktree, mở thẳng
 - [ ] Tên worktree có ký tự lạ (`--foo`, `a/../b`) → bị chặn ngay ở ô nhập
