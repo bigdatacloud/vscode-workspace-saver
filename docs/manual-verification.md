@@ -151,6 +151,12 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Nút "+" trên dòng workspace
+- [ ] Rê chuột vào một dòng workspace → hiện nút "+" bên phải; bấm → hỏi đường dẫn rồi mở
+      terminal mới đúng workspace đó (KHÔNG phải workspace active nếu bấm ở dòng khác)
+- [ ] Bấm "+" KHÔNG kích hoạt workspace đó và không đóng workspace đang active
+- [ ] Bấm vào TÊN workspace (không phải nút "+") vẫn là kích hoạt như cũ
+
 ## Xem thông tin workspace
 - [ ] Chuột phải workspace → `Xem thông tin workspace` → modal hiện đúng: id, lần active gần
       nhất, "Đang giữ bởi" (cửa sổ này / cửa sổ khác / không), số terminal + số đang mở, vị

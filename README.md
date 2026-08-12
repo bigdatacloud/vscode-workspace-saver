@@ -95,7 +95,7 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
 | AI Workspace: Delete workspace | `aiWorkspace.deleteWorkspace` | Workspace context menu (with confirmation modal) |
 | AI Workspace: New Claude terminal | `aiWorkspace.newClaudeTerminal` | Palette / workspace context menu — asks for ONE path only, then arrow-key through command variants (new session / `-c` / `-r`, each with a `--dangerously-skip-permissions` twin); the terminal opens there immediately, named after the folder |
-| AI Workspace: New terminal | `aiWorkspace.newPlainTerminal` | Palette / workspace context menu — asks for ONE path, opens a plain terminal there (added to the workspace, apps auto-captured as usual) |
+| AI Workspace: New terminal | `aiWorkspace.newPlainTerminal` | **"+" button on the workspace row** (hover) / palette / workspace context menu — asks for ONE path, opens a plain terminal there (added to the workspace, apps auto-captured as usual) |
 | AI Workspace: Rename terminal | `aiWorkspace.renameTerminal` | Terminal item context menu — or use VS Code's built-in Rename on the terminal tab; the name syncs back to the tree within ~3 seconds |
 | AI Workspace: Show terminal path | `aiWorkspace.showTerminalPath` | Terminal item context menu — shows the full cwd with "Copy path" / "Open folder" (also visible in the item's hover tooltip) |
 | AI Workspace: Set start command for terminal | `aiWorkspace.setStartCommand` | `plain` terminal context menu |

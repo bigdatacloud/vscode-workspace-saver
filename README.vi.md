@@ -85,7 +85,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — chỉ hỏi MỘT đường dẫn, rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
-| AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
+| AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | **Nút "+" ngay trên dòng workspace** (hiện khi rê chuột) / palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
 | AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
 | AI Workspace: Xem đường dẫn terminal | `aiWorkspace.showTerminalPath` | Context menu terminal item — hiện đầy đủ cwd kèm nút "Sao chép đường dẫn" / "Mở thư mục" (hover vào item cũng thấy đường dẫn) |
 | AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
