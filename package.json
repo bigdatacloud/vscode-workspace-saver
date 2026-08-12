@@ -223,6 +223,12 @@
           "command": "aiWorkspace.addOpenTerminalToWorkspace"
         }
       ],
+      "editor/title/context": [
+        {
+          "command": "aiWorkspace.addOpenTerminalToWorkspace",
+          "when": "resourceScheme == vscode-terminal"
+        }
+      ],
       "terminal/context": [
         {
           "command": "aiWorkspace.addOpenTerminalToWorkspace"

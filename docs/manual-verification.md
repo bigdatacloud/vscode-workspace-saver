@@ -287,6 +287,26 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Đổi tên tab bằng Rename có sẵn của VS Code khi terminal đang ở dấu nhắc (không chạy
       lệnh gì) → tên vẫn đồng bộ về cây trong ~3 giây
 
+## Nối lại terminal hồi sinh sau reload (KHÔNG nhân đôi)
+- [ ] Có workspace active với 2-3 terminal Claude đang chạy → Reload Window → các tab terminal
+      hồi sinh, workspace về trạng thái inactive → kích hoạt lại workspace: KHÔNG mở thêm tab
+      nào, các tab cũ được nhận vào cây (thông báo "Đã nối lại N terminal đang chạy sẵn")
+- [ ] Kiểm chứng bằng `claude agents --json`: mỗi sessionId chỉ có ĐÚNG một pid sau khi kích
+      hoạt lại
+- [ ] Terminal hồi sinh đang chạy claude ở cùng thư mục với entry nhưng id phiên KHÁC (entry
+      chưa bắt được id, hoặc đã /clear rồi chạy phiên mới) → vẫn được nhận, entry tự trỏ sang
+      phiên đang chạy thật
+- [ ] Có terminal chạy TRÙNG hội thoại với terminal vừa nối lại → hiện cảnh báo kèm nút "Đóng
+      các terminal trùng"; bấm thì chỉ đóng đúng những cái trùng, terminal trong cây còn nguyên
+- [ ] Terminal Codex hồi sinh (trùng tên + cwd) cũng được nhận, không mở thêm tab
+
+## Thêm terminal mồ côi từ menu tab
+- [ ] Chuột phải TAB terminal trong khu editor → có mục "AI Workspace: Thêm terminal đang mở
+      vào workspace"; bấm khi có nhiều terminal mồ côi → hiện danh sách chọn (cái đang focus
+      nằm đầu, ghi "đang focus")
+- [ ] Chỉ có một terminal mồ côi → thêm thẳng, không hỏi
+- [ ] Mọi terminal đều đã thuộc workspace → báo "Mọi terminal đang mở đều đã thuộc một workspace"
+
 ## Worktree khi tạo terminal agent
 - [ ] `Tạo terminal Claude mới` trên một thư mục là repo git → sau khi chọn đường dẫn, hộp
       thoại hỏi tên worktree; để TRỐNG → làm thẳng trên thư mục đã chọn
