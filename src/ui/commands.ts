@@ -24,7 +24,9 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.activate(id);
     }),
-    vscode.commands.registerCommand('aiWorkspace.closeActiveWorkspace', () => manager.closeActive()),
+    vscode.commands.registerCommand('aiWorkspace.closeActiveWorkspace', () =>
+      manager.closeActiveConfirmed(),
+    ),
     vscode.commands.registerCommand('aiWorkspace.renameWorkspace', async (item?: WorkspaceItem) => {
       const id = await wsArg(item);
       if (id) await manager.rename(id);

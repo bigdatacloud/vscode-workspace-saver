@@ -72,7 +72,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 |---|---|---|
 | AI Workspace: Tạo workspace mới | `aiWorkspace.createWorkspace` | Palette / nút "+" trên view |
 | AI Workspace: Kích hoạt workspace | `aiWorkspace.activateWorkspace` | Click item / context menu workspace chưa active |
-| AI Workspace: Đóng workspace đang active | `aiWorkspace.closeActiveWorkspace` | Palette / context menu workspace active |
+| AI Workspace: Đóng workspace đang active | `aiWorkspace.closeActiveWorkspace` | Palette / context menu workspace active (nhóm cuối menu, có modal xác nhận) |
 | AI Workspace: Cài đặt workspace | `aiWorkspace.workspaceSettings` | Context menu workspace — vị trí mở terminal riêng từng workspace (theo setting chung / editor area / panel dưới) |
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |

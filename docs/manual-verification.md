@@ -172,6 +172,18 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       editor; mở lại QuickPick thấy dấu "hiện tại" đúng mục đã chọn; chọn "Theo setting chung"
       → A quay về theo setting chung
 
+## Gắn session tay & đóng workspace có confirm
+- [ ] Terminal có claude đang chạy nhưng session đã bị entry khác giữ →
+      `Gắn session Claude vào terminal`: session vẫn hiện trong danh sách kèm nhãn
+      `đang gắn ở "<ws / terminal>"` → chọn → claim CHUYỂN về terminal này, entry cũ mất
+      sessionId (không double --resume khi kích hoạt lại)
+- [ ] Trong QuickPick gắn session, mục "Nhập session ID thủ công…" → nhập UUID (lấy từ
+      /status trong Claude) → entry gắn đúng id; nhập chuỗi không phải UUID bị chặn
+- [ ] Menu chuột phải workspace active: "Đóng workspace đang active" nằm ở NHÓM CUỐI menu;
+      bấm → modal xác nhận, Cancel thì không gì xảy ra, "Đóng" mới đóng terminal
+- [ ] Chuyển workspace (bấm workspace khác) vẫn chỉ hỏi MỘT modal "Lưu và đóng X trước khi
+      mở Y?" — không hỏi confirm hai lần
+
 ## Khóa một workspace active mỗi cửa sổ (V5)
 - [ ] Kích hoạt một workspace ở cửa sổ VS Code A → mở một cửa sổ VS Code B khác (cùng máy),
       cũng kích hoạt CHÍNH workspace đó → cửa sổ B hiện cảnh báo "Workspace "X" đang mở ở cửa

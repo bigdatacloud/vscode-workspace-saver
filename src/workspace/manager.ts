@@ -443,6 +443,26 @@ export class WorkspaceManager implements vscode.Disposable {
     };
   }
 
+  /**
+   * Đường đi của LỆNH đóng workspace — hỏi confirm trước. Luồng chuyển workspace trong
+   * activate() gọi thẳng closeActive() vì đã có modal "Lưu và đóng X trước khi mở Y?" riêng.
+   * Check activeId TRƯỚC modal: Extension Host headless (smoke test) không có ai bấm.
+   */
+  async closeActiveConfirmed(): Promise<void> {
+    const id = this.activeId;
+    if (id === null) return;
+    const ten = findWorkspace(this.store, id)?.name ?? '';
+    const answer = await vscode.window.showWarningMessage(
+      `Đóng workspace "${ten}"? Terminal của nó sẽ đóng — trạng thái đã tự lưu, kích hoạt lại là mở tiếp.`,
+      { modal: true },
+      'Đóng',
+    );
+    if (answer !== 'Đóng') return;
+    // Trong lúc chờ modal, workspace có thể đã bị đóng/chuyển bởi luồng khác.
+    if (this.activeId !== id) return;
+    await this.closeActive();
+  }
+
   async closeActive(): Promise<void> {
     const id = this.activeId;
     if (id === null) return;
@@ -1257,6 +1277,11 @@ export class WorkspaceManager implements vscode.Disposable {
   /**
    * Gắn tay một session Claude đang chạy vào terminal — lối thoát cho các trường hợp máy
    * không tự bắt được (nhiều terminal cùng cwd, đã Esc QuickPick, poll chưa kịp chạy).
+   *
+   * Session đã bị entry khác giữ vẫn ĐƯỢC liệt kê (đánh dấu chủ cũ) — chọn thì CHUYỂN claim
+   * về terminal này, gỡ khỏi entry cũ nên không sinh double --resume. Trước đây lọc thẳng
+   * các session đó khiến lệnh chết đường: claude chạy sờ sờ mà "không có session để gắn".
+   * Registry đọc không được thì vẫn còn đường nhập session ID tay (/status trong Claude).
    */
   async assignClaudeSession(workspaceId: string, terminalId: string): Promise<void> {
     if (!this.findEntry(workspaceId, terminalId)) return;
@@ -1265,37 +1290,80 @@ export class WorkspaceManager implements vscode.Disposable {
     try {
       running = await this.agent.listRunning();
     } catch {
-      // rơi xuống thông báo "không có session" bên dưới
+      // registry đọc không được — danh sách rỗng, vẫn còn mục nhập tay bên dưới
     }
-    // Session đã bị entry khác (bất kỳ workspace nào) giữ thì không đưa ra chọn nữa —
-    // hai entry cùng trỏ một hội thoại là nguồn double --resume.
-    const claimed = new Set<string>();
+    const chuCu = new Map<string, string>();
     for (const w of this.store.workspaces) {
       for (const t of w.terminals) {
-        if (t.claudeSessionId !== undefined && t.id !== terminalId) claimed.add(t.claudeSessionId);
+        if (t.claudeSessionId !== undefined && t.id !== terminalId) {
+          chuCu.set(t.claudeSessionId, `${w.name} / ${t.name}`);
+        }
       }
     }
-    const options = running.filter((r) => r.kind === 'interactive' && !claimed.has(r.sessionId));
-    if (options.length === 0) {
-      void vscode.window.showInformationMessage(
-        'Không có session Claude nào đang chạy (chưa bị gắn) để chọn.',
-      );
+
+    type Muc = vscode.QuickPickItem & { session?: RunningSession; nhapTay?: boolean };
+    const options: Muc[] = running
+      .filter((r) => r.kind === 'interactive')
+      .map((r) => {
+        const chu = chuCu.get(r.sessionId);
+        return {
+          label: r.name?.trim() || r.sessionId,
+          description: chu ? `${r.cwd} — đang gắn ở "${chu}", chọn để CHUYỂN về đây` : r.cwd,
+          detail: `trạng thái: ${r.status}`,
+          session: r,
+        };
+      });
+    options.push({
+      label: 'Nhập session ID thủ công…',
+      description: 'khi registry không thấy session — xem ID bằng /status trong Claude Code',
+      nhapTay: true,
+    });
+
+    const picked = await vscode.window.showQuickPick(options, {
+      placeHolder:
+        options.length === 1
+          ? 'Registry không thấy session nào đang chạy (claude agents --json) — nhập ID tay?'
+          : 'Session Claude nào đang chạy trong terminal này?',
+    });
+    if (!picked) return;
+
+    let session: RunningSession;
+    if (picked.nhapTay === true) {
+      const id = await vscode.window.showInputBox({
+        prompt: 'Session ID (UUID) — xem bằng lệnh /status trong Claude Code',
+        validateInput: (v) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.trim())
+            ? undefined
+            : 'Phải là UUID (8-4-4-4-12 ký tự hex)',
+      });
+      if (id === undefined) return;
+      session = {
+        sessionId: id.trim().toLowerCase(),
+        name: null,
+        cwd: '',
+        pid: null,
+        kind: 'interactive',
+        status: 'idle',
+      };
+    } else if (picked.session) {
+      session = picked.session;
+    } else {
       return;
     }
 
-    const picked = await vscode.window.showQuickPick(
-      options.map((r) => ({
-        label: r.name?.trim() || r.sessionId,
-        description: r.cwd,
-        detail: `trạng thái: ${r.status}`,
-        session: r,
-      })),
-      { placeHolder: 'Session Claude nào đang chạy trong terminal này?' },
-    );
-    if (!picked) return;
-
+    // Gỡ MỌI entry khác đang giữ session này TRƯỚC khi gắn — quét lại store hiện hành
+    // (không tin chuCu tính trước QuickPick: poll có thể vừa claim trong lúc chờ), và không
+    // có await từ đây tới claimSession (bất biến re-resolve-then-touch).
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.id !== terminalId && t.claudeSessionId === session.sessionId) {
+          delete t.claudeSessionId;
+          this.touch(w.id);
+        }
+      }
+    }
     // claimSession tự tra lại entry theo id sau await (bất biến re-resolve-then-touch).
-    if (this.claimSession(workspaceId, terminalId, picked.session)) {
+    if (this.claimSession(workspaceId, terminalId, session)) {
       this.scheduleSave();
       this.onChanged.fire();
     }
