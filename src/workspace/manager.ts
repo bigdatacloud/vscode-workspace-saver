@@ -7,9 +7,9 @@ import { ZodError } from 'zod';
 import { classifyTerminal, pickCwd } from '../adopt/filter';
 import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
 import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
+import { chonSessionChoTerminal, gomSessionTheoTerminal } from '../claude/ancestry';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
 import { docBangTienTrinh } from '../proc/real';
-import { timTerminalTheoToTien } from '../proc/tree';
 import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
 import {
   createWorkspace,
@@ -50,6 +50,11 @@ const STORE_FILE = 'workspaces.json';
 const ACTIVE_POLL_MS = 3000;
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
 const LOADING_TIMEOUT_MS = 90_000;
+/** Đọc bảng tiến trình hỏng thì nghỉ chừng này rồi mới thử lại (mỗi lần thử tốn tới 5 giây). */
+const LUI_SAU_DOC_HONG_MS = 60_000;
+const LUI_TOI_DA_MS = 600_000;
+/** Hỏng liên tiếp chừng này lần thì coi như máy không tra được: cảnh báo và thôi ưu tiên. */
+const HONG_LIEN_TIEP_BO_CUOC = 3;
 
 /**
  * `pickCwd` cố tình chỉ bỏ qua `undefined` (chuỗi rỗng là lỗi của caller — đã ghim bằng test).
@@ -89,6 +94,18 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly askedCwds = new Set<string>();
   /** PID shell của từng terminal đang track (terminalId → pid) — để tra phả hệ tiến trình. */
   private readonly shellPids = new Map<string, number>();
+  /** Pid session đã tra phả hệ và KHÔNG thuộc terminal nào của cửa sổ này — cache âm. */
+  private readonly pidNgoaiCuaSo = new Set<number>();
+  /** Terminal đã tra phả hệ và bên trong không có claude nào — thôi ép đọc bảng tiến trình. */
+  private readonly daTraKhongThayClaude = new Set<string>();
+  /** Cặp terminalId → sessionId đã được phả hệ tiến trình xác nhận (cwd lệch là bình thường). */
+  private readonly phaHeDaXacNhan = new Map<string, string>();
+  /** Buộc lần tra phả hệ tới đọc bảng tươi, bỏ qua cache (dùng cho quét bắt lần cuối). */
+  private epDocBangTuoi = false;
+  /** Lúc đọc bảng tiến trình hỏng gần nhất — lùi một nhịp dài thay vì thử lại mỗi 3 giây. */
+  private docBangHongLuc: number | null = null;
+  private docBangHongLienTiep = 0;
+  private daCanhBaoDocBang = false;
   /** Cache bảng tiến trình — đọc lại tốn cỡ giây, không được phép chạy mỗi nhịp poll 3s. */
   private bangTienTrinhCache: {
     luc: number;
@@ -164,6 +181,8 @@ export class WorkspaceManager implements vscode.Disposable {
       this.terminals.onClosed((key) => {
         // V7: đóng terminal bằng tay KHÔNG gỡ entry khỏi workspace, chỉ đổi trạng thái hiển thị.
         this.shellPids.delete(key);
+        this.daTraKhongThayClaude.delete(key);
+        this.phaHeDaXacNhan.delete(key);
         this.pendingCommands.delete(key);
         this.onChanged.fire();
       }),
@@ -873,10 +892,11 @@ export class WorkspaceManager implements vscode.Disposable {
    * tra — session mới xuất hiện thì pid nó chưa có trong cache, buộc đọc lại ngay để không
    * bắt trượt rồi rơi xuống QuickPick oan.
    */
-  private async layBangTienTrinh(pidCanTra: number[]): Promise<Map<number, number>> {
+  private async layBangTienTrinh(pidCanTra: number[], epDocTuoi = false): Promise<Map<number, number>> {
     const TTL_MS = 30_000;
     const cache = this.bangTienTrinhCache;
     if (
+      !epDocTuoi &&
       cache !== null &&
       Date.now() - cache.luc < TTL_MS &&
       pidCanTra.every((pid) => cache.bang.has(pid) || cache.vangMat.has(pid))
@@ -884,9 +904,13 @@ export class WorkspaceManager implements vscode.Disposable {
       return cache.bang;
     }
     const bang = await docBangTienTrinh();
+    // Máy nào cũng có tiến trình, nên bảng RỖNG chỉ có nghĩa là đọc hỏng (CIM timeout, lỗi
+    // quyền). KHÔNG cache kết quả hỏng: cache nó thì suốt 30 giây sau mọi phép tra phả hệ
+    // đều trả "không thuộc terminal nào" — đúng lúc finalClaimSweep chạy là mất cơ hội cuối.
+    if (bang.size === 0) return bang;
     // Cache cả kết quả ÂM: pid vắng mặt ngay sau lần đọc MỚI nghĩa là hàng registry chết
     // hoặc ngoài tầm nhìn — nếu không ghi nhớ, một pid như vậy sẽ ép đọc lại bảng (cỡ giây)
-    // ở MỌI nhịp poll 3s cho tới hết phiên. Đọc fail (bang rỗng) cũng rơi vào nhánh này.
+    // ở MỌI nhịp poll 3s cho tới hết phiên.
     const vangMat = new Set(pidCanTra.filter((pid) => !bang.has(pid)));
     this.bangTienTrinhCache = { luc: Date.now(), bang, vangMat };
     return bang;
@@ -899,6 +923,9 @@ export class WorkspaceManager implements vscode.Disposable {
     void terminal.processId.then((pid) => {
       if (typeof pid === 'number' && this.terminals.has(terminalId)) {
         this.shellPids.set(terminalId, pid);
+        // Có shell mới → kết luận "ngoài cửa sổ này" của các lần tra trước hết giá trị.
+        this.pidNgoaiCuaSo.clear();
+        this.daTraKhongThayClaude.delete(terminalId);
       }
     });
   }
@@ -918,7 +945,16 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry = ws.terminals.find((t) => t.id === key);
     if (!entry) return;
     const lenh = event.execution.commandLine.value;
-    if (!nenBatLenh(entry.kind, this.agent.ownsCommand(lenh), lenh)) return;
+    const laLenhAgent = this.agent.ownsCommand(lenh);
+    if (laLenhAgent) {
+      // Vừa chạy claude trong terminal này → kết luận "đã tra, không có claude" và cặp phả hệ
+      // đã xác nhận của lần trước hết hiệu lực. CHỈ xóa cho lệnh claude: xóa cho mọi lệnh vặt
+      // (`ls`, `git status`) mở lại cổng đọc bảng tiến trình mà chẳng thêm khả năng phát hiện
+      // nào — claude mới khởi động luôn có pid mới, tự kích điều kiện "session chưa ai nhận".
+      this.daTraKhongThayClaude.delete(key);
+      this.phaHeDaXacNhan.delete(key);
+    }
+    if (!nenBatLenh(entry.kind, laLenhAgent, lenh)) return;
 
     this.pendingCommands.set(key, {
       lenh,
@@ -1133,9 +1169,9 @@ export class WorkspaceManager implements vscode.Disposable {
     if (id === null) return;
     const ws = findWorkspace(this.store, id);
     if (!ws) return;
-    const conChuaBat = ws.terminals.some(
-      (t) => this.terminals.has(t.id) && t.claudeSessionId === undefined,
-    );
+    // Bất kỳ terminal nào còn mở đều đáng quét: ngoài entry chưa có id, pass phả hệ giờ còn
+    // sửa được entry ôm NHẦM id — mà cái đó nhìn từ ngoài không phân biệt được với đúng.
+    const conChuaBat = ws.terminals.some((t) => this.terminals.has(t.id));
     if (!conChuaBat) return;
 
     // Đợi lượt poll đang dở (nếu có) xong hẳn rồi mới quét — lượt dở đã đi qua vòng hỏi
@@ -1143,7 +1179,17 @@ export class WorkspaceManager implements vscode.Disposable {
     const inflight = this.refreshPromise;
     if (inflight) await inflight;
     this.askedCwds.clear();
-    await this.refreshStatuses();
+    // Lần cuối rồi: không được để một lần đọc bảng tiến trình hỏng (đã cache) hay kết luận
+    // "terminal này không có claude"/"cặp này đã xác nhận" của lần trước làm mất cơ hội bắt.
+    this.daTraKhongThayClaude.clear();
+    this.phaHeDaXacNhan.clear();
+    this.epDocBangTuoi = true;
+    try {
+      await this.refreshStatuses();
+    } finally {
+      // Cờ kẹt `true` thì mọi lần tra sau đều bỏ cache và đọc lại bảng — phải trả về dù lỗi.
+      this.epDocBangTuoi = false;
+    }
   }
 
   private syncStatuses(bySession: Map<string, RunningSession>): boolean {
@@ -1172,11 +1218,31 @@ export class WorkspaceManager implements vscode.Disposable {
     // hay không — terminal -c/-r tạo trên workspace chưa active cũng phải được thăng cấp,
     // và claudeSessionId của workspace khác cũng phải được tính là "đã có chủ".
     const chuTerminal = new Map<string, string>(); // terminalId → workspaceId
-    const candidates: MatchCandidate[] = [];
     for (const wsBatKy of this.store.workspaces) {
       for (const entry of wsBatKy.terminals) {
-        if (!this.terminals.has(entry.id)) continue;
-        chuTerminal.set(entry.id, wsBatKy.id);
+        if (this.terminals.has(entry.id)) chuTerminal.set(entry.id, wsBatKy.id);
+      }
+    }
+    if (chuTerminal.size === 0) return false;
+    const claim = (terminalId: string, session: RunningSession): boolean => {
+      const wsId = chuTerminal.get(terminalId);
+      return wsId !== undefined && this.claimSession(wsId, terminalId, session);
+    };
+
+    // Phả hệ tiến trình TRƯỚC, vì nó là bằng chứng mạnh hơn cwd và còn sửa được claim sai.
+    let changed = await this.suaClaimTheoPhaHe(running, chuTerminal);
+
+    // Ứng viên dựng SAU pass phả hệ: claim vừa bị sửa thì vòng ghép theo cwd phải thấy bản mới.
+    // Chỉ terminal ĐANG MỞ mới là ứng viên; id của entry chưa mở (kể cả workspace khác, kể cả
+    // do cửa sổ VS Code khác đang chạy) đi vào `idDaCoChuKhac` để không bị cướp.
+    const candidates: MatchCandidate[] = [];
+    const idDaCoChuKhac = new Set<string>();
+    for (const wsBatKy of this.store.workspaces) {
+      for (const entry of wsBatKy.terminals) {
+        if (!chuTerminal.has(entry.id)) {
+          if (entry.claudeSessionId !== undefined) idDaCoChuKhac.add(entry.claudeSessionId);
+          continue;
+        }
         candidates.push({
           terminalId: entry.id,
           cwd: entry.cwd,
@@ -1186,59 +1252,10 @@ export class WorkspaceManager implements vscode.Disposable {
         });
       }
     }
-    if (candidates.length === 0) return false;
-    const claim = (terminalId: string, session: RunningSession): boolean => {
-      const wsId = chuTerminal.get(terminalId);
-      return wsId !== undefined && this.claimSession(wsId, terminalId, session);
-    };
-    const result = matchClaudeSessions(candidates, running);
+    const result = matchClaudeSessions(candidates, running, process.platform, idDaCoChuKhac);
 
-    let changed = false;
     for (const pair of result.matched) {
       if (claim(pair.terminalId, pair.session)) changed = true;
-    }
-
-    // Nhóm mơ hồ (nhiều terminal/nhiều session cùng cwd): thử phân giải TẤT ĐỊNH bằng phả
-    // hệ tiến trình trước — pid của session đi ngược lên tổ tiên phải gặp pid shell của
-    // đúng một terminal. Chỉ phần không tra được mới rơi xuống QuickPick hỏi người dùng.
-    if (result.ambiguous.length > 0) {
-      // Dựng map pid shell theo nhóm TRƯỚC: không nhóm nào có pid thì khỏi tốn một lần
-      // đọc bảng tiến trình (PowerShell CIM mất cỡ giây, không phải miễn phí).
-      const nhomCoPid = result.ambiguous
-        .map((group) => {
-          const shellCuaNhom = new Map<number, string>();
-          for (const tid of group.terminalIds) {
-            const pid = this.shellPids.get(tid);
-            if (pid !== undefined) shellCuaNhom.set(pid, tid);
-          }
-          return { group, shellCuaNhom };
-        })
-        .filter((x) => x.shellCuaNhom.size > 0);
-
-      if (nhomCoPid.length > 0) {
-        const pidCanTra = nhomCoPid.flatMap((x) =>
-          x.group.sessions.map((s) => s.pid).filter((p): p is number => p !== null),
-        );
-        const bangTienTrinh = await this.layBangTienTrinh(pidCanTra);
-        for (const { group, shellCuaNhom } of nhomCoPid) {
-          const chuaGan: RunningSession[] = [];
-          const terminalDaGan = new Set<string>();
-          for (const session of group.sessions) {
-            const tid =
-              session.pid !== null
-                ? timTerminalTheoToTien(session.pid, bangTienTrinh, shellCuaNhom)
-                : null;
-            if (tid !== null && !terminalDaGan.has(tid) && claim(tid, session)) {
-              terminalDaGan.add(tid);
-              changed = true;
-            } else {
-              chuaGan.push(session);
-            }
-          }
-          group.sessions = chuaGan;
-          group.terminalIds = group.terminalIds.filter((t) => !terminalDaGan.has(t));
-        }
-      }
     }
     if (changed) this.scheduleSave();
 
@@ -1262,6 +1279,137 @@ export class WorkspaceManager implements vscode.Disposable {
         changed = true;
       }
     }
+    return changed;
+  }
+
+  /**
+   * Phả hệ tiến trình là BẰNG CHỨNG THẬT: pid của session đi ngược lên tổ tiên gặp pid shell
+   * của terminal nào thì nó đang chạy trong terminal đó — bất kể cwd ghi trong entry (người
+   * dùng `cd` chỗ khác rồi mới chạy claude) và bất kể entry nào đang giữ id đó. Nên pass này
+   * còn SỬA được claim sai: gặp thật trên máy người dùng — một entry ôm nhầm session của
+   * terminal khác, terminal đúng vì thế vĩnh viễn không bắt được (session đã "có chủ" nên bị
+   * lọc khỏi vòng ghép) và kẹt ở nhãn "đang mở" dù claude chạy sờ sờ trong đó.
+   *
+   * Đọc bảng tiến trình tốn cỡ giây nên chỉ chạy khi CÓ dấu hiệu bất thường:
+   *  - terminal khai là `claude` mà không giữ session nào còn sống, HOẶC
+   *  - entry giữ session sống nhưng cwd session khác cwd entry (dấu hiệu claim sai), HOẶC
+   *  - có session sống chưa ai nhận, mà pid của nó chưa từng bị kết luận là "ngoài cửa sổ này".
+   */
+  private async suaClaimTheoPhaHe(
+    running: RunningSession[],
+    chuTerminal: ReadonlyMap<string, string>,
+  ): Promise<boolean> {
+    const song = running.filter((r) => r.kind === 'interactive');
+    if (song.length === 0) return false;
+    // Quét bắt lần cuối được miễn backoff — TRỪ khi máy này đọc hỏng liên tục (WMI khóa):
+    // khi đó mỗi lần đóng workspace phải chờ thêm 5 giây timeout mà chẳng bao giờ có kết quả.
+    const boQuaLui = this.epDocBangTuoi && this.docBangHongLienTiep < HONG_LIEN_TIEP_BO_CUOC;
+    const luiMs = Math.min(
+      LUI_SAU_DOC_HONG_MS * Math.max(1, this.docBangHongLienTiep),
+      LUI_TOI_DA_MS,
+    );
+    if (!boQuaLui && this.docBangHongLuc !== null && Date.now() - this.docBangHongLuc < luiMs) {
+      return false;
+    }
+    const songTheoId = new Map(song.map((r) => [r.sessionId, r]));
+
+    const daNhan = new Set<string>();
+    let dangNgo = false;
+    for (const [terminalId, wsId] of chuTerminal) {
+      const entry = this.findEntry(wsId, terminalId);
+      if (!entry) continue;
+      const phien =
+        entry.claudeSessionId !== undefined ? songTheoId.get(entry.claudeSessionId) : undefined;
+      // Terminal đã tra rồi mà bên trong không có claude nào thì thôi nghi ngờ nó nữa —
+      // nếu không, một terminal claude đã thoát (còn mở) ép đọc bảng tiến trình tới hết phiên.
+      const daTra = this.daTraKhongThayClaude.has(terminalId);
+      if (phien) {
+        daNhan.add(phien.sessionId);
+        // cwd lệch = dấu hiệu ôm nhầm session của terminal khác. Nhưng cặp đã được phả hệ xác
+        // nhận thì lệch cwd là BÌNH THƯỜNG (người dùng `cd` chỗ khác rồi mới chạy claude) —
+        // không loại trừ thì điều kiện này đúng mãi và ép đọc bảng tiến trình mỗi 30 giây.
+        if (
+          !daTra &&
+          phien.cwd !== '' &&
+          this.phaHeDaXacNhan.get(terminalId) !== phien.sessionId &&
+          normalizeCwd(phien.cwd) !== normalizeCwd(entry.cwd)
+        ) {
+          dangNgo = true;
+        }
+      } else if (!daTra) {
+        // MỌI terminal chưa giữ session sống, không riêng `kind: claude`: session có thể đang
+        // chạy trong một terminal `plain` cùng cwd với một entry claude ôm nhầm — ca đó cwd
+        // khớp nên không có dấu hiệu nào khác, chỉ phả hệ mới gỡ được. Guard `daTra` giữ chi
+        // phí ở mức đúng MỘT lần đọc cho mỗi terminal.
+        dangNgo = true;
+      }
+    }
+    if (!dangNgo) {
+      dangNgo = song.some(
+        (r) => !daNhan.has(r.sessionId) && r.pid !== null && !this.pidNgoaiCuaSo.has(r.pid),
+      );
+    }
+    if (!dangNgo) return false;
+
+    const shellTheoPid = new Map<number, string>();
+    for (const terminalId of chuTerminal.keys()) {
+      const pid = this.shellPids.get(terminalId);
+      if (pid !== undefined) shellTheoPid.set(pid, terminalId);
+    }
+    const pidCanTra = song.map((r) => r.pid).filter((p): p is number => p !== null);
+    if (shellTheoPid.size === 0 || pidCanTra.length === 0) return false;
+
+    const bang = await this.layBangTienTrinh(pidCanTra, this.epDocBangTuoi);
+    if (bang.size === 0) {
+      // Đọc hỏng (CIM treo/timeout 5s, thiếu quyền): KHÔNG kết luận gì — không đánh dấu
+      // pidNgoaiCuaSo/daTraKhongThayClaude, vì bảng thiếu sẽ biến "chưa tra được" thành
+      // "đã tra, không có". Lùi lại, mỗi lần hỏng lùi xa hơn.
+      this.docBangHongLuc = Date.now();
+      this.docBangHongLienTiep += 1;
+      if (this.docBangHongLienTiep >= HONG_LIEN_TIEP_BO_CUOC && !this.daCanhBaoDocBang) {
+        this.daCanhBaoDocBang = true;
+        void vscode.window.showWarningMessage(
+          'Không đọc được bảng tiến trình của hệ điều hành, nên không thể tự nhận diện session Claude theo tiến trình. Vẫn dùng được: gắn tay bằng "AI Workspace: Gắn session Claude vào terminal".',
+        );
+      }
+      return false;
+    }
+    this.docBangHongLuc = null;
+    this.docBangHongLienTiep = 0;
+    const { theoTerminal, pidNgoai } = gomSessionTheoTerminal(song, bang, shellTheoPid);
+    // Claude ở cửa sổ VS Code khác / ngoài VS Code: nhớ lại để nó không bắt ta đọc bảng
+    // tiến trình ở mọi nhịp poll sau (cache âm, xóa khi có shell mới).
+    for (const pid of pidNgoai) this.pidNgoaiCuaSo.add(pid);
+    // Terminal đã tra mà không có claude nào bên trong: đừng để nó ép đọc bảng mãi. Cờ này
+    // được xóa khi terminal đó chạy một lệnh mới (có thể chính là `claude`) — xem
+    // onShellExecutionStart — hoặc khi có shell mới xuất hiện.
+    for (const terminalId of chuTerminal.keys()) {
+      if (theoTerminal.has(terminalId)) this.daTraKhongThayClaude.delete(terminalId);
+      else {
+        this.daTraKhongThayClaude.add(terminalId);
+        this.phaHeDaXacNhan.delete(terminalId);
+      }
+    }
+
+    let changed = false;
+    for (const [terminalId, ds] of theoTerminal) {
+      const wsId = chuTerminal.get(terminalId);
+      // Terminal có thể đã đóng trong lúc chờ đọc bảng tiến trình (cỡ giây) — đừng gắn
+      // session vào một terminal không còn nữa.
+      if (wsId === undefined || !this.terminals.has(terminalId)) continue;
+      const entry = this.findEntry(wsId, terminalId);
+      if (!entry) continue;
+      const chon = chonSessionChoTerminal(ds, entry.claudeSessionId);
+      if (chon === null) continue;
+      // Cặp (terminal, session) đã có bằng chứng tiến trình: ghi nhận để lệch cwd của cặp này
+      // thôi bị coi là đáng ngờ ở các nhịp sau.
+      this.phaHeDaXacNhan.set(terminalId, chon.sessionId);
+      if (entry.claudeSessionId === chon.sessionId) continue;
+      // claimSession tự gỡ id khỏi mọi entry khác (bất biến một-hội-thoại-một-entry) và tự
+      // tra lại entry theo id sau await (bất biến re-resolve-rồi-touch).
+      if (this.claimSession(wsId, terminalId, chon)) changed = true;
+    }
+    if (changed) this.scheduleSave();
     return changed;
   }
 
@@ -1303,6 +1451,24 @@ export class WorkspaceManager implements vscode.Disposable {
   private claimSession(workspaceId: string, terminalId: string, session: RunningSession): boolean {
     const entry = this.findEntry(workspaceId, terminalId);
     if (!entry) return false;
+    // Bất biến CẤU TRÚC: một hội thoại chỉ thuộc một entry. Gỡ id khỏi entry khác ngay tại
+    // đây (đồng bộ, không await) thay vì trông vào từng chỗ gọi nhớ tự dọn — hai entry cùng
+    // id là sinh double `--resume` ở lần khôi phục sau.
+    //
+    // NHƯNG chỉ đụng vào phần thuộc về cửa sổ này: terminal đang mở ở đây, hoặc workspace ta
+    // đã làm chủ. `touch` một workspace lạ là nhận chủ quyền nó VĨNH VIỄN (touchedIds không
+    // bao giờ xóa) → mọi lần lưu sau ghi đè bản đĩa của cửa sổ kia bằng ảnh chụp cũ trong RAM
+    // ta. Entry lạ trùng id để cửa sổ chủ của nó tự dọn (nó cũng chạy đúng code này), và
+    // `mergeForSave` khử trùng lần cuối ở cửa ghi.
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.id === terminalId || t.claudeSessionId !== session.sessionId) continue;
+        if (!this.touchedIds.has(w.id) && !this.terminals.has(t.id)) continue;
+        delete t.claudeSessionId;
+        this.statuses.delete(t.id);
+        this.touch(w.id);
+      }
+    }
     entry.claudeSessionId = session.sessionId;
     // Registry có thể trả name rỗng (parseAgentsJson cho chuỗi rỗng đi qua), mà `??` không
     // bắt được chuỗi rỗng — schema đòi claudeName >= 1 ký tự nên phải dùng `||`.
@@ -1394,18 +1560,9 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
 
-    // Gỡ MỌI entry khác đang giữ session này TRƯỚC khi gắn — quét lại store hiện hành
-    // (không tin chuCu tính trước QuickPick: poll có thể vừa claim trong lúc chờ), và không
-    // có await từ đây tới claimSession (bất biến re-resolve-then-touch).
-    for (const w of this.store.workspaces) {
-      for (const t of w.terminals) {
-        if (t.id !== terminalId && t.claudeSessionId === session.sessionId) {
-          delete t.claudeSessionId;
-          this.touch(w.id);
-        }
-      }
-    }
-    // claimSession tự tra lại entry theo id sau await (bất biến re-resolve-then-touch).
+    // claimSession tự tra lại entry theo id sau await (bất biến re-resolve-then-touch) và tự
+    // gỡ id khỏi mọi entry khác đang giữ nó (bất biến một-hội-thoại-một-entry) — quét theo
+    // store hiện hành chứ không tin snapshot chuCu tính trước QuickPick.
     if (this.claimSession(workspaceId, terminalId, session)) {
       this.scheduleSave();
       this.onChanged.fire();

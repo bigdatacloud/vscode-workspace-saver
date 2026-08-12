@@ -55,6 +55,11 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   tất định; chỉ phần không tra được mới hiện QuickPick, hỏi một lần cho mỗi cụm cwd (không
   lặp lại mỗi chu kỳ poll nếu bạn bỏ qua); riêng lúc **đóng workspace**, extension quét bắt
   lần cuối và hỏi lại cả những cụm bạn đã bỏ qua — sau khi đóng là hết đường bắt. Máy không
+  Phả hệ PID chạy TRƯỚC và không bó trong nhóm cùng cwd: session thuộc về terminal có shell
+  là tổ tiên tiến trình của nó, bất kể entry ghi cwd nào (bạn đã `cd` chỗ khác rồi mới chạy
+  claude), và bằng chứng đó còn **sửa được claim sai** — entry khác đang ôm nhầm id sẽ bị gỡ
+  ra để terminal đúng nhận. Một id đã có chỉ bị trỏ lại khi có bằng chứng tiến trình, không
+  bao giờ vì đoán theo cwd — nên entry có hội thoại đã thoát vẫn giữ id để resume sau. Máy không
   tự bắt được thì gắn tay bằng menu **"Gắn session Claude vào terminal"** trên terminal item
   trong cây.
 - **Một workspace active mỗi cửa sổ VS Code**: khóa best-effort theo `activeWindowId`; mở

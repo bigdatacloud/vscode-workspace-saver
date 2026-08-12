@@ -172,6 +172,22 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       editor; mở lại QuickPick thấy dấu "hiện tại" đúng mục đã chọn; chọn "Theo setting chung"
       → A quay về theo setting chung
 
+## Bắt session khi LỆCH cwd và khi id đã chết
+- [ ] Mở terminal trong workspace, `cd` sang repo KHÁC rồi chạy `claude` ở đó → trong ~3-6
+      giây entry vẫn bắt được session (nhãn đổi từ "đang mở" sang "rảnh"/"đang chạy") dù cwd
+      ghi trong entry khác cwd của session
+- [ ] Terminal có entry `claude` đang gắn id cũ, thoát claude rồi chạy `claude` phiên MỚI
+      trong chính terminal đó → id cũ chết, entry tự gắn sang session mới (không kẹt "đang mở")
+- [ ] Hai terminal cùng cwd, mỗi cái một session → vẫn gắn đúng từng cái (phả hệ PID), không
+      hoán đổi cho nhau
+- [ ] Terminal thường không chạy claude, trong khi máy có session claude ở thư mục khác →
+      KHÔNG bị gắn nhầm session nào
+- [ ] Entry claude đang giữ id hội thoại ĐÃ THOÁT (terminal còn mở, không chạy claude), đồng
+      thời có claude khác chạy ở CÙNG cwd đó từ cửa sổ VS Code khác → id cũ KHÔNG bị ghi đè
+      (kích hoạt lại vẫn `--resume` đúng hội thoại cũ)
+- [ ] Hai entry ở hai workspace không bao giờ cùng một session id: gắn session S cho terminal
+      B trong khi entry A đang giữ S → A tự mất id (xem `workspaces.json`)
+
 ## Trạng thái "đang tải phiên" (spinner)
 - [ ] Kích hoạt workspace có terminal Claude → NGAY khi terminal mở, item trong cây hiện
       icon xoay + "đang tải phiên…"; khi claude boot xong và registry thấy session (vài
