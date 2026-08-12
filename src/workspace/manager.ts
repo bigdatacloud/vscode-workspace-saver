@@ -24,6 +24,7 @@ import {
 import { TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
+import { gopGoiYDuongDan } from './paths';
 
 export type TerminalState = 'busy' | 'idle' | 'blocked' | 'loading' | 'open' | 'closed' | 'error';
 
@@ -47,6 +48,9 @@ export interface TerminalView {
 
 const SAVE_DEBOUNCE_MS = 500;
 const STORE_FILE = 'workspaces.json';
+/** Đường dẫn đã dùng gần đây, để lần sau gõ vài ký tự là ra (globalState). */
+const KHOA_LICH_SU_CWD = 'aiWorkspace.duongDanGanDay';
+const LICH_SU_CWD_TOI_DA = 20;
 /** Cùng nhịp với poll của tree; hai timer chạy song song vô hại nhờ guard refreshPromise. */
 const ACTIVE_POLL_MS = 3000;
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
@@ -79,6 +83,7 @@ function folderCwd(): string | undefined {
 
 export class WorkspaceManager implements vscode.Disposable {
   private readonly filePath: string;
+  private readonly boNhoChung: vscode.Memento;
   private store: StoreFile;
   private activeId: string | null = null;
 
@@ -147,6 +152,7 @@ export class WorkspaceManager implements vscode.Disposable {
     private readonly terminals: TerminalManager,
     private readonly agent: AgentAdapter,
   ) {
+    this.boNhoChung = context.globalState;
     this.trust = new TrustStore({
       get: (key) => context.globalState.get<string>(key),
       set: (key, value) => Promise.resolve(context.globalState.update(key, value)),
@@ -619,14 +625,9 @@ export class WorkspaceManager implements vscode.Disposable {
   async newClaudeTerminal(workspaceId: string): Promise<void> {
     if (!findWorkspace(this.store, workspaceId)) return;
 
-    const duongDan = await vscode.window.showInputBox({
-      prompt: 'Thư mục làm việc — terminal mở ngay tại đây, tên đặt theo thư mục (Rename để đổi)',
-      value: folderCwd() ?? '',
-      validateInput: (v) =>
-        v.trim() !== '' && nodeFs.existsSync(v.trim()) ? undefined : 'Đường dẫn không tồn tại',
-    });
+    const duongDan = await this.hoiDuongDan();
     if (duongDan === undefined) return;
-    const cwd = duongDan.trim();
+    const cwd = duongDan;
     const ten = path.basename(cwd) || 'claude';
 
     const luaChon = await vscode.window.showQuickPick(this.agent.buildLaunchOptions(ten), {
@@ -671,6 +672,8 @@ export class WorkspaceManager implements vscode.Disposable {
     // Claude boot mất nhiều giây trước khi registry thấy — spinner cho tới khi có trạng thái.
     this.batDauLoading([entry.id]);
     this.onChanged.fire();
+    // Ghi lịch sử SAU cùng, không await: không được chèn await vào giữa re-resolve và touch.
+    void this.nhoCwd(cwd);
   }
 
   /**
@@ -681,14 +684,9 @@ export class WorkspaceManager implements vscode.Disposable {
   async newPlainTerminal(workspaceId: string): Promise<void> {
     if (!findWorkspace(this.store, workspaceId)) return;
 
-    const duongDan = await vscode.window.showInputBox({
-      prompt: 'Thư mục làm việc — terminal mở ngay tại đây, tên đặt theo thư mục (Rename để đổi)',
-      value: folderCwd() ?? '',
-      validateInput: (v) =>
-        v.trim() !== '' && nodeFs.existsSync(v.trim()) ? undefined : 'Đường dẫn không tồn tại',
-    });
+    const duongDan = await this.hoiDuongDan();
     if (duongDan === undefined) return;
-    const cwd = duongDan.trim();
+    const cwd = duongDan;
     const ten = path.basename(cwd) || 'terminal';
 
     // Lấy lại object sau await rồi mới touch (xem ghi chú ở activate()).
@@ -710,6 +708,7 @@ export class WorkspaceManager implements vscode.Disposable {
     });
     this.ghiNhanShellPid(entry.id);
     this.onChanged.fire();
+    void this.nhoCwd(cwd);
   }
 
   /**
@@ -754,6 +753,82 @@ export class WorkspaceManager implements vscode.Disposable {
     if (luaChon.value === undefined) delete wsNow.terminalLocation;
     else wsNow.terminalLocation = luaChon.value;
     this.scheduleSave();
+  }
+
+  // --------------------------------------------------------- chọn đường dẫn
+
+  private lichSuCwd(): string[] {
+    return this.boNhoChung.get<string[]>(KHOA_LICH_SU_CWD) ?? [];
+  }
+
+  /** Đưa đường dẫn vừa dùng lên đầu lịch sử (không await ở đường tạo terminal). */
+  private async nhoCwd(cwd: string): Promise<void> {
+    const moi = gopGoiYDuongDan([[cwd], this.lichSuCwd()]).slice(0, LICH_SU_CWD_TOI_DA);
+    await this.boNhoChung.update(KHOA_LICH_SU_CWD, moi);
+  }
+
+  /**
+   * Hỏi thư mục làm việc bằng QuickPick thay vì ô nhập trắng: gõ vài ký tự là lọc trong các
+   * đường dẫn đã dùng (lịch sử → cwd của terminal đã biết → thư mục đang mở). Không có trong
+   * danh sách thì gõ/dán đường dẫn đầy đủ, mục đầu tiên luôn là chính chuỗi vừa gõ.
+   *
+   * Dùng createQuickPick (không phải showQuickPick) vì cần mục động theo từng ký tự và cần
+   * GIỮ hộp thoại mở khi đường dẫn gõ vào không tồn tại — bắt người dùng mở lại từ đầu chỉ
+   * vì gõ sai một ký tự là tệ hơn hẳn.
+   */
+  private async hoiDuongDan(): Promise<string | undefined> {
+    type Muc = vscode.QuickPickItem & { duongDan: string };
+    const goiY = gopGoiYDuongDan([
+      this.lichSuCwd(),
+      this.store.workspaces.flatMap((w) => w.terminals.map((t) => t.cwd)),
+      (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
+    ]);
+    const mucGoiY: Muc[] = goiY.map((p) => ({
+      label: path.basename(p) || p,
+      description: p,
+      duongDan: p,
+    }));
+
+    return await new Promise<string | undefined>((resolve) => {
+      let ketQua: string | undefined;
+      const qp = vscode.window.createQuickPick<Muc>();
+      qp.title = 'Thư mục làm việc cho terminal';
+      qp.placeholder = 'Gõ vài ký tự để tìm trong đường dẫn đã dùng, hoặc dán đường dẫn đầy đủ';
+      // Lọc cả theo description: người dùng gõ "qualipa" phải khớp được giữa đường dẫn.
+      qp.matchOnDescription = true;
+      qp.items = mucGoiY;
+      qp.onDidChangeValue((v) => {
+        const go = v.trim();
+        if (go === '' || goiY.some((p) => p === go)) {
+          qp.items = mucGoiY;
+          return;
+        }
+        qp.items = [
+          {
+            label: go,
+            description: nodeFs.existsSync(go) ? 'dùng đường dẫn này' : 'không tồn tại',
+            duongDan: go,
+            alwaysShow: true,
+          },
+          ...mucGoiY,
+        ];
+      });
+      qp.onDidAccept(() => {
+        const duongDan = (qp.selectedItems[0]?.duongDan ?? qp.value).trim();
+        if (duongDan === '') return;
+        if (!nodeFs.existsSync(duongDan)) {
+          qp.title = `Đường dẫn không tồn tại: ${duongDan}`;
+          return; // giữ hộp thoại mở để sửa tiếp
+        }
+        ketQua = duongDan;
+        qp.hide();
+      });
+      qp.onDidHide(() => {
+        qp.dispose();
+        resolve(ketQua);
+      });
+      qp.show();
+    });
   }
 
   /**
