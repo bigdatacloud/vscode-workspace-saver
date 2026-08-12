@@ -55,6 +55,8 @@ const LICH_SU_CWD_TOI_DA = 20;
 const ACTIVE_POLL_MS = 3000;
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
 const LOADING_TIMEOUT_MS = 90_000;
+/** Hạn giờ chờ `Terminal.processId` — terminal chưa gắn tiến trình có thể không bao giờ trả. */
+const DOI_PROCESS_ID_MS = 2500;
 /** Đọc bảng tiến trình hỏng thì nghỉ chừng này rồi mới thử lại (mỗi lần thử tốn tới 5 giây). */
 const LUI_SAU_DOC_HONG_MS = 60_000;
 const LUI_TOI_DA_MS = 600_000;
@@ -75,6 +77,13 @@ function creationCwd(terminal: vscode.Terminal): string | undefined {
   const cwd = (terminal.creationOptions as vscode.TerminalOptions).cwd;
   if (cwd === undefined) return undefined;
   return nonEmpty(typeof cwd === 'string' ? cwd : cwd.fsPath);
+}
+
+/** Tập lệnh khởi động của CẢ workspace — nguồn duy nhất cho vân tay trust (xem buildPorts). */
+function lenhToanWorkspace(ws: Workspace): string[] {
+  return ws.terminals
+    .filter((t) => t.kind === 'plain' && t.startCommand)
+    .map((t) => t.startCommand as string);
 }
 
 function folderCwd(): string | undefined {
@@ -423,25 +432,51 @@ export class WorkspaceManager implements vscode.Disposable {
 
       for (const entry of wsNow.terminals) this.errorIds.delete(entry.id);
 
-      // Terminal đang mở (đã adopt vào ws này từ trước) phải được để yên: TerminalManager.create
-      // dùng chung key sẽ dispose terminal cũ — giết một shell đang chạy dở. Và gửi lệnh
-      // `--resume` vào một terminal đang chạy claude thì lệnh đó bị gõ thẳng vào hội thoại
-      // đang sống. Chỉ mở những entry thực sự chưa có terminal.
-      const toOpen: Workspace = {
-        ...wsNow,
-        terminals: wsNow.terminals.filter((entry) => !this.terminals.has(entry.id)),
-      };
-      // Claude cần nhiều giây boot + resume trước khi registry thấy session — đánh dấu
-      // "đang tải" ngay để cây có phản hồi tức thì, không trông như đơ.
-      this.batDauLoading(
-        toOpen.terminals.filter((t) => t.kind === 'claude').map((t) => t.id),
-      );
-      this.onChanged.fire();
-      const report = await vscode.window.withProgress(
+      // Cả bước dò lẫn bước mở đều nằm trong MỘT thanh tiến trình: bước dò có thể mất vài
+      // giây (đọc registry + bảng tiến trình), để trần thì trông như VS Code treo.
+      const ketQua = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${wsNow.name}"…` },
-        () => activateWorkspace(toOpen, this.buildPorts(wsNow)),
+        async () => {
+          // Nối lại những terminal VẪN ĐANG CHẠY trước khi mở cái mới — nếu không, reload cửa
+          // sổ sẽ `--resume` lần hai vào hội thoại đang chạy dở (xem noiLaiTerminalHoiSinh).
+          // Sau `touch`, merge giữ nguyên object của ta nên await ở đây không làm mất wsNow.
+          const noiLai = await this.noiLaiTerminalHoiSinh(wsNow);
+          // Bước dò mất vài giây — workspace có thể đã bị xóa trong lúc đó. Nhả lại những
+          // terminal vừa nhận: giữ chúng dưới id của một workspace đã chết là khóa chúng lại
+          // vĩnh viễn (không ai nhận nuôi được nữa, cũng không bao giờ bị đóng).
+          if (!findWorkspace(this.store, workspaceId)) {
+            for (const id of noiLai.ids) this.terminals.release(id);
+            return null;
+          }
+
+          // Terminal đang mở (đã adopt vào ws này từ trước, hoặc vừa nối lại ở trên) phải được
+          // để yên: TerminalManager.create dùng chung key sẽ dispose terminal cũ — giết một
+          // shell đang chạy dở. Và gửi `--resume` vào terminal đang chạy claude thì lệnh đó bị
+          // gõ thẳng vào hội thoại đang sống. Chỉ mở những entry thực sự chưa có terminal.
+          const toOpen: Workspace = {
+            ...wsNow,
+            terminals: wsNow.terminals.filter((entry) => !this.terminals.has(entry.id)),
+          };
+          // Claude cần nhiều giây boot + resume trước khi registry thấy session — đánh dấu
+          // "đang tải" ngay để cây có phản hồi tức thì, không trông như đơ.
+          this.batDauLoading(toOpen.terminals.filter((t) => t.kind === 'claude').map((t) => t.id));
+          this.onChanged.fire();
+          const report = await activateWorkspace(toOpen, this.buildPorts(wsNow));
+          return { noiLai, report };
+        },
       );
-      this.applyReport(report);
+      if (ketQua === null) return;
+      if (ketQua.noiLai.ids.length > 0) {
+        void vscode.window.showInformationMessage(
+          `Đã nối lại ${ketQua.noiLai.ids.length} terminal đang chạy sẵn (không mở lại phiên lần hai).`,
+        );
+      }
+      if (ketQua.noiLai.trung > 0) {
+        void vscode.window.showWarningMessage(
+          `${ketQua.noiLai.trung} hội thoại Claude đang chạy nhiều tiến trình cùng lúc (di chứng của những lần khôi phục chồng trước đây). Mỗi hội thoại chỉ nối lại được MỘT terminal — nên đóng bớt các terminal Claude không nằm trong cây AI Workspaces.`,
+        );
+      }
+      this.applyReport(ketQua.report);
 
       this.activeId = wsNow.id;
       wsNow.lastActiveAt = new Date().toISOString();
@@ -453,6 +488,113 @@ export class WorkspaceManager implements vscode.Disposable {
     } finally {
       this.activating = false;
     }
+  }
+
+  /**
+   * Nối lại terminal đang chạy sẵn thay vì mở mới.
+   *
+   * Reload cửa sổ VS Code: pty host sống sót nên terminal cũ (và tiến trình claude bên trong)
+   * được hồi sinh, NHƯNG map terminal của extension chỉ nằm trong RAM nên sau reload nó không
+   * còn nhận ra chúng. Không nối lại thì mỗi lần kích hoạt workspace là `--resume` thêm một
+   * tiến trình nữa vào ĐÚNG hội thoại đang chạy dở — đo trên máy người dùng có hội thoại chạy
+   * tới BA tiến trình cùng lúc, tất cả cùng ghi vào một file phiên.
+   *
+   * Hai mức bằng chứng, mạnh trước:
+   *  1. Phả hệ tiến trình: session của entry đang chạy dưới shell của terminal chưa track nào.
+   *  2. Trùng TÊN terminal VÀ cwd khớp — chỉ cho entry `plain`. KHÔNG áp cho entry claude:
+   *     entry claude mà hội thoại đã thoát sẽ không có dòng registry nào, nhận nuôi theo tên
+   *     là loại nó khỏi danh sách mở → `--resume` KHÔNG BAO GIỜ chạy, mất hẳn việc khôi phục
+   *     hội thoại mà chẳng có tín hiệu gì. Với entry claude, mở mới + resume là đúng: không
+   *     có tiến trình claude nào sống để mà nhân đôi.
+   *
+   * @returns id các entry đã nối lại (để caller nhả ra nếu phải bỏ dở) và số hội thoại đang
+   *   chạy nhiều tiến trình.
+   */
+  private async noiLaiTerminalHoiSinh(
+    ws: Workspace,
+  ): Promise<{ ids: string[]; trung: number }> {
+    const chuaTrack = () =>
+      vscode.window.terminals.filter((t) => this.terminals.ownsTerminal(t) === null);
+    if (chuaTrack().length === 0) return { ids: [], trung: 0 };
+    const cho = ws.terminals.filter((e) => !this.terminals.has(e.id));
+    if (cho.length === 0) return { ids: [], trung: 0 };
+
+    const daNhan: string[] = [];
+    let soTrung = 0;
+    const nhan = (entry: TerminalEntry, terminal: vscode.Terminal, pid?: number): void => {
+      this.terminals.adopt(entry.id, terminal);
+      if (pid !== undefined) this.shellPids.set(entry.id, pid);
+      else this.ghiNhanShellPid(entry.id);
+      daNhan.push(entry.id);
+    };
+
+    // (1) Bằng chứng phả hệ tiến trình.
+    const coSession = cho.filter((e) => e.claudeSessionId !== undefined);
+    if (coSession.length > 0) {
+      let song: RunningSession[] = [];
+      try {
+        song = (await this.agent.listRunning()).filter((r) => r.kind === 'interactive');
+      } catch {
+        // registry đọc không được → bỏ qua mức 1, còn mức 2 theo tên
+      }
+      const canTim = new Set(coSession.map((e) => e.claudeSessionId));
+      const phien = song.filter((r) => canTim.has(r.sessionId) && r.pid !== null);
+      // Một hội thoại đang có nhiều tiến trình = di chứng của những lần resume chồng trước
+      // đây; nối lại chỉ nhận được MỘT terminal, phần thừa vẫn ghi vào cùng file phiên.
+      const demTheoPhien = new Map<string, number>();
+      for (const r of phien) demTheoPhien.set(r.sessionId, (demTheoPhien.get(r.sessionId) ?? 0) + 1);
+      soTrung = [...demTheoPhien.values()].filter((n) => n > 1).length;
+
+      const terminalTheoPid = new Map<number, vscode.Terminal>();
+      if (phien.length > 0) {
+        // processId của một terminal chưa gắn tiến trình có thể không bao giờ resolve —
+        // Promise.all chờ TẤT CẢ, nên phải có hạn giờ, nếu không luồng activate treo vĩnh viễn.
+        await Promise.all(
+          chuaTrack().map(async (t) => {
+            const pid = await Promise.race([
+              t.processId,
+              new Promise<undefined>((r) => setTimeout(() => r(undefined), DOI_PROCESS_ID_MS)),
+            ]);
+            if (typeof pid === 'number') terminalTheoPid.set(pid, t);
+          }),
+        );
+      }
+      if (terminalTheoPid.size > 0) {
+        // Ép đọc bảng tươi: đây là thời điểm một-lần-duy-nhất, sai là nhân đôi hội thoại.
+        const bang = await this.layBangTienTrinh(
+          phien.map((r) => r.pid as number),
+          true,
+        );
+        const khoaTheoPid = new Map<number, string>();
+        for (const pid of terminalTheoPid.keys()) khoaTheoPid.set(pid, String(pid));
+        const { theoTerminal } = gomSessionTheoTerminal(phien, bang, khoaTheoPid);
+        for (const [khoa, ds] of theoTerminal) {
+          const terminal = terminalTheoPid.get(Number(khoa));
+          if (!terminal || this.terminals.ownsTerminal(terminal) !== null) continue;
+          const entry = coSession.find(
+            (e) => !this.terminals.has(e.id) && ds.some((r) => r.sessionId === e.claudeSessionId),
+          );
+          if (entry) nhan(entry, terminal, Number(khoa));
+        }
+      }
+    }
+
+    // (2) Chỉ entry `plain`, và đòi CẢ tên lẫn cwd khớp — không có bằng chứng tiến trình thì
+    // phải chắc chắn bằng cách khác. Nhận nuôi nhầm ở đây là có hại thật: `closeActive` sẽ
+    // dispose luôn terminal riêng của người dùng. Ngay sau reload, Shell Integration thường
+    // chưa kịp báo cwd → không đủ bằng chứng → mở terminal mới (như trước bản này), thà thừa
+    // một shell còn hơn giết nhầm một shell đang chạy dở.
+    for (const entry of cho) {
+      if (entry.kind !== 'plain' || this.terminals.has(entry.id)) continue;
+      const khop = chuaTrack().filter(
+        (t) =>
+          t.name === entry.name &&
+          t.shellIntegration?.cwd !== undefined &&
+          normalizeCwd(t.shellIntegration.cwd.fsPath) === normalizeCwd(entry.cwd),
+      );
+      if (khop.length === 1) nhan(entry, khop[0]!);
+    }
+    return { ids: daNhan, trung: soTrung };
   }
 
   private applyReport(report: ActivateReport): void {
@@ -479,16 +621,22 @@ export class WorkspaceManager implements vscode.Disposable {
       },
       agent: this.agent,
       fsExists: (p) => nodeFs.existsSync(p),
-      isTrusted: (commands) => this.trust.isTrusted(trustKey, commands),
-      confirmTrust: async (commands) => {
-        const lines = commands.map((c) => `• ${c}`).join('\n');
+      // Vân tay trust tính trên TOÀN workspace, không phải tập sắp mở: hôm nay mở 5 terminal,
+      // hôm sau 2 cái đã chạy sẵn nên chỉ mở 3 — cùng một workspace mà tập lệnh khác nhau thì
+      // vân tay trượt và người dùng bị hỏi tin cậy lại mỗi lần.
+      isTrusted: () => this.trust.isTrusted(trustKey, lenhToanWorkspace(ws)),
+      confirmTrust: async () => {
+        // Hiện ĐÚNG tập lệnh sẽ được ghi vào vân tay (cả workspace), không phải tập sắp chạy:
+        // tin một tập rộng hơn những gì người dùng nhìn thấy là mở đường chạy ngầm sau này.
+        const tatCa = lenhToanWorkspace(ws);
+        const lines = tatCa.map((c) => `• ${c}`).join('\n');
         const answer = await vscode.window.showWarningMessage(
-          `Workspace "${ws.name}" sẽ chạy các lệnh sau trên máy bạn:\n\n${lines}`,
+          `Workspace "${ws.name}" có các lệnh khởi động sau; chúng chạy mỗi khi terminal tương ứng được mở:\n\n${lines}`,
           { modal: true },
           'Tin và chạy',
         );
         if (answer !== 'Tin và chạy') return false;
-        await this.trust.trust(trustKey, commands);
+        await this.trust.trust(trustKey, tatCa);
         return true;
       },
       onMinted: async (terminalId, sessionId) => {
