@@ -110,6 +110,28 @@ describe('mergeForSave', () => {
     expect(merged.workspaces).toEqual([ramWs]);
   });
 
+  it('khử trùng sessionId khi gộp: workspace ta đã đụng giữ id, bản đĩa bị gỡ (không double --resume)', () => {
+    // Hai cửa sổ VS Code cùng gắn một hội thoại trước khi kịp thấy nhau — merge là nơi duy
+    // nhất nhìn thấy cả hai bản.
+    const sid = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const ramWs = ws(uuidA, 'Của ta');
+    ramWs.terminals = [{ id: uuidC, name: 'a', cwd: 'D:\\x', kind: 'claude', claudeSessionId: sid }];
+    const diskWs = ws(uuidB, 'Của cửa sổ khác');
+    diskWs.terminals = [{ id: uuidD, name: 'b', cwd: 'D:\\y', kind: 'claude', claudeSessionId: sid }];
+
+    const merged = mergeForSave(
+      storeOf(diskWs), storeOf(ramWs), new Set(), new Set([uuidA]),
+    );
+
+    const ids = merged.workspaces.flatMap((w) => w.terminals.map((t) => t.claudeSessionId));
+    expect(ids.filter((x) => x === sid)).toHaveLength(1);
+    expect(merged.workspaces.find((w) => w.id === uuidA)!.terminals[0]!.claudeSessionId).toBe(sid);
+    // Không mutate object của đĩa: bản gốc vẫn còn id, chỉ bản gộp bị gỡ.
+    expect(diskWs.terminals[0]!.claudeSessionId).toBe(sid);
+    expect(merged.workspaces.find((w) => w.id === uuidB)!.terminals[0]!.claudeSessionId)
+      .toBeUndefined();
+  });
+
   it('không mutate object của store đĩa khi phải đổi tên', () => {
     const diskWs = ws(uuidB, 'ERP');
     const merged = mergeForSave(

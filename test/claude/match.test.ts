@@ -67,6 +67,17 @@ describe('matchClaudeSessions', () => {
     expect(r.ambiguous[0]!.sessions).toHaveLength(2);
   });
 
+  it('session đã bị entry KHÁC ngoài danh sách ứng viên giữ (cửa sổ VS Code khác, terminal chưa mở) → không cướp', () => {
+    const r = matchClaudeSessions(
+      [{ terminalId: 't1', cwd: 'D:\\x' }],
+      [s({})],
+      'win32',
+      new Set([s({}).sessionId]),
+    );
+    expect(r.matched).toEqual([]);
+    expect(r.ambiguous).toEqual([]);
+  });
+
   it('session không cùng cwd với terminal nào → bị bỏ, không matched không ambiguous', () => {
     const r = matchClaudeSessions([{ terminalId: 't1', cwd: 'D:\\y' }], [s({})], 'win32');
     expect(r).toEqual({ matched: [], ambiguous: [] });

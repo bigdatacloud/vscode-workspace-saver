@@ -11,12 +11,20 @@ export function normalizeCwd(p: string, platform: NodeJS.Platform = process.plat
   return platform === 'win32' ? resolved.toLowerCase().replaceAll('\\', '/') : resolved;
 }
 
+/**
+ * @param idDaCoChuKhac Session id đã bị entry KHÔNG nằm trong `candidates` giữ (entry có
+ *   terminal chưa mở, hoặc của workspace khác trong cùng file store dùng chung giữa các cửa
+ *   sổ VS Code). Không tính vào đây thì cửa sổ này coi chúng là tự do và cướp mất → hai entry
+ *   cùng một hội thoại → double `--resume`.
+ */
 export function matchClaudeSessions(
   candidates: MatchCandidate[],
   running: RunningSession[],
   platform: NodeJS.Platform = process.platform,
+  idDaCoChuKhac: ReadonlySet<string> = new Set(),
 ): MatchResult {
   const claimed = new Set(candidates.map((c) => c.claimedSessionId).filter((x): x is string => !!x));
+  for (const id of idDaCoChuKhac) claimed.add(id);
   const freeSessions = running.filter(
     (r) => r.kind === 'interactive' && r.cwd !== '' && !claimed.has(r.sessionId),
   );

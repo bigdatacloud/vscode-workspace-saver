@@ -61,6 +61,12 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
   ancestry** (the session's pid, walked up its ancestor chain, must reach exactly one
   terminal's shell pid) to resolve deterministically; only what remains unresolvable shows a
   QuickPick, asked once per cwd group (not re-asked every poll cycle if you dismiss it).
+  Process ancestry runs first and is not limited to same-cwd groups: a session belongs to the
+  terminal whose shell is its process ancestor, whatever cwd the entry recorded (you `cd`'d
+  elsewhere before starting Claude), and that evidence also **corrects a wrong claim** — if
+  another entry holds that session id, it is released so the real terminal gets it. An
+  existing session id is only ever re-pointed on process evidence, never on a cwd guess, so
+  an entry whose conversation has exited keeps its id and stays resumable.
   When you **close a workspace**, the extension runs one final capture sweep and re-asks
   even the groups you previously dismissed — after closing there is no way left to capture.
   If the machine can't resolve it, attach manually via **"Assign Claude session to

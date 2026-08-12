@@ -80,7 +80,42 @@ export function mergeForSave(
     takenNames.add(name.toLowerCase());
     return { ...w, name };
   });
-  return { version: 2, workspaces: [...winners, ...kept] };
+  return { version: 2, workspaces: khuTrungSession([...winners, ...kept], touchedIds) };
+}
+
+/**
+ * Một hội thoại chỉ được thuộc MỘT entry. Trong phạm vi một cửa sổ, `claimSession` giữ bất
+ * biến đó; nhưng hai cửa sổ VS Code có thể cùng gắn một sessionId trước khi kịp thấy nhau
+ * (bản RAM chỉ được nạp lại từ đĩa lúc save), và merge là nơi DUY NHẤT nhìn thấy cả hai bản.
+ * Giữ id ở entry thuộc workspace trong `touchedIds` rồi gỡ ở chỗ còn lại — để cả hai là lần
+ * khôi phục sau `--resume` một hội thoại hai lần. Lưu ý `touchedIds` chỉ nghĩa là "cửa sổ này
+ * có sửa workspace đó" (kể cả đổi tên), KHÔNG hàm ý claim của ta mới hơn hay có bằng chứng
+ * hơn — tie-break chuẩn cần dấu thời điểm claim trong schema. KHÔNG mutate object phía đĩa:
+ * clone rồi mới sửa.
+ */
+function khuTrungSession(list: Workspace[], touchedIds: ReadonlySet<string>): Workspace[] {
+  const daGiu = new Set<string>();
+  for (const w of list) {
+    if (!touchedIds.has(w.id)) continue;
+    for (const t of w.terminals) if (t.claudeSessionId !== undefined) daGiu.add(t.claudeSessionId);
+  }
+  return list.map((w) => {
+    if (touchedIds.has(w.id)) return w;
+    let coTrung = false;
+    const terminals = w.terminals.map((t) => {
+      const id = t.claudeSessionId;
+      if (id === undefined) return t;
+      if (!daGiu.has(id)) {
+        daGiu.add(id);
+        return t;
+      }
+      coTrung = true;
+      const ban = { ...t };
+      delete ban.claudeSessionId;
+      return ban;
+    });
+    return coTrung ? { ...w, terminals } : w;
+  });
 }
 
 function uniqueName(base: string, taken: ReadonlySet<string>): string {
