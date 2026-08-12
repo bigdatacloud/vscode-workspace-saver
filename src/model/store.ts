@@ -31,8 +31,12 @@ export interface StoreFs {
  */
 export interface ShardResult {
   workspaces: Workspace[];
-  /** File hỏng đã được đổi tên để giữ lại, kèm đường dẫn bản sao lưu. */
-  hong: string[];
+  /**
+   * File đọc/parse hỏng, đã được đổi tên để giữ lại. Kèm `id` (lấy từ tên file) vì tầng trên
+   * PHẢI phân biệt "workspace này không còn trên đĩa" với "đọc file của nó không được": ca
+   * đầu là quên nó đi, ca sau mà quên là bản RAM đang tốt cũng bay theo.
+   */
+  hong: { id: string; backup: string }[];
 }
 
 const DUOI = '.json';
@@ -53,8 +57,12 @@ export function loadShards(fs: StoreFs, dir: string, epoch: () => number, sep = 
     } catch {
       // Một file hỏng KHÔNG được kéo cả danh sách xuống: giữ lại bản sao rồi đi tiếp.
       const backup = `${duongDan}.bak-${epoch()}`;
-      fs.rename(duongDan, backup);
-      ra.hong.push(backup);
+      try {
+        fs.rename(duongDan, backup);
+      } catch {
+        continue; // đổi tên không được (file bị khoá) → cứ để đó, lần sau thử lại
+      }
+      ra.hong.push({ id: ten.slice(0, -DUOI.length), backup });
     }
   }
   return ra;
@@ -103,159 +111,49 @@ export function gopShard(disk: Workspace | null, ram: Workspace): Workspace {
  *
  * @returns số workspace đã chuyển, hoặc null nếu không có gì để chuyển.
  */
+export type KetQuaChuyen =
+  | { loai: 'khong-co' }
+  | { loai: 'xong'; soLuong: number }
+  | { loai: 'hong'; backup: string };
+
 export function migrateLegacy(
   fs: StoreFs,
   legacyPath: string,
   dir: string,
   epoch: () => number,
   sep = '/',
-): number | null {
+): KetQuaChuyen {
   const raw = fs.readFile(legacyPath);
-  if (raw === null) return null;
+  if (raw === null) return { loai: 'khong-co' };
   let store: StoreFile;
   try {
     store = StoreFileSchema.parse(JSON.parse(raw));
   } catch {
-    fs.rename(legacyPath, `${legacyPath}.bak-${epoch()}`);
-    return null;
+    // File cũ hỏng: đây là BẢN SAO DUY NHẤT dữ liệu của người dùng, phải giữ lại VÀ báo cho
+    // họ biết — im lặng thì họ mở lên thấy danh sách trống và tưởng mất trắng.
+    const backup = `${legacyPath}.bak-${epoch()}`;
+    try {
+      fs.rename(legacyPath, backup);
+    } catch {
+      /* đổi tên không được thì thôi, dữ liệu vẫn nằm nguyên chỗ cũ */
+    }
+    return { loai: 'hong', backup };
   }
   fs.mkdirp(dir);
   for (const ws of store.workspaces) {
-    // File shard đã có (chuyển dở lần trước) thì giữ bản mới hơn trên đĩa, không đè lại.
+    // File shard đã có (chuyển dở lần trước, hoặc cửa sổ khác vừa chuyển) thì giữ bản trên
+    // đĩa, không đè lại.
     if (fs.readFile(tenFileWorkspace(dir, ws.id, sep)) !== null) continue;
     saveShard(fs, dir, ws, sep);
   }
-  fs.rename(legacyPath, `${legacyPath}.migrated-${epoch()}`);
-  return store.workspaces.length;
-}
-
-export interface LoadResult { store: StoreFile; recoveredFrom: string | null; }
-
-export function loadStore(fs: StoreFs, filePath: string, epoch: () => number): LoadResult {
-  const raw = fs.readFile(filePath);
-  if (raw === null) return { store: emptyStore(), recoveredFrom: null };
   try {
-    return { store: StoreFileSchema.parse(JSON.parse(raw)), recoveredFrom: null };
+    fs.rename(legacyPath, `${legacyPath}.migrated-${epoch()}`);
   } catch {
-    const backup = `${filePath}.bak-${epoch()}`;
-    fs.rename(filePath, backup);
-    return { store: emptyStore(), recoveredFrom: backup };
+    // Hai cửa sổ VS Code cùng mở và cùng chuyển: cửa sổ kia đổi tên trước nên rename này ném
+    // ENOENT. Việc đã xong rồi — ném tiếp là cửa sổ này bỏ luôn bước nạp và hiện danh sách
+    // TRỐNG suốt phiên.
   }
-}
-
-export function saveStore(fs: StoreFs, filePath: string, store: StoreFile): void {
-  // Cửa ghi là nơi cuối cùng chặn được dữ liệu hỏng: một entry sai schema lọt xuống đĩa sẽ
-  // làm loadStore lần sau parse hỏng → backup + danh sách workspace rỗng (mất dữ liệu thật).
-  // Ném TRƯỚC khi đụng vào đĩa, để caller giữ nguyên file cũ và thử lại ở lần save sau.
-  StoreFileSchema.parse(store);
-  const tmp = `${filePath}.tmp`;
-  fs.writeFile(tmp, JSON.stringify(store, null, 2));
-  fs.rename(tmp, filePath);
-}
-
-/**
- * Gộp trạng thái trong RAM của cửa sổ này với trạng thái đang nằm trên đĩa trước khi ghi đè.
- *
- * Mỗi cửa sổ VS Code chạy một instance extension riêng, nạp store một lần lúc khởi động rồi
- * ghi đè cả file mỗi lần lưu. Không gộp thì cửa sổ lưu sau xóa sạch workspace mà cửa sổ kia
- * vừa tạo. Luật:
- *  (a) id có trong RAM VÀ cửa sổ này đã đụng tới (`touchedIds`) → bản RAM thắng;
- *  (b) id có trong RAM nhưng cửa sổ này CHƯA đụng tới, mà đĩa cũng có → BẢN ĐĨA thắng. Bản
- *      RAM của workspace ta chưa đụng chỉ là ảnh chụp lúc khởi động (hoặc bản vừa hút vào từ
- *      lần merge trước); ghi đè nó lên đĩa sẽ xóa sessionId mà cửa sổ khác vừa mint và xóa
- *      luôn khóa V5 của họ. Không đụng tới ⇒ không có closure/mint nào đang trỏ vào object
- *      đó, nên thay bằng object của đĩa là an toàn;
- *  (c) id có trong RAM mà đĩa không còn → giữ bản RAM (không bao giờ vứt dữ liệu ta đang cầm);
- *  (d) id chỉ có trên đĩa → giữ lại, TRỪ KHI nằm trong `deletedIds` (bia mộ: workspace mà
- *      chính cửa sổ này vừa xóa, không được sống lại);
- *  (e) tên đụng nhau giữa bản đĩa giữ lại và bản phía RAM → đổi tên BẢN ĐĨA (' (2)', ' (3)'…),
- *      không bao giờ đụng vào tên người dùng đang thấy trong cửa sổ này.
- *
- * Với nhánh (a) trả về object workspace của RAM NGUYÊN TÁC THAM CHIẾU: manager giữ tham chiếu
- * tới chúng trong closure (ports, entry đang mint), thay bằng bản sao sẽ làm các mutation sau
- * đó rơi vào object mồ côi. KHÔNG mutate `disk`: bản đĩa phải đổi tên thì clone rồi mới sửa.
- */
-export function mergeForSave(
-  disk: StoreFile,
-  ram: StoreFile,
-  deletedIds: ReadonlySet<string>,
-  touchedIds: ReadonlySet<string>,
-): StoreFile {
-  const diskById = new Map(disk.workspaces.map((w) => [w.id, w]));
-  const winners = ram.workspaces.map((ramWs) =>
-    touchedIds.has(ramWs.id) ? ramWs : diskById.get(ramWs.id) ?? ramWs,
-  );
-
-  const ramIds = new Set(ram.workspaces.map((w) => w.id));
-  const takenNames = new Set(winners.map((w) => w.name.toLowerCase()));
-  const candidates = disk.workspaces.filter((w) => !ramIds.has(w.id) && !deletedIds.has(w.id));
-
-  // Hai lượt: giữ chỗ cho mọi tên đĩa KHÔNG đụng độ trước, rồi mới rải hậu tố cho tên đụng
-  // độ thật. Một lượt sẽ đổi tên cả workspace vô can chỉ vì trùng với hậu tố ta vừa bịa ra.
-  const conflicting = new Set(candidates.filter((w) => takenNames.has(w.name.toLowerCase())));
-  for (const w of candidates) {
-    if (!conflicting.has(w)) takenNames.add(w.name.toLowerCase());
-  }
-  const kept = candidates.map((w) => {
-    if (!conflicting.has(w)) return w;
-    const name = uniqueName(w.name, takenNames);
-    takenNames.add(name.toLowerCase());
-    return { ...w, name };
-  });
-  return { version: 2, workspaces: khuTrungSession([...winners, ...kept], touchedIds) };
-}
-
-/**
- * Một hội thoại chỉ được thuộc MỘT entry. Trong phạm vi một cửa sổ, `claimSession` giữ bất
- * biến đó; nhưng hai cửa sổ VS Code có thể cùng gắn một sessionId trước khi kịp thấy nhau
- * (bản RAM chỉ được nạp lại từ đĩa lúc save), và merge là nơi DUY NHẤT nhìn thấy cả hai bản.
- * Giữ id ở entry thuộc workspace trong `touchedIds` rồi gỡ ở chỗ còn lại — để cả hai là lần
- * khôi phục sau `--resume` một hội thoại hai lần. Lưu ý `touchedIds` chỉ nghĩa là "cửa sổ này
- * có sửa workspace đó" (kể cả đổi tên), KHÔNG hàm ý claim của ta mới hơn hay có bằng chứng
- * hơn — tie-break chuẩn cần dấu thời điểm claim trong schema. KHÔNG mutate object phía đĩa:
- * clone rồi mới sửa.
- */
-function khuTrungSession(list: Workspace[], touchedIds: ReadonlySet<string>): Workspace[] {
-  // Hai loại id, khử độc lập nhau: Claude (`claudeSessionId`) và agent khác (`agentSessionId`).
-  const daGiu = { claude: new Set<string>(), agent: new Set<string>() };
-  for (const w of list) {
-    if (!touchedIds.has(w.id)) continue;
-    for (const t of w.terminals) {
-      if (t.claudeSessionId !== undefined) daGiu.claude.add(t.claudeSessionId);
-      if (t.agentSessionId !== undefined) daGiu.agent.add(t.agentSessionId);
-    }
-  }
-  return list.map((w) => {
-    if (touchedIds.has(w.id)) return w;
-    let coTrung = false;
-    const terminals = w.terminals.map((t) => {
-      let ban = t;
-      if (t.claudeSessionId !== undefined) {
-        if (daGiu.claude.has(t.claudeSessionId)) {
-          coTrung = true;
-          ban = { ...ban };
-          delete ban.claudeSessionId;
-        } else daGiu.claude.add(t.claudeSessionId);
-      }
-      if (t.agentSessionId !== undefined) {
-        if (daGiu.agent.has(t.agentSessionId)) {
-          coTrung = true;
-          ban = { ...ban };
-          delete ban.agentSessionId;
-        } else daGiu.agent.add(t.agentSessionId);
-      }
-      return ban;
-    });
-    return coTrung ? { ...w, terminals } : w;
-  });
-}
-
-function uniqueName(base: string, taken: ReadonlySet<string>): string {
-  if (!taken.has(base.toLowerCase())) return base;
-  for (let i = 2; ; i += 1) {
-    const candidate = `${base} (${i})`;
-    if (!taken.has(candidate.toLowerCase())) return candidate;
-  }
+  return { loai: 'xong', soLuong: store.workspaces.length };
 }
 
 export function createWorkspace(store: StoreFile, name: string, id: string): Workspace {
@@ -301,12 +199,9 @@ export const realStoreFs: StoreFs = {
       return [];
     }
   },
-  remove(p) {
-    try {
-      nodeFs.rmSync(p, { force: true });
-    } catch {
-      // Xoá không được (file đang bị khoá) thì thôi — caller không có gì làm thêm.
-    }
-  },
+  // KHÔNG nuốt lỗi: xoá thất bại (AV/OneDrive đang khoá file) mà báo thành công thì
+  // workspace vừa xoá sẽ được nạp lại ở nhịp đồng bộ sau như "workspace mới của cửa sổ khác".
+  // `force: true` đã bỏ qua ENOENT nên chỉ lỗi thật mới ném.
+  remove(p) { nodeFs.rmSync(p, { force: true }); },
   mkdirp(dir) { nodeFs.mkdirSync(dir, { recursive: true }); },
 };
