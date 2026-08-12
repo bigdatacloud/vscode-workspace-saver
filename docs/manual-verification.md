@@ -274,6 +274,29 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Hai entry ở hai workspace không bao giờ cùng một session id: gắn session S cho terminal
       B trong khi entry A đang giữ S → A tự mất id (xem `workspaces.json`)
 
+## Quay lại đúng chỗ đang dở (reload / đóng-mở workspace)
+- [ ] Terminal Claude đang làm dở, ĐÓNG workspace rồi kích hoạt lại → claude nối lại ĐÚNG
+      hội thoại cũ (không phải hội thoại trắng), kể cả entry chưa từng bắt được session id
+      (khi đó lệnh gửi là `claude -c`)
+- [ ] Terminal Codex chưa bắt được id phiên → kích hoạt lại chạy `codex resume --last`,
+      không mở phiên mới
+- [ ] Reload Window rồi kích hoạt workspace → KHÔNG sinh thêm tiến trình claude thứ hai cho
+      cùng một hội thoại (kiểm bằng `claude agents --json`: mỗi sessionId chỉ một pid)
+- [ ] Tên terminal trong cây KHÔNG bị đổi thành "claude" hay dính ký hiệu ✳/◐ sau khi khôi
+      phục; tên người dùng đặt giữ nguyên qua nhiều lần đóng/mở
+- [ ] Đổi tên tab bằng Rename có sẵn của VS Code khi terminal đang ở dấu nhắc (không chạy
+      lệnh gì) → tên vẫn đồng bộ về cây trong ~3 giây
+
+## Worktree khi tạo terminal agent
+- [ ] `Tạo terminal Claude mới` trên một thư mục là repo git → sau khi chọn đường dẫn, hộp
+      thoại hỏi tên worktree; để TRỐNG → làm thẳng trên thư mục đã chọn
+- [ ] Nhập tên worktree mới → tạo `<repo>/.worktrees/<tên>` + nhánh cùng tên, terminal mở tại
+      đó, tên terminal lấy theo tên worktree
+- [ ] `git status` trong repo KHÔNG hiện `.worktrees/` (đã thêm vào `.git/info/exclude`)
+- [ ] Nhập lại đúng tên worktree đã có → dùng lại thư mục đó, không lỗi, không ghi đè
+- [ ] Thư mục KHÔNG phải repo git → không hỏi worktree, mở thẳng
+- [ ] Tên worktree có ký tự lạ (`--foo`, `a/../b`) → bị chặn ngay ở ô nhập
+
 ## Trạng thái "đang tải phiên" (spinner)
 - [ ] Kích hoạt workspace có terminal Claude → NGAY khi terminal mở, item trong cây hiện
       icon xoay + "đang tải phiên…"; khi claude boot xong và registry thấy session (vài

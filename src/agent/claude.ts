@@ -40,6 +40,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
   buildLaunchCommand(spec: LaunchSpec): string {
     const q = (v: string): string => quoteArg(v, this.shell);
+    // `-c` không đi kèm id nào cả; cũng KHÔNG kèm `-n`: tên hiển thị là của hội thoại đang
+    // được nối lại, ép tên mới vào là ghi đè tên phiên người dùng đã có.
+    if (spec.mode.kind === 'continue') return `${CLAUDE_BIN} -c`;
     const idFlag = spec.mode.kind === 'new' ? '--session-id' : '--resume';
     return `${CLAUDE_BIN} ${idFlag} ${q(spec.mode.sessionId)} -n ${q(spec.name)}`;
   }
