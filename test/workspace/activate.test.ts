@@ -8,7 +8,10 @@ const U = (n: string) => `${n}${n}${n}${n}${n}${n}${n}${n}-${n}${n}${n}${n}-4${n
 const fakeAgent = (minted: string): AgentAdapter => ({
   id: 'fake',
   newSessionId: () => minted,
-  buildLaunchCommand: (spec: LaunchSpec) => `LAUNCH ${spec.mode.kind} ${spec.mode.sessionId} AS ${spec.name}`,
+  buildLaunchCommand: (spec: LaunchSpec) =>
+    spec.mode.kind === 'continue'
+      ? `LAUNCH continue AS ${spec.name}`
+      : `LAUNCH ${spec.mode.kind} ${spec.mode.sessionId} AS ${spec.name}`,
   listRunning: async () => [],
   ownsCommand: () => false,
   buildLaunchOptions: () => [],
@@ -34,6 +37,7 @@ function makePorts(over: Partial<ActivatePorts> = {}) {
     confirmTrust: async () => true,
     // Bằng chứng theo ENTRY, không theo chuỗi lệnh (xem ghi chú ở ActivatePorts).
     laLenhAgent: (e) => e.kind === 'claude' || e.agentId === 'codex',
+    lenhTiepTucAgent: () => null,
     onMinted: async () => { calls.push('minted'); },
     warn: () => {},
     ...over,
@@ -46,16 +50,29 @@ const claudeResume: TerminalEntry = { ...claudeNew, id: U('3'), claudeSessionId:
 const plainCmd: TerminalEntry = { id: U('4'), name: 'dev', cwd: 'D:\\x', kind: 'plain', startCommand: 'npm run dev' };
 
 describe('activateWorkspace', () => {
-  it('claude có sessionId → resume với claudeName; thiếu → mint, onMinted TRƯỚC sendText', async () => {
+  // Khôi phục KHÔNG BAO GIỜ được mở một hội thoại trắng: người dùng mở lại workspace là để
+  // làm tiếp chỗ dở. Có id thì --resume đúng hội thoại đó; chưa bắt được id thì nối lại hội
+  // thoại gần nhất của thư mục (`continue`), tuyệt đối không mint phiên mới.
+  it('claude có sessionId → resume; CHƯA có id → continue, không mint phiên mới', async () => {
     const { ports, sent, calls } = makePorts();
     const r = await activateWorkspace(ws([claudeResume, claudeNew]), ports);
     expect(r.opened).toEqual([claudeResume.id, claudeNew.id]);
     expect(sent.get(claudeResume.id)).toEqual([`LAUNCH resume ${U('5')} AS peer-b`]);
-    expect(sent.get(claudeNew.id)).toEqual([`LAUNCH new ${U('9')} AS agent-a`]);
-    const mintedIdx = calls.indexOf('minted');
-    const sendIdx = calls.indexOf(`send:${claudeNew.id}`);
-    expect(mintedIdx).toBeGreaterThanOrEqual(0);
-    expect(mintedIdx).toBeLessThan(sendIdx);
+    expect(sent.get(claudeNew.id)).toEqual(['LAUNCH continue AS agent-a']);
+    expect(calls).not.toContain('minted');
+  });
+
+  it('entry codex chưa có id phiên → nối lại phiên gần nhất thay vì chạy lại lệnh khởi chạy', async () => {
+    const codexMoi: TerminalEntry = {
+      id: U('8'), name: 'cdx', cwd: 'D:\\x', kind: 'plain', agentId: 'codex', startCommand: 'codex',
+    };
+    const { ports, sent } = makePorts({
+      lenhTiepTucAgent: (e) => (e.agentId === 'codex' && e.agentSessionId === undefined
+        ? 'codex resume --last'
+        : null),
+    });
+    await activateWorkspace(ws([codexMoi]), ports);
+    expect(sent.get(codexMoi.id)).toEqual(['codex resume --last']);
   });
 
   it('plain có startCommand + đã trust → gửi lệnh; không startCommand → chỉ mở', async () => {

@@ -11,7 +11,13 @@ export interface RunningSession {
 
 export type LaunchMode =
   | { kind: 'new'; sessionId: string }
-  | { kind: 'resume'; sessionId: string };
+  | { kind: 'resume'; sessionId: string }
+  /**
+   * Nối lại hội thoại GẦN NHẤT của thư mục đó, khi không biết id. Dùng lúc khôi phục một
+   * terminal agent mà extension chưa kịp bắt được id: mở phiên mới toanh là làm người dùng
+   * mất chỗ đang làm dở, còn `-c` đưa họ về đúng hội thoại cuối.
+   */
+  | { kind: 'continue' };
 
 export interface LaunchSpec {
   name: string;

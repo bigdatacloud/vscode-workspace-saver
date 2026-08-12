@@ -11,6 +11,9 @@ import { CodexAdapter } from '../agent/codex';
 import { chonSessionChoTerminal, gomSessionTheoTerminal } from '../claude/ancestry';
 import { claudeHomeMacDinh, dangChoNguoiDung, duongDanTranscript } from '../claude/transcript';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
+import { boKyHieuTrangThai } from '../agent/title';
+import { realGitRunner } from '../git/exec';
+import { GitClient } from '../git/worktree';
 import { docBangTienTrinh } from '../proc/real';
 import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
 import {
@@ -66,6 +69,8 @@ const CODEX_DO_NHIP_MS = 3000;
 const CODEX_DO_SO_LAN = 40;
 /** Hạn giờ chờ `Terminal.processId` — terminal chưa gắn tiến trình có thể không bao giờ trả. */
 const DOI_PROCESS_ID_MS = 2500;
+/** Nơi đặt worktree do extension tạo, ngay trong repo và được bỏ qua qua `.git/info/exclude`. */
+const THU_MUC_WORKTREE = '.worktrees';
 /** Đọc bảng tiến trình hỏng thì nghỉ chừng này rồi mới thử lại (mỗi lần thử tốn tới 5 giây). */
 const LUI_SAU_DOC_HONG_MS = 60_000;
 const LUI_TOI_DA_MS = 600_000;
@@ -116,6 +121,11 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly pidNgoaiCuaSo = new Set<number>();
   /** Terminal đã tra phả hệ và bên trong không có claude nào — thôi ép đọc bảng tiến trình. */
   private readonly daTraKhongThayClaude = new Set<string>();
+  /**
+   * Terminal đang có lệnh chạy dở (mọi lệnh, không chỉ lệnh được bắt làm startCommand).
+   * Dùng để biết tiêu đề tab lúc này là do CHƯƠNG TRÌNH đặt chứ không phải người dùng rename.
+   */
+  private readonly dangChayLenh = new Set<string>();
   /** Cặp terminalId → sessionId đã được phả hệ tiến trình xác nhận (cwd lệch là bình thường). */
   private readonly phaHeDaXacNhan = new Map<string, string>();
   /** Kết quả soi transcript, khóa theo sessionId — file không đổi thì khỏi đọc lại. */
@@ -169,6 +179,7 @@ export class WorkspaceManager implements vscode.Disposable {
     private readonly terminals: TerminalManager,
     private readonly agent: AgentAdapter,
     private readonly codex: CodexAdapter,
+    private readonly git: GitClient = new GitClient(realGitRunner),
   ) {
     this.boNhoChung = context.globalState;
     this.trust = new TrustStore({
@@ -190,6 +201,13 @@ export class WorkspaceManager implements vscode.Disposable {
     try {
       const loaded = loadStore(realStoreFs, this.filePath, Date.now);
       this.store = loaded.store;
+      // Sửa di chứng của lỗi hút tiêu đề: tên đã lưu có thể dính ký hiệu trạng thái quay của
+      // agent ("✳ ", "◐ "…). Chỉ sửa TRONG BỘ NHỚ, KHÔNG touch/save — touch một workspace chỉ
+      // để dọn tên là nhận chủ quyền nó vĩnh viễn với các cửa sổ VS Code khác; tên sạch sẽ
+      // được ghi xuống ở lần lưu nào đó ta vốn đã phải ghi.
+      for (const ws of this.store.workspaces) {
+        for (const t of ws.terminals) t.name = boKyHieuTrangThai(t.name);
+      }
       if (loaded.recoveredFrom !== null) {
         void vscode.window.showWarningMessage(
           `File workspaces.json bị hỏng nên đã được sao lưu sang ${loaded.recoveredFrom}; danh sách workspace bắt đầu lại từ đầu.`,
@@ -206,6 +224,7 @@ export class WorkspaceManager implements vscode.Disposable {
       this.terminals.onClosed((key) => {
         // V7: đóng terminal bằng tay KHÔNG gỡ entry khỏi workspace, chỉ đổi trạng thái hiển thị.
         this.shellPids.delete(key);
+        this.dangChayLenh.delete(key);
         this.daTraKhongThayClaude.delete(key);
         this.phaHeDaXacNhan.delete(key);
         this.pendingCommands.delete(key);
@@ -632,6 +651,13 @@ export class WorkspaceManager implements vscode.Disposable {
       agent: this.agent,
       fsExists: (p) => nodeFs.existsSync(p),
       laLenhAgent: (entry) => this.laEntryAgent(entry),
+      lenhTiepTucAgent: (entry) => {
+        // Chỉ Codex: entry Claude đi nhánh riêng ở activateWorkspace. Có id rồi thì
+        // `startCommand` đã là `codex resume <id>` — chính xác hơn, cứ để nó chạy.
+        if (entry.agentId !== 'codex' || entry.agentSessionId !== undefined) return null;
+        if (!this.laEntryAgent(entry)) return null;
+        return this.codex.buildLaunchOptions()[1]?.command ?? null;
+      },
       // Vân tay trust tính trên TOÀN workspace, không phải tập sắp mở: hôm nay mở 5 terminal,
       // hôm sau 2 cái đã chạy sẵn nên chỉ mở 3 — cùng một workspace mà tập lệnh khác nhau thì
       // vân tay trượt và người dùng bị hỏi tin cậy lại mỗi lần.
@@ -786,7 +812,8 @@ export class WorkspaceManager implements vscode.Disposable {
 
     const duongDan = await this.hoiDuongDan();
     if (duongDan === undefined) return;
-    const cwd = duongDan;
+    const cwd = await this.hoiWorktree(duongDan);
+    if (cwd === undefined) return;
     const ten = path.basename(cwd) || 'claude';
 
     const luaChon = await vscode.window.showQuickPick(this.agent.buildLaunchOptions(ten), {
@@ -846,7 +873,8 @@ export class WorkspaceManager implements vscode.Disposable {
 
     const duongDan = await this.hoiDuongDan();
     if (duongDan === undefined) return;
-    const cwd = duongDan;
+    const cwd = await this.hoiWorktree(duongDan);
+    if (cwd === undefined) return;
     const ten = path.basename(cwd) || 'codex';
 
     const luaChon = await vscode.window.showQuickPick(this.codex.buildLaunchOptions(), {
@@ -1116,6 +1144,69 @@ export class WorkspaceManager implements vscode.Disposable {
    * GIỮ hộp thoại mở khi đường dẫn gõ vào không tồn tại — bắt người dùng mở lại từ đầu chỉ
    * vì gõ sai một ký tự là tệ hơn hẳn.
    */
+  /**
+   * Hỏi worktree cho terminal agent sắp mở. Lý do tồn tại: hai terminal cùng trỏ một thư mục
+   * thì "nối lại phiên gần nhất" (`claude -c`, `codex resume --last`) trỏ vào CÙNG một hội
+   * thoại, và cơ chế bắt session theo cwd cũng không phân biệt nổi. Mỗi worktree là một thư
+   * mục + một nhánh riêng nên hết đụng nhau.
+   *
+   * Trả về thư mục làm việc cuối cùng; `undefined` nghĩa là người dùng hủy cả lệnh.
+   */
+  private async hoiWorktree(cwd: string): Promise<string | undefined> {
+    const goc = await this.git.repoRoot(cwd);
+    if (goc === null) return cwd; // không phải repo git thì không có worktree để bàn
+
+    const ten = await vscode.window.showInputBox({
+      title: `Worktree trong repo ${path.basename(goc)}`,
+      prompt: 'Tên worktree (thư mục + nhánh riêng). Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.',
+      placeHolder: 'ví dụ: fix-login',
+      validateInput: (v) => {
+        const t = v.trim();
+        if (t === '') return undefined;
+        // Tên này đi thẳng vào tên nhánh git và một đoạn đường dẫn — chặn ngay ở cửa nhập.
+        if (!/^[\w.][\w./-]*$/.test(t) || t.includes('..')) {
+          return 'Chỉ dùng chữ, số, dấu . _ - / và không bắt đầu bằng dấu -';
+        }
+        return undefined;
+      },
+    });
+    if (ten === undefined) return undefined;
+    const tenWt = ten.trim();
+    if (tenWt === '') return cwd;
+
+    const duongDan = path.join(goc, THU_MUC_WORKTREE, tenWt);
+    if (nodeFs.existsSync(duongDan)) return duongDan; // đã có thì dùng lại, không đụng vào
+
+    try {
+      await this.git.addWorktree(goc, duongDan, tenWt);
+    } catch (e) {
+      void vscode.window.showWarningMessage(
+        `Không tạo được worktree "${tenWt}": ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return undefined;
+    }
+    await this.boQuaThuMucWorktree(cwd);
+    return duongDan;
+  }
+
+  /**
+   * Thêm thư mục worktree vào `.git/info/exclude` (KHÔNG phải `.gitignore`): người dùng không
+   * phải commit thêm gì, mà `git status` của họ cũng không bị bẩn vì thư mục worktree.
+   */
+  private async boQuaThuMucWorktree(cwd: string): Promise<void> {
+    const gitDir = await this.git.gitCommonDir(cwd);
+    if (gitDir === null) return;
+    const file = path.join(gitDir, 'info', 'exclude');
+    try {
+      const cu = nodeFs.existsSync(file) ? nodeFs.readFileSync(file, 'utf8') : '';
+      if (cu.split(/\r?\n/).some((d) => d.trim() === `/${THU_MUC_WORKTREE}/`)) return;
+      nodeFs.mkdirSync(path.dirname(file), { recursive: true });
+      nodeFs.writeFileSync(file, `${cu}${cu.endsWith('\n') || cu === '' ? '' : '\n'}/${THU_MUC_WORKTREE}/\n`, 'utf8');
+    } catch {
+      // Không ghi được thì thôi: thư mục worktree chỉ hiện ra như file chưa theo dõi.
+    }
+  }
+
   private async hoiDuongDan(): Promise<string | undefined> {
     type Muc = vscode.QuickPickItem & { duongDan: string };
     const goiY = gopGoiYDuongDan([
@@ -1458,6 +1549,9 @@ export class WorkspaceManager implements vscode.Disposable {
   private onShellExecutionStart(event: vscode.TerminalShellExecutionStartEvent): void {
     const key = this.terminals.ownsTerminal(event.terminal);
     if (key === null) return;
+    // Ghi nhận TRƯỚC mọi bộ lọc: đây là tín hiệu "có chương trình đang chạy trong terminal
+    // này", dùng cho việc bảo vệ tên (xem syncTerminalNames), không phải để bắt startCommand.
+    this.dangChayLenh.add(key);
     const ws = this.timWorkspaceChuaTerminal(key);
     if (!ws) return;
     const entry = ws.terminals.find((t) => t.id === key);
@@ -1496,6 +1590,7 @@ export class WorkspaceManager implements vscode.Disposable {
   private onShellExecutionEnd(event: vscode.TerminalShellExecutionEndEvent): void {
     const key = this.terminals.ownsTerminal(event.terminal);
     if (key === null) return;
+    this.dangChayLenh.delete(key);
     const p = this.pendingCommands.get(key);
     // Ghép cặp bằng identity của execution — commandLine.value có thể bị VS Code tinh chỉnh
     // lại giữa start và end nên so chuỗi sẽ rớt cặp và để lệnh vặt chiếm chỗ vĩnh viễn.
@@ -1657,6 +1752,13 @@ export class WorkspaceManager implements vscode.Disposable {
       for (const entry of ws.terminals) {
         const terminal = this.terminals.get(entry.id);
         if (!terminal) continue;
+        // Tiêu đề tab KHÔNG phải lúc nào cũng do người dùng đặt: chương trình đang chạy có thể
+        // tự ghi tiêu đề bằng escape sequence. Claude làm đúng thế — nó ghi "<ký hiệu trạng
+        // thái> <tên phiên>" và đổi liên tục, còn ngay sau khi khôi phục (trước lúc claude kịp
+        // ghi) tiêu đề là tên tiến trình "claude". Hút bừa vào entry là XÓA MẤT tên người dùng
+        // đặt và ghi đĩa mỗi nhịp poll. Chỉ nhận tiêu đề khi terminal đang ở dấu nhắc (không
+        // có lệnh nào chạy) và không phải terminal agent.
+        if (this.laEntryAgent(entry) || this.dangChayLenh.has(entry.id)) continue;
         const ten = terminal.name.trim();
         if (ten !== '' && ten !== entry.name) {
           entry.name = ten;

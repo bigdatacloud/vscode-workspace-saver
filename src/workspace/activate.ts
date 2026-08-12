@@ -18,6 +18,12 @@ export interface ActivatePorts {
    * mãi mãi), còn `agentId` chỉ do code của extension đặt.
    */
   laLenhAgent(entry: TerminalEntry): boolean;
+  /**
+   * Lệnh nối lại phiên GẦN NHẤT của một agent không phải Claude (hiện chỉ Codex). Dùng khi
+   * entry là terminal agent mà extension chưa bắt được id phiên: chạy lại lệnh khởi chạy đã
+   * lưu sẽ mở phiên MỚI TOANH, tức người dùng mất chỗ đang làm dở.
+   */
+  lenhTiepTucAgent(entry: TerminalEntry): string | null;
   onMinted(terminalId: string, sessionId: string): Promise<void>;
   warn(message: string): void;
 }
@@ -48,14 +54,19 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
         continue;
       }
       const handle = ports.createTerminal(entry);
+      const tiepTucAgent = ports.lenhTiepTucAgent(entry);
       if (entry.kind === 'claude') {
-        const hadId = entry.claudeSessionId !== undefined;
-        const sessionId = entry.claudeSessionId ?? ports.agent.newSessionId();
-        if (!hadId) await ports.onMinted(entry.id, sessionId);
-        handle.sendText(ports.agent.buildLaunchCommand({
-          name: entry.claudeName ?? entry.name,
-          mode: { kind: hadId ? 'resume' : 'new', sessionId },
-        }));
+        const sessionId = entry.claudeSessionId;
+        // Không có id → nối lại hội thoại gần nhất của thư mục đó (`-c`). KHÔNG mint phiên
+        // mới: người dùng mở lại workspace là để làm tiếp chỗ dở, không phải bắt đầu lại.
+        // Id sẽ được cơ chế bắt theo phả hệ tiến trình gắn vào entry sau vài giây.
+        handle.sendText(ports.agent.buildLaunchCommand(
+          sessionId !== undefined
+            ? { name: entry.claudeName ?? entry.name, mode: { kind: 'resume', sessionId } }
+            : { name: entry.claudeName ?? entry.name, mode: { kind: 'continue' } },
+        ));
+      } else if (tiepTucAgent !== null) {
+        handle.sendText(tiepTucAgent);
       } else if (entry.startCommand && (runStartCommands || ports.laLenhAgent(entry))) {
         // Lệnh agent chạy kể cả khi người dùng từ chối tin cậy các lệnh khác: hai chuyện độc
         // lập nhau, từ chối một lệnh dev server không có nghĩa là không muốn mở lại agent.

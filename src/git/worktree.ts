@@ -14,6 +14,24 @@ export class GitClient {
     return r.code === 0;
   }
 
+  /** Thư mục gốc của repo chứa `dir`; không phải repo → null. */
+  async repoRoot(dir: string): Promise<string | null> {
+    const r = await this.runner.run(dir, ['rev-parse', '--show-toplevel']);
+    const duongDan = r.stdout.trim();
+    return r.code === 0 && duongDan !== '' ? duongDan : null;
+  }
+
+  /**
+   * Thư mục `.git` DÙNG CHUNG của repo (khác `--git-dir` khi đang đứng trong một worktree).
+   * Cần để ghi `info/exclude` — nơi bỏ qua thư mục worktree mà không đụng `.gitignore` đang
+   * được theo dõi của người dùng.
+   */
+  async gitCommonDir(dir: string): Promise<string | null> {
+    const r = await this.runner.run(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const duongDan = r.stdout.trim();
+    return r.code === 0 && duongDan !== '' ? duongDan : null;
+  }
+
   async branchExists(repoRoot: string, branch: string): Promise<boolean> {
     const r = await this.runner.run(repoRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
     return r.code === 0;
