@@ -78,6 +78,10 @@
       {
         "command": "aiWorkspace.renameTerminal",
         "title": "AI Workspace: Đổi tên terminal"
+      },
+      {
+        "command": "aiWorkspace.showTerminalPath",
+        "title": "AI Workspace: Xem đường dẫn terminal"
       }
     ],
     "configuration": {
@@ -163,6 +167,11 @@
           "group": "1_edit"
         },
         {
+          "command": "aiWorkspace.showTerminalPath",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "1_edit"
+        },
+        {
           "command": "aiWorkspace.removeTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
           "group": "2_remove"
@@ -197,6 +206,10 @@
         },
         {
           "command": "aiWorkspace.renameTerminal",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.showTerminalPath",
           "when": "false"
         }
       ]

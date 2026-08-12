@@ -12,6 +12,7 @@ const EXPECTED_COMMANDS = [
   'aiWorkspace.newClaudeTerminal',
   'aiWorkspace.newPlainTerminal',
   'aiWorkspace.workspaceSettings',
+  'aiWorkspace.showTerminalPath',
   'aiWorkspace.setStartCommand',
   'aiWorkspace.removeTerminal',
   'aiWorkspace.focusTerminal',

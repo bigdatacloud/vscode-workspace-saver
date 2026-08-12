@@ -42,6 +42,7 @@ export interface TerminalView {
   kind: 'claude' | 'plain';
   state: TerminalState;
   hasStartCommand: boolean;
+  cwd: string;
 }
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -231,6 +232,7 @@ export class WorkspaceManager implements vscode.Disposable {
       kind: entry.kind,
       state: this.terminalState(entry),
       hasStartCommand: entry.startCommand !== undefined,
+      cwd: entry.cwd,
     }));
   }
 
@@ -752,6 +754,39 @@ export class WorkspaceManager implements vscode.Disposable {
     if (luaChon.value === undefined) delete wsNow.terminalLocation;
     else wsNow.terminalLocation = luaChon.value;
     this.scheduleSave();
+  }
+
+  /**
+   * Xem đường dẫn gốc của terminal: hiện đầy đủ (kèm cảnh báo nếu đã mất) và cho sao chép
+   * hoặc mở thẳng thư mục đó trong trình quản lý file của hệ điều hành.
+   */
+  async showTerminalPath(workspaceId: string, terminalId: string): Promise<void> {
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (!entry) return;
+    const cwd = entry.cwd;
+    const conTonTai = nodeFs.existsSync(cwd);
+    const answer = await vscode.window.showInformationMessage(
+      `Đường dẫn của terminal "${entry.name}"`,
+      {
+        modal: true,
+        detail: conTonTai ? cwd : `${cwd}\n\n(Đường dẫn này không còn tồn tại trên máy.)`,
+      },
+      'Sao chép đường dẫn',
+      ...(conTonTai ? ['Mở thư mục'] : []),
+    );
+    if (answer === 'Sao chép đường dẫn') {
+      await vscode.env.clipboard.writeText(cwd);
+      void vscode.window.showInformationMessage(`Đã sao chép: ${cwd}`);
+      return;
+    }
+    if (answer === 'Mở thư mục') {
+      // Đọc lại ngay trước khi mở: hộp thoại có thể mở rất lâu, thư mục có thể vừa bị xóa.
+      if (!nodeFs.existsSync(cwd)) {
+        void vscode.window.showWarningMessage(`Đường dẫn không còn tồn tại: ${cwd}`);
+        return;
+      }
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(cwd));
+    }
   }
 
   /** Đổi tên hiển thị của terminal trong workspace (và widget đang mở, để name-sync không kéo tên cũ về). */

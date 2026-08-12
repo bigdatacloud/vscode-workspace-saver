@@ -50,9 +50,11 @@ export class TerminalItem extends vscode.TreeItem {
     this.id = `term:${view.id}`;
     const kindLabel = view.kind === 'claude' ? 'AI' : 'shell';
     this.description = `${kindLabel} · ${STATE_LABELS[view.state]}`;
-    this.tooltip = view.hasStartCommand
-      ? `${view.name}\nTrạng thái: ${STATE_LABELS[view.state]}\nCó lệnh khởi động`
-      : `${view.name}\nTrạng thái: ${STATE_LABELS[view.state]}`;
+    // Đường dẫn nằm ngay trong tooltip: hover là thấy, không phải mở menu. Menu "Xem đường
+    // dẫn" vẫn cần cho việc sao chép (tooltip không bôi đen copy được).
+    const dong = [view.name, `Đường dẫn: ${view.cwd}`, `Trạng thái: ${STATE_LABELS[view.state]}`];
+    if (view.hasStartCommand) dong.push('Có lệnh khởi động');
+    this.tooltip = dong.join('\n');
     const icon = STATE_ICONS[view.state];
     this.iconPath = new vscode.ThemeIcon(icon.id, new vscode.ThemeColor(icon.color));
     this.contextValue = view.kind === 'claude' ? 'aiTerminalClaude' : 'aiTerminalPlain';

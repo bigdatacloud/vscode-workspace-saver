@@ -151,6 +151,14 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Xem / sao chép đường dẫn terminal
+- [ ] Hover vào một terminal item trong cây → tooltip hiện dòng "Đường dẫn: …" đúng cwd
+- [ ] Chuột phải terminal item → `Xem đường dẫn terminal` → modal hiện đủ đường dẫn;
+      "Sao chép đường dẫn" → dán ra chỗ khác đúng chuỗi đó
+- [ ] "Mở thư mục" → File Explorer mở đúng thư mục đó
+- [ ] Terminal có cwd đã bị xóa khỏi máy → modal ghi rõ "không còn tồn tại", KHÔNG có nút
+      "Mở thư mục" (vẫn sao chép được)
+
 ## Vòng đời terminal thủ công
 - [ ] Đóng một terminal bằng tay (bấm dấu X hoặc gõ `exit`) trong workspace active → entry đó
       chuyển sang nhãn "chưa mở" trong cây (KHÔNG biến mất khỏi workspace)
