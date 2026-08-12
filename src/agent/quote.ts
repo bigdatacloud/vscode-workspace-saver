@@ -1,9 +1,19 @@
 export type ShellKind = 'powershell' | 'posix' | 'cmd';
 
+/**
+ * PowerShell coi CẢ BỐN ký tự này là nháy đơn và dùng lẫn nhau được: `'` (U+0027) cùng bộ
+ * nháy cong U+2018 ‘, U+2019 ’, U+201A ‚, U+201B ‛. Đo thật trên PowerShell 7:
+ * `Write-Output 'abc’; Write-Output PWNED; ‘x'` chạy thành BA lệnh — tức chỉ escape mỗi
+ * U+0027 là để hở đường chèn lệnh, mà nạn nhân không cần là kẻ xấu: một tên phiên copy từ
+ * Word/macOS (smart quote) là đủ. Nhân đôi cả bốn thì PowerShell hiểu là ký tự literal
+ * (đã kiểm chứng).
+ */
+const NHAY_DON_POWERSHELL = /['‘’‚‛]/g;
+
 export function quoteArg(value: string, shell: ShellKind): string {
   switch (shell) {
     case 'powershell':
-      return `'${value.replace(/'/g, "''")}'`;
+      return `'${value.replace(NHAY_DON_POWERSHELL, (c) => c + c)}'`;
     case 'posix':
       return `'${value.replace(/'/g, "'\\''")}'`;
     case 'cmd':

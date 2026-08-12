@@ -1,4 +1,5 @@
 import type { AgentAdapter } from '../agent/types';
+import { normalizeCwd } from '../claude/match';
 import type { TerminalEntry, Workspace } from '../model/schema';
 
 export interface ActivateTerminalHandle { sendText(text: string): void; }
@@ -24,6 +25,15 @@ export interface ActivatePorts {
    * lưu sẽ mở phiên MỚI TOANH, tức người dùng mất chỗ đang làm dở.
    */
   lenhTiepTucAgent(entry: TerminalEntry): string | null;
+  /**
+   * Thư mục này có phiên agent đang chạy mà cửa sổ ta KHÔNG nhận nuôi được không (kể cả khi
+   * không đọc nổi registry — lúc đó phải trả `true` vì không biết là không được liều).
+   *
+   * `claude -c` nối vào hội thoại gần nhất của thư mục; nếu hội thoại đó đang có tiến trình
+   * khác chạy dở thì ta vừa tạo ra đúng cái cảnh hai tiến trình ghi một file phiên mà cả
+   * luồng nối-lại-terminal sinh ra để chặn.
+   */
+  coPhienDangChayNgoai(cwd: string): boolean;
   onMinted(terminalId: string, sessionId: string): Promise<void>;
   warn(message: string): void;
 }
@@ -47,6 +57,8 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
     }
   }
 
+  /** Thư mục đã có một entry dùng `-c` trong lượt này — cái thứ hai sẽ chui vào cùng hội thoại. */
+  const cwdDaNoiTiep = new Set<string>();
   for (const entry of ws.terminals) {
     try {
       if (!ports.fsExists(entry.cwd)) {
@@ -56,15 +68,22 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
       const handle = ports.createTerminal(entry);
       const tiepTucAgent = ports.lenhTiepTucAgent(entry);
       if (entry.kind === 'claude') {
+        const ten = entry.claudeName ?? entry.name;
         const sessionId = entry.claudeSessionId;
-        // Không có id → nối lại hội thoại gần nhất của thư mục đó (`-c`). KHÔNG mint phiên
-        // mới: người dùng mở lại workspace là để làm tiếp chỗ dở, không phải bắt đầu lại.
-        // Id sẽ được cơ chế bắt theo phả hệ tiến trình gắn vào entry sau vài giây.
-        handle.sendText(ports.agent.buildLaunchCommand(
-          sessionId !== undefined
-            ? { name: entry.claudeName ?? entry.name, mode: { kind: 'resume', sessionId } }
-            : { name: entry.claudeName ?? entry.name, mode: { kind: 'continue' } },
-        ));
+        if (sessionId !== undefined) {
+          handle.sendText(ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'resume', sessionId } }));
+        } else if (cwdDaNoiTiep.has(normalizeCwd(entry.cwd)) || ports.coPhienDangChayNgoai(entry.cwd)) {
+          // `-c` nối vào hội thoại GẦN NHẤT của thư mục — nên nó chỉ an toàn khi thư mục đó
+          // không còn tiến trình nào đang giữ hội thoại ấy, và chỉ cho MỘT entry mỗi thư mục.
+          // Ngược lại ta tự tay tạo ra cảnh hai tiến trình ghi chung một file phiên. Khi
+          // không dám `-c` thì mint phiên mới: mất chỗ đang dở còn hơn trộn hai hội thoại.
+          const moi = ports.agent.newSessionId();
+          await ports.onMinted(entry.id, moi);
+          handle.sendText(ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'new', sessionId: moi } }));
+        } else {
+          cwdDaNoiTiep.add(normalizeCwd(entry.cwd));
+          handle.sendText(ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'continue' } }));
+        }
       } else if (tiepTucAgent !== null) {
         handle.sendText(tiepTucAgent);
       } else if (entry.startCommand && (runStartCommands || ports.laLenhAgent(entry))) {

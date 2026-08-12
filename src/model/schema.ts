@@ -3,6 +3,13 @@ import { z } from 'zod';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuid = z.string().regex(UUID_RE, 'phải là UUID');
 
+/**
+ * `.passthrough()` ở cả hai schema: zod mặc định VỨT mọi khoá lạ, nên một bản extension cũ
+ * đọc file do bản mới ghi sẽ âm thầm xoá sạch trường nó chưa biết (agentId, agentSessionId,
+ * terminalLocation…) ngay ở lần lưu kế tiếp — đúng thứ mà ghi chú "giữ kind:'plain' cho bản
+ * cũ đọc được" bên dưới đang cố tránh. Chạy lẫn hai bản (VS Code + Insiders, hoặc hạ cấp) là
+ * chuyện thường, nên giữ nguyên khoá lạ thay vì làm mất dữ liệu của bản kia.
+ */
 export const TerminalEntrySchema = z.object({
   id: uuid,
   name: z.string().min(1),
@@ -19,11 +26,13 @@ export const TerminalEntrySchema = z.object({
    */
   agentId: z.enum(['codex']).optional(),
   /**
-   * Id phiên của agent đó. KHÔNG ràng buộc dạng uuid: `codex resume` nhận cả tên phiên, và
-   * chặn ở cửa ghi nghĩa là save hỏng → mất dữ liệu, tệ hơn hẳn một id lạ dạng.
+   * Id phiên của agent đó. Không ép uuid (`codex resume` nhận cả tên phiên) nhưng PHẢI giới
+   * hạn ký tự: chuỗi này đi thẳng vào lệnh shell ở đường khôi phục, mà đường đó được MIỄN cổng
+   * tin cậy — một `workspaces.json` bị sửa tay không được phép biến thành lệnh tuỳ ý. Cùng bộ
+   * ký tự với bộ lọc ở cửa đọc rollout của Codex.
    */
-  agentSessionId: z.string().min(1).optional(),
-});
+  agentSessionId: z.string().regex(/^[\w.:-]{1,128}$/, 'id phiên agent có ký tự không hợp lệ').optional(),
+}).passthrough();
 
 export const WorkspaceSchema = z
   .object({
@@ -35,6 +44,7 @@ export const WorkspaceSchema = z
     terminalLocation: z.enum(['editor', 'panel']).optional(),
     terminals: z.array(TerminalEntrySchema),
   })
+  .passthrough()
   .superRefine((ws, ctx) => {
     const seen = new Set<string>();
     ws.terminals.forEach((t, i) => {
