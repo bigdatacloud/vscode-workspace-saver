@@ -7,6 +7,8 @@
  * bằng emoji khác, và một entry không tên là dữ liệu sai schema.
  */
 export function boKyHieuTrangThai(ten: string): string {
-  const sach = ten.replace(/^[✳✶✷✸✹✺◐◑◒◓·•\s]+/u, '').trim();
+  // Dải Braille U+2800–U+28FF: Codex quay spinner bằng ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ (đo trên máy thật —
+  // tên đã lưu của người dùng có "⠏ quality-glance-report…").
+  const sach = ten.replace(/^[✳✶✷✸✹✺◐◑◒◓⠀-⣿·•\s]+/u, '').trim();
   return sach === '' ? ten.trim() : sach;
 }

@@ -6,8 +6,8 @@
 
 A VS Code extension that manages **multiple global workspaces**, each holding **multiple open
 terminals** — both terminals you open by hand and terminals running Claude Code. No manifest
-lives inside your repo: the entire workspace list is stored in the extension's global storage
-(`workspaces.json`) and updates itself continuously while you work — there is no manual Save
+lives inside your repo: each workspace is stored as its own file in the extension's global storage
+(`workspaces/<id>.json`) and updates itself continuously while you work — there is no manual Save
 button. Open VS Code, and the "AI Workspaces" tree shows your existing workspaces; click one
 to activate it, and the extension reopens exactly the terminals from your last session,
 resuming the right Claude Code conversation (if any) or re-running the recorded

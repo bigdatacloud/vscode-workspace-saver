@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { StoreFileSchema, emptyStore, type StoreFile, type Workspace } from '../../src/model/schema';
 import {
-  createWorkspace, findWorkspace, loadStore, mergeForSave, removeTerminal, saveStore, upsertTerminal,
+  createWorkspace, deleteShard, findWorkspace, gopShard, loadShards, loadStore, mergeForSave,
+  migrateLegacy, removeTerminal, saveShard, saveStore, upsertTerminal,
   type StoreFs,
 } from '../../src/model/store';
 
@@ -16,6 +17,12 @@ function memFs(init: Record<string, string> = {}) {
       if (!files.has(a)) throw new Error(`ENOENT: ${a}`);
       files.set(b, files.get(a)!); files.delete(a);
     },
+    list: (dir) => {
+      const tien = `${dir}\\`;
+      return [...files.keys()].filter((p) => p.startsWith(tien)).map((p) => p.slice(tien.length));
+    },
+    remove: (p) => { ops.push(`remove:${p}`); files.delete(p); },
+    mkdirp: () => { /* thư mục là ảo trong bộ nhớ */ },
   };
   return { fs, files, ops };
 }
@@ -203,5 +210,106 @@ describe('CRUD', () => {
     removeTerminal(ws, uuidB);
     expect(ws.terminals).toEqual([]);
     expect(findWorkspace(store, uuidA)).toBe(ws);
+  });
+});
+
+describe('lưu trữ tách file (mỗi workspace một file)', () => {
+  const D = 'C:\\store\\workspaces';
+  const SEP = '\\';
+  const ws = (id: string, name: string, terminals: Workspace['terminals'] = []): Workspace =>
+    ({ id, name, lastActiveAt: null, activeWindowId: null, terminals });
+
+  it('ghi rồi đọc lại đúng workspace, tên file theo id', () => {
+    const { fs, files } = memFs();
+    saveShard(fs, D, ws(uuidA, 'ERP'), SEP);
+    expect([...files.keys()]).toEqual([`${D}${SEP}${uuidA}.json`]);
+    expect(loadShards(fs, D, () => 1, SEP).workspaces).toEqual([ws(uuidA, 'ERP')]);
+  });
+
+  it('file tạm mang hậu tố ngẫu nhiên — hai cửa sổ ghi cùng lúc không trộn nội dung', () => {
+    const { fs, ops } = memFs();
+    saveShard(fs, D, ws(uuidA, 'A'), SEP);
+    saveShard(fs, D, ws(uuidB, 'B'), SEP);
+    const tmp = ops.filter((o) => o.startsWith('write:')).map((o) => o.slice(6));
+    expect(new Set(tmp).size).toBe(2);
+    for (const t of tmp) expect(t).toMatch(/\.tmp-[a-z0-9]+$/);
+  });
+
+  it('MỘT file hỏng chỉ mất workspace đó, phần còn lại vẫn nạp được', () => {
+    const { fs, files } = memFs();
+    saveShard(fs, D, ws(uuidA, 'Tốt'), SEP);
+    files.set(`${D}${SEP}${uuidB}.json`, '{ hỏng');
+    const r = loadShards(fs, D, () => 7, SEP);
+    expect(r.workspaces.map((w) => w.name)).toEqual(['Tốt']);
+    expect(r.hong).toEqual([`${D}${SEP}${uuidB}.json.bak-7`]);
+    expect(files.get(`${D}${SEP}${uuidB}.json.bak-7`)).toBe('{ hỏng');
+  });
+
+  it('workspace sai schema thì ném và KHÔNG để lại file tạm', () => {
+    const { fs, files } = memFs();
+    const xau = {
+      ...ws(uuidA, 'X'),
+      terminals: [{ id: uuidB, name: '', cwd: 'D:\\x', kind: 'plain' as const }],
+    } as unknown as Workspace;
+    expect(() => saveShard(fs, D, xau, SEP)).toThrow();
+    expect([...files.keys()]).toEqual([]);
+  });
+
+  it('xóa workspace = xóa file, không cần bia mộ', () => {
+    const { fs, files } = memFs();
+    saveShard(fs, D, ws(uuidA, 'X'), SEP);
+    deleteShard(fs, D, uuidA, SEP);
+    expect(loadShards(fs, D, () => 1, SEP).workspaces).toEqual([]);
+    expect([...files.keys()]).toEqual([]);
+  });
+});
+
+describe('gopShard', () => {
+  const ws = (id: string, terminals: Workspace['terminals']): Workspace =>
+    ({ id, name: 'W', lastActiveAt: null, activeWindowId: null, terminals });
+  const term = (id: string, name = 't') => ({ id, name, cwd: 'D:\\x', kind: 'plain' as const });
+
+  it('giữ terminal mà cửa sổ khác vừa thêm vào cùng workspace', () => {
+    const ra = gopShard(ws(uuidA, [term(uuidB, 'cua-ho')]), ws(uuidA, []));
+    expect(ra.terminals.map((t) => t.name)).toEqual(['cua-ho']);
+  });
+
+  it('trùng id thì bản của ta thắng (ta đang mở terminal đó)', () => {
+    const ra = gopShard(ws(uuidA, [term(uuidB, 'cu')]), ws(uuidA, [term(uuidB, 'moi')]));
+    expect(ra.terminals).toEqual([term(uuidB, 'moi')]);
+  });
+
+  it('chưa có file trên đĩa → dùng nguyên bản của ta', () => {
+    const ram = ws(uuidA, [term(uuidB)]);
+    expect(gopShard(null, ram)).toBe(ram);
+  });
+});
+
+describe('migrateLegacy', () => {
+  const D = 'C:\\store\\workspaces';
+  const SEP = '\\';
+  const wsCu = (id: string, name: string): Workspace =>
+    ({ id, name, lastActiveAt: null, activeWindowId: null, terminals: [] });
+
+  it('chuyển từng workspace thành một file rồi ĐỔI TÊN file cũ (không xoá)', () => {
+    const store: StoreFile = { version: 2, workspaces: [wsCu(uuidA, 'A'), wsCu(uuidB, 'B')] };
+    const { fs, files } = memFs({ [P]: JSON.stringify(store) });
+    expect(migrateLegacy(fs, P, D, () => 9, SEP)).toBe(2);
+    expect(loadShards(fs, D, () => 1, SEP).workspaces).toHaveLength(2);
+    expect(files.has(P)).toBe(false);
+    expect(files.has(`${P}.migrated-9`)).toBe(true);
+  });
+
+  it('không có file cũ → không làm gì', () => {
+    const { fs } = memFs();
+    expect(migrateLegacy(fs, P, D, () => 9, SEP)).toBeNull();
+  });
+
+  it('chạy lần hai không đè lên shard đã có (bản trên đĩa mới hơn)', () => {
+    const store: StoreFile = { version: 2, workspaces: [wsCu(uuidA, 'Tên cũ')] };
+    const { fs } = memFs({ [P]: JSON.stringify(store) });
+    saveShard(fs, D, wsCu(uuidA, 'Tên mới'), SEP);
+    migrateLegacy(fs, P, D, () => 9, SEP);
+    expect(loadShards(fs, D, () => 1, SEP).workspaces[0]!.name).toBe('Tên mới');
   });
 });

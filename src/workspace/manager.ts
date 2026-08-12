@@ -16,17 +16,27 @@ import { realGitRunner } from '../git/exec';
 import { GitClient } from '../git/worktree';
 import { docBangTienTrinh } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
-import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
+import {
+  WorkspaceSchema,
+  emptyStore,
+  type StoreFile,
+  type TerminalEntry,
+  type Workspace,
+} from '../model/schema';
 import {
   createWorkspace,
+  deleteShard,
   findWorkspace,
-  loadStore,
-  mergeForSave,
+  gopShard,
+  loadShards,
+  migrateLegacy,
   realStoreFs,
   removeTerminal as removeTerminalEntry,
-  saveStore,
-  upsertTerminal,
+  saveShard,
+  tenFileWorkspace,
+  type ShardResult,
 } from '../model/store';
+import { upsertTerminal } from '../model/store';
 import { TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
@@ -55,7 +65,10 @@ export interface TerminalView {
 }
 
 const SAVE_DEBOUNCE_MS = 500;
+/** File gộp của bản cũ — chỉ còn dùng để chuyển dữ liệu sang thư mục shard đúng một lần. */
 const STORE_FILE = 'workspaces.json';
+/** Thư mục chứa mỗi workspace một file: `<globalStorage>/workspaces/<id>.json`. */
+const THU_MUC_SHARD = 'workspaces';
 /** Đường dẫn đã dùng gần đây, để lần sau gõ vài ký tự là ra (globalState). */
 const KHOA_LICH_SU_CWD = 'aiWorkspace.duongDanGanDay';
 const LICH_SU_CWD_TOI_DA = 20;
@@ -105,6 +118,8 @@ function folderCwd(): string | undefined {
 
 export class WorkspaceManager implements vscode.Disposable {
   private readonly filePath: string;
+  /** Thư mục chứa mỗi workspace một file — nguồn dữ liệu thật kể từ bản tách file. */
+  private readonly thuMucShard: string;
   private readonly boNhoChung: vscode.Memento;
   private store: StoreFile;
   private activeId: string | null = null;
@@ -166,6 +181,12 @@ export class WorkspaceManager implements vscode.Disposable {
    * không mỗi lần ta lưu sẽ xóa mất sessionId vừa mint và khóa V5 của cửa sổ kia.
    */
   private readonly touchedIds = new Set<string>();
+  /**
+   * Workspace cửa sổ này đã sửa và CHƯA ghi xuống đĩa. Khác hẳn `touchedIds` của mô hình
+   * một-file-chung: đây chỉ là "cần ghi", xoá sau khi ghi xong — không phải một tuyên bố
+   * chủ quyền vĩnh viễn khiến mọi lần lưu sau đè bản của cửa sổ khác.
+   */
+  private readonly dirtyIds = new Set<string>();
 
   private saveTimer: NodeJS.Timeout | null = null;
   private dirty = false;
@@ -199,6 +220,7 @@ export class WorkspaceManager implements vscode.Disposable {
 
     const dir = context.globalStorageUri.fsPath;
     this.filePath = path.join(dir, STORE_FILE);
+    this.thuMucShard = path.join(dir, THU_MUC_SHARD);
     try {
       nodeFs.mkdirSync(dir, { recursive: true });
     } catch (error) {
@@ -206,11 +228,25 @@ export class WorkspaceManager implements vscode.Disposable {
         `Không tạo được thư mục lưu trữ ${dir}: ${String(error)}`,
       );
     }
-    // loadStore chỉ nuốt ENOENT; EBUSY/EACCES (antivirus, OneDrive đang khóa file) vẫn ném ra
-    // và sẽ giết cả extension nếu không chặn ở đây.
+    // loadShards nuốt lỗi từng file; lỗi cấp thư mục (EBUSY/EACCES do antivirus, OneDrive)
+    // vẫn ném ra và sẽ giết cả extension nếu không chặn ở đây.
     try {
-      const loaded = loadStore(realStoreFs, this.filePath, Date.now);
-      this.store = loaded.store;
+      // Chuyển từ file gộp cũ sang thư mục shard (chạy đúng một lần, file cũ chỉ bị đổi tên).
+      const daChuyen = migrateLegacy(
+        realStoreFs, this.filePath, this.thuMucShard, Date.now, path.sep,
+      );
+      const shard = loadShards(realStoreFs, this.thuMucShard, Date.now, path.sep);
+      this.store = { version: 2, workspaces: shard.workspaces };
+      if (daChuyen !== null) {
+        void vscode.window.showInformationMessage(
+          `Đã chuyển ${daChuyen} workspace sang lưu trữ tách file (mỗi workspace một file trong ${this.thuMucShard}). File cũ vẫn còn, chỉ đổi tên.`,
+        );
+      }
+      if (shard.hong.length > 0) {
+        void vscode.window.showWarningMessage(
+          `${shard.hong.length} file workspace bị hỏng nên đã được sao lưu (${shard.hong.join(', ')}); các workspace còn lại vẫn nguyên.`,
+        );
+      }
       // Sửa di chứng của lỗi hút tiêu đề: tên đã lưu có thể dính ký hiệu trạng thái quay của
       // agent ("✳ ", "◐ "…). Chỉ sửa TRONG BỘ NHỚ, KHÔNG touch/save — touch một workspace chỉ
       // để dọn tên là nhận chủ quyền nó vĩnh viễn với các cửa sổ VS Code khác; tên sạch sẽ
@@ -222,15 +258,10 @@ export class WorkspaceManager implements vscode.Disposable {
           if (t.kind === 'claude' || t.agentId !== undefined) t.name = boKyHieuTrangThai(t.name);
         }
       }
-      if (loaded.recoveredFrom !== null) {
-        void vscode.window.showWarningMessage(
-          `File workspaces.json bị hỏng nên đã được sao lưu sang ${loaded.recoveredFrom}; danh sách workspace bắt đầu lại từ đầu.`,
-        );
-      }
     } catch (error) {
       this.store = emptyStore();
       void vscode.window.showWarningMessage(
-        `Không đọc được ${this.filePath}: ${String(error)}. Phiên này bắt đầu với danh sách rỗng; hãy kiểm tra quyền truy cập file trước khi tạo workspace mới.`,
+        `Không đọc được ${this.thuMucShard}: ${String(error)}. Phiên này bắt đầu với danh sách rỗng; hãy kiểm tra quyền truy cập thư mục trước khi tạo workspace mới.`,
       );
     }
 
@@ -337,9 +368,10 @@ export class WorkspaceManager implements vscode.Disposable {
 
   // ------------------------------------------------------------- lưu trữ
 
-  /** Đánh dấu workspace này do cửa sổ hiện tại làm chủ ở lần lưu tới. */
+  /** Đánh dấu workspace này CẦN GHI ở lần lưu tới (xem ghi chú ở `dirtyIds`). */
   private touch(workspaceId: string): void {
     this.touchedIds.add(workspaceId);
+    this.dirtyIds.add(workspaceId);
   }
 
   private scheduleSave(): void {
@@ -360,43 +392,81 @@ export class WorkspaceManager implements vscode.Disposable {
     if (this.dirty) this.saveNow();
   }
 
+  /**
+   * Ghi ĐÚNG những workspace cửa sổ này vừa sửa, mỗi cái một file. Không đụng tới file của
+   * workspace khác nên không còn đường nào ghi đè việc của cửa sổ VS Code khác — thứ mà mô
+   * hình một-file-chung phải dùng luật gộp phức tạp mới né được (và vẫn né hụt).
+   */
   private saveNow(): void {
-    try {
-      // Cửa sổ VS Code khác có thể đã ghi file này từ lúc ta nạp: đọc lại rồi gộp theo id,
-      // nếu không lần lưu của ta sẽ xóa sạch workspace mà cửa sổ kia vừa tạo.
-      // Đĩa hỏng ở đúng thời điểm này thì loadStore đã tự backup + trả store rỗng — chấp nhận.
-      const reread = loadStore(realStoreFs, this.filePath, Date.now);
-      if (reread.recoveredFrom !== null && !this.warnedRecovered) {
-        // Đĩa hỏng ngay giữa lúc lưu: người dùng phải biết vì sao workspace của cửa sổ khác
-        // vừa biến mất khỏi cây. Chỉ báo một lần cho cả phiên.
-        this.warnedRecovered = true;
-        void vscode.window.showWarningMessage(
-          `File workspaces.json bị hỏng nên đã được sao lưu sang ${reread.recoveredFrom}; chỉ còn giữ lại workspace của cửa sổ này.`,
-        );
-      }
-      const merged = mergeForSave(reread.store, this.store, this.deletedIds, this.touchedIds);
-      saveStore(realStoreFs, this.filePath, merged);
-      this.store = merged;
-      this.dirty = false;
-      // Tree thấy luôn workspace của cửa sổ khác sau mỗi lần lưu.
-      this.onChanged.fire();
-    } catch (error) {
-      if (error instanceof ZodError) {
-        // Lỗi schema là lỗi lập trình, KHÔNG tự hết: nói thẳng thay vì hứa "thử lại".
-        const detail = error.issues
-          .slice(0, 3)
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; ');
-        void vscode.window.showWarningMessage(
-          `Trạng thái workspace không hợp lệ nên không được ghi xuống ${this.filePath}. Lỗi này sẽ không tự hết: ${detail}`,
-        );
-      } else {
-        // Lỗi đĩa thường là tạm thời — giữ cờ dirty để lần save sau thử lại.
-        void vscode.window.showWarningMessage(
-          `Không ghi được ${this.filePath}: ${String(error)}. Sẽ thử lại ở lần lưu sau.`,
-        );
+    const canGhi = [...this.dirtyIds];
+    const loi: string[] = [];
+    for (const id of canGhi) {
+      const ws = findWorkspace(this.store, id);
+      try {
+        if (!ws) {
+          // Đã bị xóa khỏi RAM → xóa file. Không cần bia mộ: file biến mất là biến mất.
+          deleteShard(realStoreFs, this.thuMucShard, id, path.sep);
+          this.dirtyIds.delete(id);
+          continue;
+        }
+        // Cửa sổ khác có thể vừa thêm terminal vào CHÍNH workspace này giữa hai lần ta ghi.
+        const raw = realStoreFs.readFile(tenFileWorkspace(this.thuMucShard, id, path.sep));
+        let tren: Workspace | null = null;
+        if (raw !== null) {
+          try {
+            tren = WorkspaceSchema.parse(JSON.parse(raw));
+          } catch {
+            tren = null; // file hỏng: bản của ta là bản tốt nhất còn lại
+          }
+        }
+        saveShard(realStoreFs, this.thuMucShard, gopShard(tren, ws), path.sep);
+        this.dirtyIds.delete(id);
+      } catch (error) {
+        loi.push(`${ws?.name ?? id}: ${String(error)}`);
       }
     }
+    // Nạp lại danh sách từ đĩa để thấy workspace cửa sổ khác vừa tạo/xóa. Chỉ thay những
+    // workspace ta KHÔNG đang sửa dở — object của ta phải giữ nguyên tham chiếu.
+    this.dongBoTuDia();
+    this.dirty = this.dirtyIds.size > 0;
+    this.onChanged.fire();
+    if (loi.length > 0) this.baoLoiLuu(loi.join('; '));
+  }
+
+  /**
+   * Hợp nhất danh sách trên đĩa vào RAM: thấy workspace cửa sổ khác vừa tạo, và BỎ những
+   * workspace mà cửa sổ khác đã xóa (file không còn) — trước đây bản RAM cũ của ta hồi sinh
+   * chúng ở lần lưu kế tiếp.
+   */
+  private dongBoTuDia(): void {
+    let shard: ShardResult;
+    try {
+      shard = loadShards(realStoreFs, this.thuMucShard, Date.now, path.sep);
+    } catch {
+      return; // đọc thư mục lỗi: giữ nguyên bản RAM, lần sau thử lại
+    }
+    const tuDia = new Map(shard.workspaces.map((w) => [w.id, w]));
+    const ra: Workspace[] = [];
+    for (const ws of this.store.workspaces) {
+      // Đang sửa dở thì bản của ta là chuẩn (và các closure đang giữ tham chiếu tới nó).
+      if (this.dirtyIds.has(ws.id)) {
+        ra.push(ws);
+        tuDia.delete(ws.id);
+        continue;
+      }
+      const tren = tuDia.get(ws.id);
+      if (tren === undefined) continue; // cửa sổ khác đã xóa → quên nó đi
+      // Terminal đang mở ở cửa sổ NÀY thì bản của ta mới đúng; phần còn lại theo đĩa.
+      const dangMoODay = ws.terminals.some((t) => this.terminals.has(t.id));
+      ra.push(dangMoODay ? gopShard(tren, ws) : tren);
+      tuDia.delete(ws.id);
+    }
+    for (const con of tuDia.values()) ra.push(con); // workspace mới của cửa sổ khác
+    this.store = { version: 2, workspaces: ra };
+  }
+
+  private baoLoiLuu(chiTiet: string): void {
+    void vscode.window.showWarningMessage(`Không ghi được workspace xuống đĩa: ${chiTiet}`);
   }
 
   // ---------------------------------------------------- vòng đời workspace
@@ -978,8 +1048,11 @@ export class WorkspaceManager implements vscode.Disposable {
     // không muốn mất việc đang chạy.
     if (this.activeId === wsNow.id) this.activeId = null;
     wsNow.activeWindowId = null;
-    // Bia mộ: nếu không nhớ, lần save sau sẽ thấy nó còn trên đĩa và "cứu" nó sống lại.
+    // Xóa = xóa FILE của workspace đó ở lần lưu tới. Không cần bia mộ nữa: mô hình một-file-
+    // chung phải nhớ "đã xóa" để lần gộp sau không cứu nó sống lại từ đĩa, còn ở đây file
+    // biến mất là biến mất, và các cửa sổ khác thấy điều đó ngay ở lần đồng bộ kế tiếp.
     this.deletedIds.add(wsNow.id);
+    this.dirtyIds.add(wsNow.id);
     for (const entry of wsNow.terminals) {
       this.terminals.release(entry.id);
       this.quenTerminal(entry.id);

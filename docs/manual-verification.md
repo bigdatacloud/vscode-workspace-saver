@@ -347,6 +347,20 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Bấm "Vẫn mở" ở cửa sổ B → workspace được kích hoạt ở B, ghi đè khóa (không có cơ chế nào
       tự đóng workspace ở A — đây là giới hạn best-effort đã biết, chỉ xác nhận không crash)
 
+## Lưu trữ tách file (mỗi workspace một file)
+- [ ] Mở VS Code lần đầu sau khi cập nhật → thông báo "Đã chuyển N workspace sang lưu trữ tách
+      file"; kiểm `%APPDATA%\Code\User\globalStorage\bigdatacloud.ai-workspace-session-manager\`:
+      có thư mục `workspaces\` chứa `<id>.json`, file cũ đổi tên thành `.migrated-<epoch>`
+      (KHÔNG bị xoá)
+- [ ] Sửa một workspace (đổi tên/thêm terminal) → CHỈ file của workspace đó đổi mtime, file
+      workspace khác giữ nguyên
+- [ ] Xóa workspace → file `<id>.json` biến mất; mở lại VS Code không thấy nó sống lại
+- [ ] Làm hỏng tay một file `<id>.json` (sửa thành `{{{`) rồi mở lại VS Code → chỉ workspace
+      đó mất (được backup `.bak-<epoch>`), các workspace khác vẫn nguyên
+- [ ] Hai cửa sổ VS Code, mỗi cửa sổ sửa một workspace KHÁC nhau → không cửa sổ nào mất việc
+      của cửa sổ kia (trước đây cửa sổ đụng workspace nào một lần là đè bản đĩa của cửa sổ đó
+      suốt phiên)
+
 ## Dữ liệu hỏng
 - [ ] Đóng VS Code, sửa tay `workspaces.json` trong global storage của extension thành nội
       dung không phải JSON hợp lệ (hoặc JSON không khớp schema) → mở lại VS Code → có cảnh báo

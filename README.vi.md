@@ -6,8 +6,8 @@
 
 Extension VS Code quản lý **nhiều workspace toàn cục**, mỗi workspace giữ **nhiều terminal
 đang mở** — kể cả terminal bạn tự mở tay lẫn terminal chạy Claude Code. Không còn manifest
-sống trong repo: toàn bộ danh sách workspace được lưu ở global storage của extension
-(`workspaces.json`), tự động cập nhật trong suốt quá trình làm việc — không có nút Save thủ
+sống trong repo: mỗi workspace được lưu thành MỘT FILE riêng trong global storage của extension
+(`workspaces/<id>.json`), tự động cập nhật trong suốt quá trình làm việc — không có nút Save thủ
 công. Mở VS Code lên, cây "AI Workspaces" hiện danh sách workspace đã có; bấm vào một
 workspace để kích hoạt nó, extension mở lại đúng các terminal của lần làm việc trước, resume
 đúng cuộc hội thoại Claude Code (nếu có) hoặc chạy lại `startCommand` đã khai báo.
