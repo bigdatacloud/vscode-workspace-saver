@@ -102,6 +102,11 @@ thị (dừng poll khi view bị ẩn). Trạng thái "đang tải" hiện từ 
 mở/khôi phục cho tới khi session hiện trong registry (trần 90 giây) — kích hoạt workspace
 chậm không còn trông như bị đơ.
 
+**Chọn thư mục làm việc**: hai lệnh tạo terminal đều hỏi thư mục bằng ô tìm kiếm — gõ vài ký
+tự để lọc trong các thư mục đã dùng (lịch sử gần đây → cwd của terminal đã biết → thư mục
+đang mở), chỉ khi không có mới phải dán đường dẫn đầy đủ. Đường dẫn gõ tay luôn nằm ở dòng
+đầu, ghi rõ `không tồn tại` nếu chưa có trên đĩa, và hộp thoại KHÔNG đóng để bạn sửa tiếp.
+
 **Vị trí mở terminal**: mọi terminal do extension tạo/khôi phục mặc định mở thành **tab trong
 khu editor** (setting `aiWorkspace.terminalLocation`, đổi sang `panel` nếu muốn panel dưới
 như cũ). Từng workspace có thể đè riêng qua **AI Workspace: Cài đặt workspace** trong menu

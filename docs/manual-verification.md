@@ -151,6 +151,17 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Chọn thư mục làm việc bằng tìm kiếm
+- [ ] Tạo terminal mới → hộp thoại hiện danh sách thư mục đã dùng (cwd của các terminal đang
+      có xuất hiện trong đó); gõ vài ký tự GIỮA đường dẫn (vd `qualipa`) vẫn lọc ra đúng dòng
+- [ ] Chọn một dòng → terminal mở đúng thư mục đó
+- [ ] Gõ một đường dẫn KHÔNG có trong danh sách nhưng có thật trên đĩa → dòng đầu ghi "dùng
+      đường dẫn này", Enter là mở được
+- [ ] Gõ đường dẫn không tồn tại → dòng đầu ghi "không tồn tại"; Enter KHÔNG đóng hộp thoại,
+      tiêu đề đổi thành "Đường dẫn không tồn tại: …" để sửa tiếp
+- [ ] Tạo terminal ở thư mục X rồi mở lại hộp thoại → X nằm ở ĐẦU danh sách (lịch sử)
+- [ ] Lịch sử sống qua reload window (lưu trong globalState)
+
 ## Nút "+" trên dòng workspace
 - [ ] Rê chuột vào một dòng workspace → hiện nút "+" bên phải; bấm → hỏi đường dẫn rồi mở
       terminal mới đúng workspace đó (KHÔNG phải workspace active nếu bấm ở dòng khác)
