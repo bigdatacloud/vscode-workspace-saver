@@ -439,6 +439,10 @@ export class WorkspaceManager implements vscode.Disposable {
    * chúng ở lần lưu kế tiếp.
    */
   private dongBoTuDia(): void {
+    // Đang kích hoạt workspace: buildPorts/onMinted đang GIỮ THAM CHIẾU tới object workspace.
+    // Thay object lúc này là mọi mutation sau đó rơi vào bản mồ côi — mất đúng sessionId vừa
+    // mint. Bỏ qua một nhịp đồng bộ không mất gì, lần lưu sau sẽ làm.
+    if (this.activating) return;
     let shard: ShardResult;
     try {
       shard = loadShards(realStoreFs, this.thuMucShard, Date.now, path.sep);
@@ -448,8 +452,9 @@ export class WorkspaceManager implements vscode.Disposable {
     const tuDia = new Map(shard.workspaces.map((w) => [w.id, w]));
     const ra: Workspace[] = [];
     for (const ws of this.store.workspaces) {
-      // Đang sửa dở thì bản của ta là chuẩn (và các closure đang giữ tham chiếu tới nó).
-      if (this.dirtyIds.has(ws.id)) {
+      // Đang sửa dở, hoặc là workspace đang active của cửa sổ này → bản của ta là chuẩn và
+      // các closure đang giữ tham chiếu tới CHÍNH object này, không được thay.
+      if (this.dirtyIds.has(ws.id) || this.activeId === ws.id) {
         ra.push(ws);
         tuDia.delete(ws.id);
         continue;
