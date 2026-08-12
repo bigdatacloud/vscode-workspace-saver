@@ -13,6 +13,7 @@ const EXPECTED_COMMANDS = [
   'aiWorkspace.newPlainTerminal',
   'aiWorkspace.workspaceSettings',
   'aiWorkspace.showTerminalPath',
+  'aiWorkspace.showWorkspaceInfo',
   'aiWorkspace.setStartCommand',
   'aiWorkspace.removeTerminal',
   'aiWorkspace.focusTerminal',

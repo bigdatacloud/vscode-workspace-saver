@@ -31,6 +31,13 @@ export class WorkspaceItem extends vscode.TreeItem {
     this.description = view.isActive
       ? `(đang active) · ${view.terminalCount} terminal`
       : `${view.terminalCount} terminal`;
+    const dong = [view.name, `${view.terminalCount} terminal`];
+    dong.push(
+      view.lastActiveAt === null
+        ? 'Chưa từng kích hoạt'
+        : `Lần active gần nhất: ${new Date(view.lastActiveAt).toLocaleString('vi-VN')}`,
+    );
+    this.tooltip = dong.join('\n');
     // `folder-active` không có trong bộ codicon; `root-folder-opened` là icon thư mục
     // "đang mở" có thật, giữ được phân biệt active/không.
     this.iconPath = new vscode.ThemeIcon(

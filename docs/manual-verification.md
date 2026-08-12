@@ -151,6 +151,15 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Xem thông tin workspace
+- [ ] Chuột phải workspace → `Xem thông tin workspace` → modal hiện đúng: id, lần active gần
+      nhất, "Đang giữ bởi" (cửa sổ này / cửa sổ khác / không), số terminal + số đang mở, vị
+      trí mở terminal, đường dẫn `workspaces.json`, và danh sách terminal kèm cwd
+- [ ] Terminal có lệnh khởi động / có session Claude → hai dòng đó hiện trong danh sách
+- [ ] "Sao chép thông tin" → dán ra được nguyên khối; "Mở file lưu" → Explorer mở đúng
+      `workspaces.json`
+- [ ] Hover vào workspace item → tooltip hiện số terminal và lần active gần nhất
+
 ## Xem / sao chép đường dẫn terminal
 - [ ] Hover vào một terminal item trong cây → tooltip hiện dòng "Đường dẫn: …" đúng cwd
 - [ ] Chuột phải terminal item → `Xem đường dẫn terminal` → modal hiện đủ đường dẫn;

@@ -757,6 +757,74 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   /**
+   * Xem thông tin (metadata) của một workspace: id, lần active gần nhất, cửa sổ đang giữ,
+   * vị trí mở terminal, file lưu, và danh sách terminal kèm đường dẫn. Cho sao chép nguyên
+   * khối (tiện dán vào issue/chat khi cần hỏi) hoặc mở thẳng file lưu.
+   */
+  async showWorkspaceInfo(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+
+    const dangMo = ws.terminals.filter((t) => this.terminals.has(t.id)).length;
+    const setingChung = vscode.workspace
+      .getConfiguration('aiWorkspace')
+      .get<string>('terminalLocation', 'editor');
+    const viTri =
+      ws.terminalLocation === undefined
+        ? `theo setting chung (${setingChung === 'panel' ? 'panel dưới' : 'editor area'})`
+        : ws.terminalLocation === 'panel'
+          ? 'riêng: panel dưới'
+          : 'riêng: editor area';
+    const cuaSo =
+      ws.activeWindowId === null
+        ? 'không cửa sổ nào'
+        : ws.activeWindowId === vscode.env.sessionId
+          ? 'cửa sổ này'
+          : 'một cửa sổ VS Code khác';
+    const danhSach = ws.terminals
+      .map((t) => {
+        const loai = t.kind === 'claude' ? 'AI' : 'shell';
+        const moChua = this.terminals.has(t.id) ? 'đang mở' : 'chưa mở';
+        const lenh = t.startCommand !== undefined ? `\n    lệnh khởi động: ${t.startCommand}` : '';
+        const phien = t.claudeSessionId !== undefined ? `\n    session: ${t.claudeSessionId}` : '';
+        return `• ${t.name} (${loai}, ${moChua})\n    ${t.cwd}${lenh}${phien}`;
+      })
+      .join('\n');
+    const khoi = [
+      `Tên: ${ws.name}`,
+      `Id: ${ws.id}`,
+      `Lần active gần nhất: ${
+        ws.lastActiveAt === null ? 'chưa từng' : new Date(ws.lastActiveAt).toLocaleString('vi-VN')
+      }`,
+      `Đang giữ bởi: ${cuaSo}`,
+      `Terminal: ${ws.terminals.length} (${dangMo} đang mở)`,
+      `Vị trí mở terminal: ${viTri}`,
+      `File lưu: ${this.filePath}`,
+      ws.terminals.length > 0 ? `\nDanh sách terminal:\n${danhSach}` : '\n(Chưa có terminal nào.)',
+    ].join('\n');
+
+    const answer = await vscode.window.showInformationMessage(
+      `Thông tin workspace "${ws.name}"`,
+      { modal: true, detail: khoi },
+      'Sao chép thông tin',
+      'Mở file lưu',
+    );
+    if (answer === 'Sao chép thông tin') {
+      await vscode.env.clipboard.writeText(khoi);
+      void vscode.window.showInformationMessage('Đã sao chép thông tin workspace.');
+      return;
+    }
+    if (answer === 'Mở file lưu') {
+      // File chỉ được ghi khi có thay đổi đầu tiên — workspace vừa tạo có thể chưa kịp có file.
+      if (!nodeFs.existsSync(this.filePath)) {
+        void vscode.window.showWarningMessage(`Chưa có file lưu tại ${this.filePath}.`);
+        return;
+      }
+      await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(this.filePath));
+    }
+  }
+
+  /**
    * Xem đường dẫn gốc của terminal: hiện đầy đủ (kèm cảnh báo nếu đã mất) và cho sao chép
    * hoặc mở thẳng thư mục đó trong trình quản lý file của hệ điều hành.
    */

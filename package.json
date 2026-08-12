@@ -82,6 +82,10 @@
       {
         "command": "aiWorkspace.showTerminalPath",
         "title": "AI Workspace: Xem đường dẫn terminal"
+      },
+      {
+        "command": "aiWorkspace.showWorkspaceInfo",
+        "title": "AI Workspace: Xem thông tin workspace"
       }
     ],
     "configuration": {
@@ -137,19 +141,24 @@
           "group": "2_terminal@2"
         },
         {
-          "command": "aiWorkspace.workspaceSettings",
+          "command": "aiWorkspace.showWorkspaceInfo",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "3_edit@1"
         },
         {
-          "command": "aiWorkspace.renameWorkspace",
+          "command": "aiWorkspace.workspaceSettings",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "3_edit@2"
         },
         {
-          "command": "aiWorkspace.deleteWorkspace",
+          "command": "aiWorkspace.renameWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "3_edit@3"
+        },
+        {
+          "command": "aiWorkspace.deleteWorkspace",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "3_edit@4"
         },
         {
           "command": "aiWorkspace.setStartCommand",
