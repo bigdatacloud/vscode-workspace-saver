@@ -195,6 +195,9 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Lịch sử sống qua reload window (lưu trong globalState)
 
 ## Phím tắt tạo terminal
+- [ ] Mở Command Palette gõ "AI Workspace: Tạo terminal" → VS Code hiện sẵn phím tắt bên phải
+      tên lệnh (tự động, không cần extension làm gì)
+- [ ] Rê chuột vào dòng workspace → tooltip có dòng "Phím tắt mặc định: …"
 - [ ] Có workspace đang active → <kbd>Ctrl+Alt+T</kbd> → vào thẳng luồng tạo terminal cho
       workspace ĐANG ACTIVE, KHÔNG hiện danh sách chọn workspace
 - [ ] <kbd>Ctrl+Alt+A</kbd> → tương tự với terminal Claude

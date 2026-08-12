@@ -3,6 +3,10 @@ import type { TerminalState, TerminalView, WorkspaceManager, WorkspaceView } fro
 
 const POLL_MS = 3000;
 
+/** Phải khớp với `contributes.keybindings` trong package.json. */
+const PHIM_TERMINAL = process.platform === 'darwin' ? 'Cmd+Alt+T' : 'Ctrl+Alt+T';
+const PHIM_CLAUDE = process.platform === 'darwin' ? 'Cmd+Alt+A' : 'Ctrl+Alt+A';
+
 const STATE_ICONS: Record<TerminalState, { id: string; color: string }> = {
   busy: { id: 'circle-filled', color: 'charts.green' },
   idle: { id: 'circle-filled', color: 'charts.blue' },
@@ -37,6 +41,11 @@ export class WorkspaceItem extends vscode.TreeItem {
         ? 'Chưa từng kích hoạt'
         : `Lần active gần nhất: ${new Date(view.lastActiveAt).toLocaleString('vi-VN')}`,
     );
+    // Menu chuột phải của TreeView không hiện phím tắt (VS Code chỉ hiện trong Command
+    // Palette), nên nhắc ngay trong tooltip — đây đúng chỗ người dùng đang định tạo terminal.
+    // Ghi rõ "mặc định" vì extension KHÔNG đọc được phím người dùng đã gán lại: API không
+    // cho tra keybinding đang có hiệu lực.
+    dong.push(`Phím tắt mặc định: ${PHIM_TERMINAL} terminal mới · ${PHIM_CLAUDE} terminal Claude`);
     this.tooltip = dong.join('\n');
     // `folder-active` không có trong bộ codicon; `root-folder-opened` là icon thư mục
     // "đang mở" có thật, giữ được phân biệt active/không.
