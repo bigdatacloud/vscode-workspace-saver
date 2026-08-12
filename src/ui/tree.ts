@@ -10,7 +10,8 @@ const PHIM_CLAUDE = process.platform === 'darwin' ? 'Cmd+Alt+A' : 'Ctrl+Alt+A';
 const STATE_ICONS: Record<TerminalState, { id: string; color: string }> = {
   busy: { id: 'circle-filled', color: 'charts.green' },
   idle: { id: 'circle-filled', color: 'charts.blue' },
-  blocked: { id: 'circle-filled', color: 'charts.yellow' },
+  // Dừng giữa chừng chờ người dùng bấm — icon khác hẳn để lướt qua là thấy ngay cái nào cần mình.
+  blocked: { id: 'question', color: 'charts.yellow' },
   // `loading~spin` là codicon có animation xoay sẵn của VS Code — cây tự chạy animation.
   loading: { id: 'loading~spin', color: 'charts.purple' },
   open: { id: 'terminal', color: 'charts.blue' },
@@ -21,7 +22,7 @@ const STATE_ICONS: Record<TerminalState, { id: string; color: string }> = {
 const STATE_LABELS: Record<TerminalState, string> = {
   busy: 'đang chạy',
   idle: 'rảnh',
-  blocked: 'đang chờ',
+  blocked: 'CHỜ BẠN TRẢ LỜI',
   loading: 'đang tải phiên…',
   open: 'đang mở',
   closed: 'chưa mở',

@@ -9,6 +9,7 @@ import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types
 import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
 import { CodexAdapter } from '../agent/codex';
 import { chonSessionChoTerminal, gomSessionTheoTerminal } from '../claude/ancestry';
+import { claudeHomeMacDinh, dangChoNguoiDung, duongDanTranscript } from '../claude/transcript';
 import { matchClaudeSessions, normalizeCwd, type MatchCandidate } from '../claude/match';
 import { docBangTienTrinh } from '../proc/real';
 import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
@@ -58,6 +59,8 @@ const LICH_SU_CWD_TOI_DA = 20;
 const ACTIVE_POLL_MS = 3000;
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
 const LOADING_TIMEOUT_MS = 90_000;
+/** Đọc chừng này byte cuối transcript để biết phiên có đang chờ người dùng không. */
+const DUOI_TRANSCRIPT_BYTE = 256 * 1024;
 /** Dò id phiên Codex: mỗi nhịp chừng này, tối đa chừng này lần (~2 phút). */
 const CODEX_DO_NHIP_MS = 3000;
 const CODEX_DO_SO_LAN = 40;
@@ -115,6 +118,11 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly daTraKhongThayClaude = new Set<string>();
   /** Cặp terminalId → sessionId đã được phả hệ tiến trình xác nhận (cwd lệch là bình thường). */
   private readonly phaHeDaXacNhan = new Map<string, string>();
+  /** Kết quả soi transcript, khóa theo sessionId — file không đổi thì khỏi đọc lại. */
+  private readonly choTraLoiCache = new Map<
+    string,
+    { mtime: number; idle: boolean; cho: boolean }
+  >();
   /** Buộc lần tra phả hệ tới đọc bảng tươi, bỏ qua cache (dùng cho quét bắt lần cuối). */
   private epDocBangTuoi = false;
   /** Lúc đọc bảng tiến trình hỏng gần nhất — lùi một nhịp dài thay vì thử lại mỗi 3 giây. */
@@ -1707,6 +1715,44 @@ export class WorkspaceManager implements vscode.Disposable {
     }
   }
 
+  /**
+   * "Rảnh" của registry gộp hai chuyện khác hẳn nhau: đã xong việc, và đang dừng giữa chừng
+   * chờ người dùng bấm. Soi transcript để tách ra — nhưng chỉ khi thật sự cần:
+   *  - chỉ với terminal đang MỞ (đóng rồi thì nhãn không ai nhìn),
+   *  - có cache theo mtime: lúc đang chờ, file không thay đổi nên chỉ đọc đúng một lần.
+   */
+  private dangChoTraLoi(session: RunningSession): boolean {
+    if (session.cwd === '') return false;
+    const duongDan = duongDanTranscript(claudeHomeMacDinh(), session.cwd, session.sessionId, path.sep);
+    let mtime: number;
+    try {
+      mtime = nodeFs.statSync(duongDan).mtimeMs;
+    } catch {
+      return false; // không có transcript (phiên vừa tạo, home khác) — không kết luận gì
+    }
+    const cache = this.choTraLoiCache.get(session.sessionId);
+    if (cache && cache.mtime === mtime && cache.idle === (session.status === 'idle')) {
+      return cache.cho;
+    }
+    let cho = false;
+    try {
+      const fd = nodeFs.openSync(duongDan, 'r');
+      try {
+        const co = nodeFs.fstatSync(fd).size;
+        const doDai = Math.min(co, DUOI_TRANSCRIPT_BYTE);
+        const buf = Buffer.alloc(doDai);
+        nodeFs.readSync(fd, buf, 0, doDai, co - doDai);
+        cho = dangChoNguoiDung(buf.toString('utf8'), session.status === 'idle');
+      } finally {
+        nodeFs.closeSync(fd);
+      }
+    } catch {
+      cho = false;
+    }
+    this.choTraLoiCache.set(session.sessionId, { mtime, idle: session.status === 'idle', cho });
+    return cho;
+  }
+
   private syncStatuses(bySession: Map<string, RunningSession>): boolean {
     let changed = false;
     for (const ws of this.store.workspaces) {
@@ -1714,8 +1760,17 @@ export class WorkspaceManager implements vscode.Disposable {
         const session = entry.claudeSessionId ? bySession.get(entry.claudeSessionId) : undefined;
         const before = this.statuses.get(entry.id);
         if (session) {
-          if (before !== session.status) {
-            this.statuses.set(entry.id, session.status);
+          // Chỉ soi khi registry nói `idle`: phiên đang bận ghi transcript liên tục nên đọc
+          // mỗi nhịp là phí, mà quan sát thực tế thì lúc Claude hỏi, tiến trình luôn ở `idle`
+          // (nó dừng hẳn chờ người dùng).
+          const trangThai =
+            session.status === 'idle' &&
+            this.terminals.has(entry.id) &&
+            this.dangChoTraLoi(session)
+              ? 'blocked'
+              : session.status;
+          if (before !== trangThai) {
+            this.statuses.set(entry.id, trangThai);
             changed = true;
           }
         } else if (before !== undefined) {
