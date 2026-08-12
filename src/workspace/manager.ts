@@ -15,6 +15,7 @@ import { boKyHieuTrangThai } from '../agent/title';
 import { realGitRunner } from '../git/exec';
 import { GitClient } from '../git/worktree';
 import { docBangTienTrinh } from '../proc/real';
+import { timTerminalTheoToTien } from '../proc/tree';
 import { emptyStore, type StoreFile, type TerminalEntry, type Workspace } from '../model/schema';
 import {
   createWorkspace,
@@ -500,7 +501,26 @@ export class WorkspaceManager implements vscode.Disposable {
           `Đã nối lại ${ketQua.noiLai.ids.length} terminal đang chạy sẵn (không mở lại phiên lần hai).`,
         );
       }
-      if (ketQua.noiLai.trung > 0) {
+      const thua = ketQua.noiLai.thua;
+      if (thua.length > 0) {
+        // Hai tiến trình cùng ghi một file phiên thì mỗi cái giữ một bản lịch sử khác nhau —
+        // đó chính là cảm giác "lịch sử mất một khoảng dài". Đóng bớt là cách duy nhất gộp
+        // lại, nhưng phải do người dùng bấm: mỗi tiến trình có thể đang làm dở việc gì đó.
+        void vscode.window
+          .showWarningMessage(
+            `${thua.length} terminal đang chạy TRÙNG hội thoại với terminal đã nối lại (di chứng của những lần khôi phục chồng trước đây). Để nguyên thì hai tiến trình cùng ghi một file phiên và lịch sử sẽ lệch nhau.`,
+            'Đóng các terminal trùng',
+            'Để nguyên',
+          )
+          .then((tra) => {
+            if (tra !== 'Đóng các terminal trùng') return;
+            for (const t of thua) {
+              // Chỉ đóng cái vẫn chưa ai nhận: người dùng có thể đã tự thêm nó vào workspace
+              // trong lúc hộp thoại còn mở.
+              if (this.terminals.ownsTerminal(t) === null) t.dispose();
+            }
+          });
+      } else if (ketQua.noiLai.trung > 0) {
         void vscode.window.showWarningMessage(
           `${ketQua.noiLai.trung} hội thoại Claude đang chạy nhiều tiến trình cùng lúc (di chứng của những lần khôi phục chồng trước đây). Mỗi hội thoại chỉ nối lại được MỘT terminal — nên đóng bớt các terminal Claude không nằm trong cây AI Workspaces.`,
         );
@@ -541,12 +561,12 @@ export class WorkspaceManager implements vscode.Disposable {
    */
   private async noiLaiTerminalHoiSinh(
     ws: Workspace,
-  ): Promise<{ ids: string[]; trung: number }> {
+  ): Promise<{ ids: string[]; trung: number; thua: vscode.Terminal[] }> {
     const chuaTrack = () =>
       vscode.window.terminals.filter((t) => this.terminals.ownsTerminal(t) === null);
-    if (chuaTrack().length === 0) return { ids: [], trung: 0 };
+    if (chuaTrack().length === 0) return { ids: [], trung: 0, thua: [] };
     const cho = ws.terminals.filter((e) => !this.terminals.has(e.id));
-    if (cho.length === 0) return { ids: [], trung: 0 };
+    if (cho.length === 0) return { ids: [], trung: 0, thua: [] };
 
     const daNhan: string[] = [];
     let soTrung = 0;
@@ -557,54 +577,103 @@ export class WorkspaceManager implements vscode.Disposable {
       daNhan.push(entry.id);
     };
 
-    // (1) Bằng chứng phả hệ tiến trình.
-    const coSession = cho.filter((e) => e.claudeSessionId !== undefined);
-    if (coSession.length > 0) {
-      let song: RunningSession[] = [];
-      try {
-        song = (await this.agent.listRunning()).filter((r) => r.kind === 'interactive');
-      } catch {
-        // registry đọc không được → bỏ qua mức 1, còn mức 2 theo tên
-      }
-      const canTim = new Set(coSession.map((e) => e.claudeSessionId));
-      const phien = song.filter((r) => canTim.has(r.sessionId) && r.pid !== null);
-      // Một hội thoại đang có nhiều tiến trình = di chứng của những lần resume chồng trước
-      // đây; nối lại chỉ nhận được MỘT terminal, phần thừa vẫn ghi vào cùng file phiên.
-      const demTheoPhien = new Map<string, number>();
-      for (const r of phien) demTheoPhien.set(r.sessionId, (demTheoPhien.get(r.sessionId) ?? 0) + 1);
-      soTrung = [...demTheoPhien.values()].filter((n) => n > 1).length;
+    // (1) Bằng chứng phả hệ tiến trình. Xét MỌI phiên đang chạy chứ không riêng phiên mà
+    // entry đang giữ id: sau reload, terminal hồi sinh có thể đang chạy một hội thoại mà
+    // extension chưa kịp ghi id (hoặc id đã cũ) — bỏ qua nó là mở thêm terminal thứ hai cho
+    // đúng thư mục đó, tức đúng cái vòng lặp nhân đôi cần chặn.
+    let song: RunningSession[] = [];
+    try {
+      song = (await this.agent.listRunning()).filter(
+        (r) => r.kind === 'interactive' && r.pid !== null,
+      );
+    } catch {
+      // registry đọc không được → bỏ qua mức 1, còn mức 2 theo tên
+    }
+    // Một hội thoại đang có nhiều tiến trình = di chứng của những lần resume chồng trước đây;
+    // nối lại chỉ nhận được MỘT terminal, phần thừa vẫn ghi vào cùng file phiên.
+    const demTheoPhien = new Map<string, number>();
+    for (const r of song) demTheoPhien.set(r.sessionId, (demTheoPhien.get(r.sessionId) ?? 0) + 1);
+    soTrung = [...demTheoPhien.values()].filter((n) => n > 1).length;
 
+    /** terminal chưa track → các phiên Claude đang chạy BÊN TRONG nó (theo phả hệ tiến trình). */
+    const phienTrongTerminal = new Map<vscode.Terminal, RunningSession[]>();
+    if (song.length > 0) {
       const terminalTheoPid = new Map<number, vscode.Terminal>();
-      if (phien.length > 0) {
-        // processId của một terminal chưa gắn tiến trình có thể không bao giờ resolve —
-        // Promise.all chờ TẤT CẢ, nên phải có hạn giờ, nếu không luồng activate treo vĩnh viễn.
-        await Promise.all(
-          chuaTrack().map(async (t) => {
-            const pid = await Promise.race([
-              t.processId,
-              new Promise<undefined>((r) => setTimeout(() => r(undefined), DOI_PROCESS_ID_MS)),
-            ]);
-            if (typeof pid === 'number') terminalTheoPid.set(pid, t);
-          }),
-        );
-      }
+      // processId của một terminal chưa gắn tiến trình có thể không bao giờ resolve —
+      // Promise.all chờ TẤT CẢ, nên phải có hạn giờ, nếu không luồng activate treo vĩnh viễn.
+      await Promise.all(
+        chuaTrack().map(async (t) => {
+          const pid = await Promise.race([
+            t.processId,
+            new Promise<undefined>((r) => setTimeout(() => r(undefined), DOI_PROCESS_ID_MS)),
+          ]);
+          if (typeof pid === 'number') terminalTheoPid.set(pid, t);
+        }),
+      );
       if (terminalTheoPid.size > 0) {
         // Ép đọc bảng tươi: đây là thời điểm một-lần-duy-nhất, sai là nhân đôi hội thoại.
-        const bang = await this.layBangTienTrinh(
-          phien.map((r) => r.pid as number),
-          true,
-        );
-        const khoaTheoPid = new Map<number, string>();
-        for (const pid of terminalTheoPid.keys()) khoaTheoPid.set(pid, String(pid));
-        const { theoTerminal } = gomSessionTheoTerminal(phien, bang, khoaTheoPid);
-        for (const [khoa, ds] of theoTerminal) {
+        const bang = await this.layBangTienTrinh(song.map((r) => r.pid as number), true);
+        const shellTheoPid = new Map<number, string>();
+        for (const pid of terminalTheoPid.keys()) shellTheoPid.set(pid, String(pid));
+        // KHÔNG dùng gomSessionTheoTerminal ở đây: nó gộp theo sessionId và chỉ giữ tiến trình
+        // ĐẦU của mỗi hội thoại. Đúng cho việc gắn session, nhưng ở đây một hội thoại có thể
+        // đang chạy nhiều tiến trình ở nhiều terminal — bỏ qua các tiến trình sau là để lọt
+        // đúng terminal cần nối lại.
+        for (const r of song) {
+          const khoa = timTerminalTheoToTien(r.pid as number, bang, shellTheoPid);
+          if (khoa === null) continue;
           const terminal = terminalTheoPid.get(Number(khoa));
-          if (!terminal || this.terminals.ownsTerminal(terminal) !== null) continue;
-          const entry = coSession.find(
-            (e) => !this.terminals.has(e.id) && ds.some((r) => r.sessionId === e.claudeSessionId),
-          );
-          if (entry) nhan(entry, terminal, Number(khoa));
+          if (!terminal) continue;
+          const ds = phienTrongTerminal.get(terminal);
+          if (ds) ds.push(r);
+          else phienTrongTerminal.set(terminal, [r]);
         }
+      }
+    }
+
+    // (1a) Khớp theo ĐÚNG id entry đang giữ — bằng chứng mạnh nhất.
+    for (const entry of cho) {
+      if (entry.claudeSessionId === undefined || this.terminals.has(entry.id)) continue;
+      for (const [terminal, ds] of phienTrongTerminal) {
+        if (this.terminals.ownsTerminal(terminal) !== null) continue;
+        if (!ds.some((r) => r.sessionId === entry.claudeSessionId)) continue;
+        nhan(entry, terminal);
+        break;
+      }
+    }
+
+    // (1b) Terminal đang chạy một hội thoại Claude Ở ĐÚNG THƯ MỤC của entry, dù id không khớp
+    // (entry chưa từng bắt được id, hoặc id đã cũ vì người dùng /clear rồi chạy phiên khác).
+    // Đây chính là ca người dùng gặp: tab cũ vẫn chạy dở, kích hoạt workspace lại mở thêm tab
+    // thứ hai cho cùng thư mục. Nhận nuôi rồi trỏ lại id sang phiên đang chạy thật.
+    // Bằng chứng ở đây là registry CLAUDE, nên chỉ áp cho entry Claude: một terminal chạy
+    // claude ở cùng thư mục với entry Codex thì vẫn không phải terminal của entry đó.
+    const idDaCoChu = new Set<string>();
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.claudeSessionId !== undefined && this.terminals.has(t.id)) {
+          idDaCoChu.add(t.claudeSessionId);
+        }
+      }
+    }
+    for (const entry of cho) {
+      if (this.terminals.has(entry.id) || entry.kind !== 'claude') continue;
+      for (const [terminal, ds] of phienTrongTerminal) {
+        if (this.terminals.ownsTerminal(terminal) !== null) continue;
+        const khop = ds.find(
+          (r) =>
+            r.cwd !== '' &&
+            normalizeCwd(r.cwd) === normalizeCwd(entry.cwd) &&
+            // Hội thoại đã có entry khác (đang mở) giữ: đây là tiến trình TRÙNG của nó, nhận
+            // vào là cướp id của entry kia rồi cả hai cùng rối.
+            !idDaCoChu.has(r.sessionId),
+        );
+        if (!khop) continue;
+        idDaCoChu.add(khop.sessionId);
+        nhan(entry, terminal);
+        // Trỏ id sang phiên đang chạy thật để lần sau khớp thẳng ở (1a) và trạng thái hiện đúng.
+        this.claimSession(ws.id, entry.id, khop);
+        break;
       }
     }
 
@@ -615,15 +684,39 @@ export class WorkspaceManager implements vscode.Disposable {
     // một shell còn hơn giết nhầm một shell đang chạy dở.
     for (const entry of cho) {
       if (entry.kind !== 'plain' || this.terminals.has(entry.id)) continue;
-      const khop = chuaTrack().filter(
-        (t) =>
-          t.name === entry.name &&
-          t.shellIntegration?.cwd !== undefined &&
-          normalizeCwd(t.shellIntegration.cwd.fsPath) === normalizeCwd(entry.cwd),
-      );
+      const khop = chuaTrack().filter((t) => {
+        if (t.name !== entry.name) return false;
+        // Ngay sau reload, Shell Integration thường chưa kịp báo cwd, nhưng cwd LÚC TẠO thì
+        // VS Code khôi phục cùng terminal — dùng nó làm nguồn thứ hai thay vì bó tay.
+        const cwd = t.shellIntegration?.cwd?.fsPath ?? creationCwd(t);
+        return cwd !== undefined && normalizeCwd(cwd) === normalizeCwd(entry.cwd);
+      });
       if (khop.length === 1) nhan(entry, khop[0]!);
     }
-    return { ids: daNhan, trung: soTrung };
+    return { ids: daNhan, trung: soTrung, thua: this.terminalThua(phienTrongTerminal) };
+  }
+
+  /**
+   * Terminal chưa track mà bên trong đang chạy một hội thoại ĐÃ có terminal khác nhận — di
+   * chứng của những lần khôi phục chồng trước đây. Hai tiến trình cùng ghi một file phiên nên
+   * mỗi cái giữ một bản lịch sử khác nhau; giữ lại chỉ tổ rối. Trả danh sách để hỏi người dùng
+   * có đóng bớt không — KHÔNG bao giờ tự đóng: mỗi tiến trình đang giữ một phần việc dở.
+   */
+  private terminalThua(
+    phienTrongTerminal: ReadonlyMap<vscode.Terminal, RunningSession[]>,
+  ): vscode.Terminal[] {
+    const daCoChu = new Set<string>();
+    for (const ws of this.store.workspaces) {
+      for (const t of ws.terminals) {
+        if (t.claudeSessionId !== undefined && this.terminals.has(t.id)) daCoChu.add(t.claudeSessionId);
+      }
+    }
+    const ra: vscode.Terminal[] = [];
+    for (const [terminal, ds] of phienTrongTerminal) {
+      if (this.terminals.ownsTerminal(terminal) !== null) continue;
+      if (ds.some((r) => daCoChu.has(r.sessionId))) ra.push(terminal);
+    }
+    return ra;
   }
 
   private applyReport(report: ActivateReport): void {
@@ -1656,8 +1749,39 @@ export class WorkspaceManager implements vscode.Disposable {
     // (có bản VS Code truyền context object khác). Nhận tham số chỉ khi nó thực sự là
     // terminal đang sống — nếu không, entry sẽ có name/cwd undefined và làm hỏng store.
     const known = terminal !== undefined && vscode.window.terminals.includes(terminal);
-    const target = known ? terminal : vscode.window.activeTerminal;
-    if (!target) {
+    let target = known ? terminal : undefined;
+    if (target === undefined) {
+      // Menu chuột phải TAB TERMINAL trong khu editor không truyền `vscode.Terminal` nào cả.
+      // Đoán bằng `activeTerminal` là gắn nhầm cái đang focus khi người dùng bấm vào tab khác
+      // — thà hỏi. Chỉ còn một terminal mồ côi thì khỏi hỏi cho nhanh.
+      const moCoi = vscode.window.terminals.filter((t) => this.terminals.ownsTerminal(t) === null);
+      if (moCoi.length === 0) {
+        void vscode.window.showInformationMessage(
+          'Mọi terminal đang mở đều đã thuộc một workspace.',
+        );
+        return;
+      }
+      if (moCoi.length === 1) target = moCoi[0];
+      else {
+        const dangFocus = vscode.window.activeTerminal;
+        // Cái đang focus lên đầu: gần như luôn là cái người dùng định thêm.
+        const thuTu = [
+          ...moCoi.filter((t) => t === dangFocus),
+          ...moCoi.filter((t) => t !== dangFocus),
+        ];
+        const chon = await vscode.window.showQuickPick(
+          thuTu.map((t) => ({
+            label: t.name,
+            description: t === dangFocus ? 'đang focus' : undefined,
+            terminal: t,
+          })),
+          { placeHolder: 'Thêm terminal nào vào workspace?' },
+        );
+        if (!chon) return;
+        target = chon.terminal;
+      }
+    }
+    if (target === undefined || !vscode.window.terminals.includes(target)) {
       void vscode.window.showWarningMessage('Không có terminal nào đang mở để thêm.');
       return;
     }
