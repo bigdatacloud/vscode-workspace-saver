@@ -121,6 +121,16 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Add open terminal to workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Terminal tab right-click menu / palette |
 | AI Workspace: Assign AI session to terminal | `aiWorkspace.assignClaudeSession` | Terminal item context menu — a Claude terminal picks from running sessions; a Codex terminal picks from recent sessions read out of `~/.codex/sessions` (same-cwd first) |
 
+**Keyboard shortcuts** (change or remove them in *Keyboard Shortcuts*, search `aiWorkspace`):
+
+| Key | Command |
+|---|---|
+| <kbd>Ctrl+Alt+T</kbd> (macOS <kbd>Cmd+Alt+T</kbd>) | New terminal |
+| <kbd>Ctrl+Alt+A</kbd> (macOS <kbd>Cmd+Alt+A</kbd>) | New Claude terminal |
+
+Invoked by keyboard, the terminal goes straight into the **active workspace** with no picker;
+the picker only appears when no workspace is active.
+
 The "AI Workspaces" tree (in Explorer, view id `aiWorkspace.workspaces`) has 2 levels:
 level 1 is the workspace list (sorted by most recently active, the active workspace gets its
 own badge), level 2 is each workspace's terminals with a status label (running / idle /

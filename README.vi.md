@@ -109,6 +109,16 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Thêm terminal đang mở vào workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Menu chuột phải tab terminal / palette |
 | AI Workspace: Gắn session AI vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây — terminal Claude thì chọn trong các session đang chạy, terminal Codex thì chọn trong các phiên gần đây đọc từ `~/.codex/sessions` (phiên cùng thư mục xếp trước) |
 
+**Phím tắt** (đổi/gỡ trong *Keyboard Shortcuts*, tìm `aiWorkspace`):
+
+| Phím | Lệnh |
+|---|---|
+| <kbd>Ctrl+Alt+T</kbd> (macOS <kbd>Cmd+Alt+T</kbd>) | Tạo terminal mới |
+| <kbd>Ctrl+Alt+A</kbd> (macOS <kbd>Cmd+Alt+A</kbd>) | Tạo terminal Claude mới |
+
+Gọi bằng phím tắt thì terminal vào thẳng **workspace đang active**, không hỏi chọn; chỉ khi
+không có workspace nào active mới hiện danh sách để chọn.
+
 Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
 các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / đang chờ / **đang tải

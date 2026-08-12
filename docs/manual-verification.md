@@ -194,6 +194,15 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Tạo terminal ở thư mục X rồi mở lại hộp thoại → X nằm ở ĐẦU danh sách (lịch sử)
 - [ ] Lịch sử sống qua reload window (lưu trong globalState)
 
+## Phím tắt tạo terminal
+- [ ] Có workspace đang active → <kbd>Ctrl+Alt+T</kbd> → vào thẳng luồng tạo terminal cho
+      workspace ĐANG ACTIVE, KHÔNG hiện danh sách chọn workspace
+- [ ] <kbd>Ctrl+Alt+A</kbd> → tương tự với terminal Claude
+- [ ] KHÔNG có workspace nào active → phím tắt hiện danh sách để chọn workspace (không im lặng)
+- [ ] Bấm phím tắt khi con trỏ đang ở trong một terminal → vẫn chạy lệnh của extension
+- [ ] Chuột phải một workspace KHÁC → "Tạo terminal mới" vẫn vào đúng workspace được bấm
+      (không bị phím tắt kéo về workspace active)
+
 ## Nút "+" trên dòng workspace
 - [ ] Rê chuột vào một dòng workspace → hiện nút "+" bên phải; bấm → hỏi đường dẫn rồi mở
       terminal mới đúng workspace đó (KHÔNG phải workspace active nếu bấm ở dòng khác)

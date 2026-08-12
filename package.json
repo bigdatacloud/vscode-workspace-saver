@@ -98,6 +98,18 @@
         "title": "AI Workspace: Xem thông tin workspace"
       }
     ],
+    "keybindings": [
+      {
+        "command": "aiWorkspace.newPlainTerminal",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t"
+      },
+      {
+        "command": "aiWorkspace.newClaudeTerminal",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      }
+    ],
     "configuration": {
       "title": "AI Workspace",
       "properties": {
