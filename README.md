@@ -134,7 +134,7 @@ the picker only appears when no workspace is active.
 The "AI Workspaces" tree (in Explorer, view id `aiWorkspace.workspaces`) has 2 levels:
 level 1 is the workspace list (sorted by most recently active, the active workspace gets its
 own badge), level 2 is each workspace's terminals with a status label (running / idle /
-waiting / **loading session… with a spinning icon** / open / not open / error), refreshed
+**WAITING FOR YOU** / **loading session… with a spinning icon** / open / not open / error), refreshed
 every ~3 seconds while the view is visible (polling stops when the view is hidden). The
 loading state shows from the moment a Claude terminal is opened/restored until its session
 appears in the registry (capped at 90 s), so a slow workspace activation never looks frozen.
@@ -144,6 +144,14 @@ searchable picker — type a few characters to filter the folders you have used 
 history → cwds of known terminals → open workspace folders); paste a full path only when it
 is not in the list. A path typed by hand always appears as the first entry, flagged
 `không tồn tại` if it isn't on disk, and the picker stays open so you can fix a typo.
+
+**"Waiting for you" is not "idle"**: Claude's registry only reports `busy`/`idle`, and "idle"
+covers both *finished* and *stopped mid-task waiting for you to answer*. The extension reads
+the tail of the session transcript: a last tool call with no result yet means Claude is
+waiting on you (a choice prompt, or a permission dialog) → the label becomes **CHỜ BẠN TRẢ
+LỜI** with a yellow question icon. It only reads while the session is `idle`, and caches by
+file mtime, so a waiting session is read exactly once. Not available for Codex: its session
+log records no approval-request events.
 
 **Terminal location**: every terminal the extension creates or restores opens as a **tab in
 the editor area** by default (setting `aiWorkspace.terminalLocation`, switch to `panel` to

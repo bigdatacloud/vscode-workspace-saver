@@ -121,7 +121,7 @@ không có workspace nào active mới hiện danh sách để chọn.
 
 Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
-các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / đang chờ / **đang tải
+các terminal của workspace kèm nhãn trạng thái (đang chạy / rảnh / **CHỜ BẠN TRẢ LỜI** / **đang tải
 phiên… kèm icon xoay** / đang mở / chưa mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển
 thị (dừng poll khi view bị ẩn). Trạng thái "đang tải" hiện từ lúc terminal Claude được
 mở/khôi phục cho tới khi session hiện trong registry (trần 90 giây) — kích hoạt workspace
@@ -131,6 +131,13 @@ chậm không còn trông như bị đơ.
 tự để lọc trong các thư mục đã dùng (lịch sử gần đây → cwd của terminal đã biết → thư mục
 đang mở), chỉ khi không có mới phải dán đường dẫn đầy đủ. Đường dẫn gõ tay luôn nằm ở dòng
 đầu, ghi rõ `không tồn tại` nếu chưa có trên đĩa, và hộp thoại KHÔNG đóng để bạn sửa tiếp.
+
+**"Chờ bạn trả lời" khác "rảnh"**: registry của Claude chỉ có `busy`/`idle`, mà "idle" gộp cả
+*đã xong việc* lẫn *đang dừng giữa chừng chờ bạn bấm*. Extension soi phần đuôi transcript của
+phiên: lời gọi tool cuối cùng chưa có kết quả trả về nghĩa là Claude đang đợi bạn (câu hỏi
+chọn phương án, hoặc hộp xin quyền) → nhãn đổi thành **CHỜ BẠN TRẢ LỜI** kèm icon dấu hỏi
+vàng. Chỉ đọc khi phiên đang `idle` và có cache theo thời điểm sửa file, nên lúc đang chờ chỉ
+đọc đúng một lần. Codex chưa có: log phiên của Codex không ghi sự kiện xin duyệt nào.
 
 **Vị trí mở terminal**: mọi terminal do extension tạo/khôi phục mặc định mở thành **tab trong
 khu editor** (setting `aiWorkspace.terminalLocation`, đổi sang `panel` nếu muốn panel dưới

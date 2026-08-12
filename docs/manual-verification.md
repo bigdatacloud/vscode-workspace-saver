@@ -151,6 +151,14 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gõ `claude` trong terminal `plain` → KHÔNG bị bắt làm lệnh khởi động (đường resume
       riêng của Claude xử lý, không chạy lại lệnh thô)
 
+## Trạng thái "CHỜ BẠN TRẢ LỜI"
+- [ ] Trong một terminal Claude, để nó hỏi (câu hỏi chọn phương án hoặc hộp xin quyền) rồi
+      ĐỪNG trả lời → trong ~3 giây nhãn đổi từ "rảnh" sang "CHỜ BẠN TRẢ LỜI", icon dấu hỏi vàng
+- [ ] Trả lời xong → nhãn quay về "đang chạy" rồi "rảnh"
+- [ ] Claude vừa trả lời xong một lượt (không hỏi gì) → vẫn là "rảnh", KHÔNG báo chờ nhầm
+- [ ] Claude đang chạy tool dài (build, test) → là "đang chạy", không phải "chờ"
+- [ ] Mở Task Manager lúc có phiên đang chờ: KHÔNG thấy đọc file liên tục (cache theo mtime)
+
 ## Terminal Codex
 - [ ] `Tạo terminal Codex mới` → chọn "Phiên mới" → terminal mở chạy `codex`; gõ vài câu rồi
       đợi ~5 giây → mở `workspaces.json` thấy entry có `agentId: "codex"` và `agentSessionId`,
