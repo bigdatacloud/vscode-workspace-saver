@@ -143,7 +143,10 @@ appears in the registry (capped at 90 s), so a slow workspace activation never l
 searchable picker — type a few characters to filter the folders you have used before (recent
 history → cwds of known terminals → open workspace folders); paste a full path only when it
 is not in the list. A path typed by hand always appears as the first entry, flagged
-`không tồn tại` if it isn't on disk, and the picker stays open so you can fix a typo.
+`không tồn tại` if it isn't on disk, and the picker stays open so you can fix a typo. The last
+entry, **"Duyệt tìm thư mục…"**, opens the OS folder dialog — it starts at whatever path you
+were typing (or its parent) and falls back to your most recent folder. Cancelling that dialog
+returns to the picker with your text intact instead of aborting the whole command.
 
 **"Waiting for you" is not "idle"**: Claude's registry only reports `busy`/`idle`, and "idle"
 covers both *finished* and *stopped mid-task waiting for you to answer*. The extension reads

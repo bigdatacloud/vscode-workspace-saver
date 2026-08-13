@@ -1525,30 +1525,79 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   private async hoiDuongDan(): Promise<string | undefined> {
-    type Muc = vscode.QuickPickItem & { duongDan: string };
-    const goiY = gopGoiYDuongDan([
+    // Vòng lặp vì "duyệt thư mục" là một chuyến đi vòng: mở hộp thoại hệ điều hành, người
+    // dùng bấm Cancel ở đó thì phải quay LẠI QuickPick với nguyên chữ đã gõ — bắt họ chạy
+    // lại cả lệnh chỉ vì bấm nhầm nút duyệt là tệ.
+    let batDau = '';
+    for (;;) {
+      const chon = await this.chonDuongDanNhanh(batDau);
+      if (chon === undefined) return undefined; // Esc ở QuickPick → hủy hẳn
+      if (chon.loai === 'xong') return chon.duongDan;
+
+      const gocMacDinh = this.thuMucMacDinhDeDuyet(chon.dangGo);
+      const chonDuoc = await vscode.window.showOpenDialog({
+        title: 'Chọn thư mục làm việc cho terminal',
+        openLabel: 'Chọn thư mục này',
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        defaultUri: gocMacDinh === undefined ? undefined : vscode.Uri.file(gocMacDinh),
+      });
+      const daChon = chonDuoc?.[0];
+      if (daChon !== undefined) return daChon.fsPath;
+      batDau = chon.dangGo;
+    }
+  }
+
+  /** Thư mục mở sẵn khi bật hộp thoại duyệt: chỗ người dùng đang gõ dở → gợi ý mới nhất. */
+  private thuMucMacDinhDeDuyet(dangGo: string): string | undefined {
+    const go = dangGo.trim();
+    if (go !== '' && nodeFs.existsSync(go)) return go;
+    const cha = go === '' ? undefined : path.dirname(go);
+    if (cha !== undefined && cha !== go && nodeFs.existsSync(cha)) return cha;
+    return this.goiYDuongDan()[0];
+  }
+
+  private goiYDuongDan(): string[] {
+    return gopGoiYDuongDan([
       this.lichSuCwd(),
       this.store.workspaces.flatMap((w) => w.terminals.map((t) => t.cwd)),
       (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
     ]);
+  }
+
+  private async chonDuongDanNhanh(
+    batDau: string,
+  ): Promise<{ loai: 'xong'; duongDan: string } | { loai: 'duyet'; dangGo: string } | undefined> {
+    type Muc = vscode.QuickPickItem & { duongDan: string | null };
+    const goiY = this.goiYDuongDan();
     const mucGoiY: Muc[] = goiY.map((p) => ({
       label: path.basename(p) || p,
       description: p,
       duongDan: p,
     }));
+    // Ở CUỐI danh sách: Enter khi chưa gõ gì phải rơi vào gợi ý đầu tiên, không phải nút duyệt.
+    // `alwaysShow` để nó không bị bộ lọc ăn mất khi người dùng gõ một chuỗi không khớp gì.
+    const mucDuyet: Muc = {
+      label: '$(folder-opened) Duyệt tìm thư mục…',
+      description: 'mở hộp thoại chọn thư mục',
+      duongDan: null,
+      alwaysShow: true,
+    };
 
-    return await new Promise<string | undefined>((resolve) => {
-      let ketQua: string | undefined;
+    type KetQua = { loai: 'xong'; duongDan: string } | { loai: 'duyet'; dangGo: string };
+    return await new Promise<KetQua | undefined>((resolve) => {
+      let ketQua: KetQua | undefined;
       const qp = vscode.window.createQuickPick<Muc>();
       qp.title = 'Thư mục làm việc cho terminal';
-      qp.placeholder = 'Gõ vài ký tự để tìm trong đường dẫn đã dùng, hoặc dán đường dẫn đầy đủ';
+      qp.placeholder = 'Gõ để tìm trong đường dẫn đã dùng, dán đường dẫn đầy đủ, hoặc chọn "Duyệt tìm thư mục"';
       // Lọc cả theo description: người dùng gõ "qualipa" phải khớp được giữa đường dẫn.
       qp.matchOnDescription = true;
-      qp.items = mucGoiY;
+      qp.items = [...mucGoiY, mucDuyet];
       qp.onDidChangeValue((v) => {
         const go = v.trim();
         if (go === '' || goiY.some((p) => p === go)) {
-          qp.items = mucGoiY;
+          qp.items = [...mucGoiY, mucDuyet];
           return;
         }
         qp.items = [
@@ -1559,22 +1608,30 @@ export class WorkspaceManager implements vscode.Disposable {
             alwaysShow: true,
           },
           ...mucGoiY,
+          mucDuyet,
         ];
       });
       qp.onDidAccept(() => {
-        const duongDan = (qp.selectedItems[0]?.duongDan ?? qp.value).trim();
+        const muc = qp.selectedItems[0];
+        if (muc !== undefined && muc.duongDan === null) {
+          ketQua = { loai: 'duyet', dangGo: qp.value };
+          qp.hide();
+          return;
+        }
+        const duongDan = (muc?.duongDan ?? qp.value).trim();
         if (duongDan === '') return;
         if (!nodeFs.existsSync(duongDan)) {
           qp.title = `Đường dẫn không tồn tại: ${duongDan}`;
           return; // giữ hộp thoại mở để sửa tiếp
         }
-        ketQua = duongDan;
+        ketQua = { loai: 'xong', duongDan };
         qp.hide();
       });
       qp.onDidHide(() => {
         qp.dispose();
         resolve(ketQua);
       });
+      qp.value = batDau;
       qp.show();
     });
   }

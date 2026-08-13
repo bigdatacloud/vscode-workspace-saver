@@ -131,6 +131,10 @@ chậm không còn trông như bị đơ.
 tự để lọc trong các thư mục đã dùng (lịch sử gần đây → cwd của terminal đã biết → thư mục
 đang mở), chỉ khi không có mới phải dán đường dẫn đầy đủ. Đường dẫn gõ tay luôn nằm ở dòng
 đầu, ghi rõ `không tồn tại` nếu chưa có trên đĩa, và hộp thoại KHÔNG đóng để bạn sửa tiếp.
+Dòng cuối cùng — **"Duyệt tìm thư mục…"** — mở hộp thoại chọn thư mục của hệ điều hành, mở sẵn
+ở đúng đường dẫn bạn đang gõ dở (hoặc thư mục cha của nó), không có thì lấy thư mục dùng gần
+nhất. Bấm Cancel trong hộp thoại đó thì quay lại ô tìm kiếm với nguyên chữ đang gõ, chứ không
+huỷ cả lệnh.
 
 **"Chờ bạn trả lời" khác "rảnh"**: registry của Claude chỉ có `busy`/`idle`, mà "idle" gộp cả
 *đã xong việc* lẫn *đang dừng giữa chừng chờ bạn bấm*. Extension soi phần đuôi transcript của

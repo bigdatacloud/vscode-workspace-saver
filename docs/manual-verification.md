@@ -202,6 +202,19 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Tạo terminal ở thư mục X rồi mở lại hộp thoại → X nằm ở ĐẦU danh sách (lịch sử)
 - [ ] Lịch sử sống qua reload window (lưu trong globalState)
 
+## Duyệt thư mục bằng hộp thoại hệ điều hành
+- [ ] Hộp thoại chọn thư mục luôn có dòng CUỐI "Duyệt tìm thư mục…"; khi chưa gõ gì, Enter
+      chọn gợi ý ĐẦU tiên chứ không phải dòng duyệt
+- [ ] Gõ một chuỗi không khớp gợi ý nào → dòng "Duyệt tìm thư mục…" VẪN hiện (không bị lọc mất)
+- [ ] Chọn "Duyệt tìm thư mục…" → hộp thoại chọn thư mục của hệ điều hành mở ra, nút xác nhận
+      ghi "Chọn thư mục này", KHÔNG chọn được file
+- [ ] Chọn một thư mục → terminal mở đúng thư mục đó, và lần sau nó nằm đầu danh sách gợi ý
+- [ ] Đang gõ dở một đường dẫn có thật rồi mới bấm duyệt → hộp thoại mở SẴN ở thư mục đó
+      (gõ dở một đường dẫn chưa tồn tại → mở ở thư mục cha)
+- [ ] Bấm Cancel trong hộp thoại duyệt → QuickPick hiện lại, GIỮ nguyên chữ đang gõ dở
+      (không hủy cả lệnh tạo terminal)
+- [ ] Esc ở QuickPick (không qua duyệt) → hủy hẳn lệnh, không mở terminal nào
+
 ## Phím tắt tạo terminal
 - [ ] Mở Command Palette gõ "AI Workspace: Tạo terminal" → VS Code hiện sẵn phím tắt bên phải
       tên lệnh (tự động, không cần extension làm gì)
