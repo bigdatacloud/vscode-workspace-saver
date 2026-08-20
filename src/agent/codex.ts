@@ -7,6 +7,17 @@ import type { LaunchOption } from './types';
 export const CODEX_BIN = 'codex';
 /** Package npm chứa binary codex — `npx @openai/codex` chính là chạy codex. */
 const CODEX_PKG = '@openai/codex';
+const CODEX_SESSION_ID_RE = /^[A-Za-z0-9_][\w.:-]{0,127}$/;
+
+export interface CodexRestoreOption extends LaunchOption {
+  /** Nhánh được chọn khi khôi phục — manager dùng để biết có phải dò lại session id không. */
+  mode: 'exact' | 'last' | 'picker' | 'new';
+}
+
+export interface CodexLaunchOption extends LaunchOption {
+  /** Không suy mode từ vị trí trong mảng: mỗi mode có cả biến thể thường và --yolo. */
+  mode: 'new' | 'last' | 'picker';
+}
 
 /** Đọc thư mục phiên của Codex. Tách ra port để test được mà không đụng đĩa thật. */
 export interface CodexFs {
@@ -49,28 +60,111 @@ export class CodexAdapter {
     private readonly sep: string = '/',
   ) {}
 
-  buildLaunchOptions(): LaunchOption[] {
+  buildLaunchOptions(): CodexLaunchOption[] {
     return [
       {
+        mode: 'new',
         label: 'Phiên mới',
         description: CODEX_BIN,
         command: CODEX_BIN,
       },
       {
+        mode: 'new',
+        label: 'Phiên mới — bỏ qua phê duyệt và sandbox',
+        description: `${CODEX_BIN} --yolo`,
+        command: `${CODEX_BIN} --yolo`,
+      },
+      {
+        mode: 'last',
         label: 'Tiếp tục phiên gần nhất',
         description: `${CODEX_BIN} resume --last`,
         command: `${CODEX_BIN} resume --last`,
       },
       {
+        mode: 'last',
+        label: 'Tiếp tục phiên gần nhất — bỏ qua phê duyệt và sandbox',
+        description: `${CODEX_BIN} --yolo resume --last`,
+        command: `${CODEX_BIN} --yolo resume --last`,
+      },
+      {
+        mode: 'picker',
         label: 'Chọn phiên để resume',
         description: `${CODEX_BIN} resume`,
         command: `${CODEX_BIN} resume`,
       },
+      {
+        mode: 'picker',
+        label: 'Chọn phiên để resume — bỏ qua phê duyệt và sandbox',
+        description: `${CODEX_BIN} --yolo resume`,
+        command: `${CODEX_BIN} --yolo resume`,
+      },
     ];
   }
 
-  buildResumeCommand(sessionId: string): string {
-    return `${CODEX_BIN} resume ${quoteArg(sessionId, this.shell)}`;
+  /**
+   * Danh sách dùng khi MỞ LẠI một terminal Codex. Nếu đã bắt được id thì đúng phiên đó đứng
+   * đầu; chưa có id thì `--last` (Codex tự giới hạn theo cwd hiện tại) đứng đầu. Chỉ giữ cờ
+   * toàn quyền đã biết, tuyệt đối không nối nguyên chuỗi từ store vào lệnh được miễn trust.
+   */
+  buildRestoreOptions(commandBefore: string | undefined, sessionId?: string): CodexRestoreOption[] {
+    const base = this.safeBaseCommand(commandBefore);
+    const fullAccess = base !== CODEX_BIN;
+    const suffix = fullAccess ? ' — bỏ qua phê duyệt và sandbox' : '';
+    const exact: CodexRestoreOption[] = sessionId === undefined || !CODEX_SESSION_ID_RE.test(sessionId)
+      ? []
+      : [{
+          mode: 'exact',
+          label: `Tiếp tục đúng phiên đã lưu${suffix}`,
+          description: `${base} resume ${sessionId}`,
+          command: `${base} resume ${quoteArg(sessionId, this.shell)}`,
+        }];
+    return [
+      ...exact,
+      {
+        mode: 'last',
+        label: `Tiếp tục phiên gần nhất${suffix}`,
+        description: `${base} resume --last`,
+        command: `${base} resume --last`,
+      },
+      {
+        mode: 'picker',
+        label: `Chọn phiên để resume${suffix}`,
+        description: `${base} resume`,
+        command: `${base} resume`,
+      },
+      {
+        mode: 'new',
+        label: `Tạo phiên mới${suffix}`,
+        description: base,
+        command: base,
+      },
+    ];
+  }
+
+  buildResumeCommand(sessionId: string, commandBefore?: string): string {
+    if (!CODEX_SESSION_ID_RE.test(sessionId)) throw new Error('Codex session id không hợp lệ');
+    return `${this.safeBaseCommand(commandBefore)} resume ${quoteArg(sessionId, this.shell)}`;
+  }
+
+  /**
+   * Chỉ giữ cờ toàn quyền khi TOÀN BỘ lệnh khớp grammar mà adapter tự sinh. Không được suy
+   * quyền từ việc thấy token `--yolo` đâu đó trong text store không đáng tin.
+   */
+  private safeBaseCommand(commandBefore: string | undefined): string {
+    const command = commandBefore?.trim() ?? '';
+    for (const flag of ['--yolo', '--dangerously-bypass-approvals-and-sandbox']) {
+      const base = `${CODEX_BIN} ${flag}`;
+      if (command === base || command === `${base} resume` || command === `${base} resume --last`) {
+        return base;
+      }
+      const prefix = `${base} resume `;
+      if (!command.startsWith(prefix)) continue;
+      const quoted = command.slice(prefix.length);
+      const match = quoted.match(/^(['"])([A-Za-z0-9_][\w.:-]{0,127})\1$/);
+      const sessionId = match?.[2];
+      if (sessionId !== undefined && quoted === quoteArg(sessionId, this.shell)) return base;
+    }
+    return CODEX_BIN;
   }
 
   ownsCommand(command: string): boolean {
@@ -178,7 +272,7 @@ export function docSessionMeta(
     if (typeof sessionId !== 'string') return null;
     // Id đi thẳng vào chuỗi lệnh shell. `quoteArg` đã escape, nhưng lọc ngay ở cửa ĐỌC là lớp
     // phòng thủ rẻ và không phụ thuộc vào việc trích dẫn của shell nào cũng kín.
-    if (!/^[\w.:-]{1,128}$/.test(sessionId)) return null;
+    if (!CODEX_SESSION_ID_RE.test(sessionId)) return null;
     const luc = p.timestamp !== undefined ? Date.parse(p.timestamp) : Number.NaN;
     return { sessionId, cwd: p.cwd, luc: Number.isNaN(luc) ? 0 : luc };
   } catch {

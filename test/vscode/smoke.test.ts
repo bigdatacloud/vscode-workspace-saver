@@ -1,7 +1,7 @@
 import * as assert from 'node:assert';
 import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
-import { TerminalManager } from '../../src/terminal/manager';
+import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../../src/terminal/manager';
 
 const EXPECTED_COMMANDS = [
   'aiWorkspace.createWorkspace',
@@ -81,6 +81,13 @@ suite('AI Workspace extension', () => {
       assert.ok(handle, 'create phải trả về handle');
       assert.strictEqual(vscode.window.terminals.length, truoc + 1);
       assert.ok(vscode.window.terminals.some((t) => t.name === 'wss-backend'));
+      const created = vscode.window.terminals.find((t) => t.name === 'wss-backend');
+      const env = (created?.creationOptions as vscode.TerminalOptions | undefined)?.env;
+      assert.strictEqual(
+        env?.[MANAGED_TERMINAL_ID_ENV],
+        'backend',
+        'terminal do manager tạo phải mang id bền qua Reload trong creationOptions.env',
+      );
       assert.strictEqual(manager.has('backend'), true);
       assert.strictEqual(manager.focus('backend'), true);
       assert.strictEqual(manager.focus('khong-ton-tai'), false);

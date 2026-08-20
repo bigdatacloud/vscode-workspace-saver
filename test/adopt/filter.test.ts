@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { classifyTerminal, pickCwd } from '../../src/adopt/filter';
+import {
+  classifyTerminal,
+  pickCwd,
+  pickUniqueMatch,
+} from '../../src/adopt/filter';
 
 describe('classifyTerminal', () => {
   it('terminal pty của extension khác → suggest', () => {
@@ -27,5 +31,16 @@ describe('pickCwd', () => {
   });
   it('chuỗi rỗng là giá trị đã xác định — vẫn thắng (chỉ bỏ qua undefined)', () => {
     expect(pickCwd('', 'C:\\b', 'C:\\c')).toBe('');
+  });
+});
+
+describe('pickUniqueMatch', () => {
+  it('trả đúng phần tử khi chỉ có một kết quả', () => {
+    expect(pickUniqueMatch([1, 2, 3], (x) => x === 2)).toBe(2);
+  });
+
+  it('không đoán khi không có hoặc có nhiều kết quả', () => {
+    expect(pickUniqueMatch([1, 2], (x) => x === 3)).toBeUndefined();
+    expect(pickUniqueMatch([1, 2, 2], (x) => x === 2)).toBeUndefined();
   });
 });

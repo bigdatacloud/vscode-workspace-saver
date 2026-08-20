@@ -31,7 +31,10 @@ export const TerminalEntrySchema = z.object({
    * tin cậy — một `workspaces.json` bị sửa tay không được phép biến thành lệnh tuỳ ý. Cùng bộ
    * ký tự với bộ lọc ở cửa đọc rollout của Codex.
    */
-  agentSessionId: z.string().regex(/^[\w.:-]{1,128}$/, 'id phiên agent có ký tự không hợp lệ').optional(),
+  agentSessionId: z.string().regex(
+    /^[A-Za-z0-9_][\w.:-]{0,127}$/,
+    'id phiên agent có ký tự không hợp lệ hoặc bắt đầu bằng dấu gạch',
+  ).optional(),
 }).passthrough();
 
 export const WorkspaceSchema = z

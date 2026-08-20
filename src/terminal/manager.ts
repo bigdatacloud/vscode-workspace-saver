@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
 
+/** Bằng chứng bền qua Reload để nối đúng terminal với entry, không phải đoán bằng tên/cwd. */
+export const MANAGED_TERMINAL_ID_ENV = 'AI_WORKSPACE_TERMINAL_ID';
+
 export interface TerminalHandle {
   sendText(text: string): void;
 }
@@ -42,7 +45,7 @@ export class TerminalManager {
     const terminal = vscode.window.createTerminal({
       name: options.name,
       cwd: options.cwd,
-      env: options.env,
+      env: { ...options.env, [MANAGED_TERMINAL_ID_ENV]: key },
       location:
         noiMo === 'panel' ? vscode.TerminalLocation.Panel : vscode.TerminalLocation.Editor,
     });

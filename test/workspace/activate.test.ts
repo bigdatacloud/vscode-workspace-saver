@@ -37,7 +37,10 @@ function makePorts(over: Partial<ActivatePorts> = {}) {
     confirmTrust: async () => true,
     // Bằng chứng theo ENTRY, không theo chuỗi lệnh (xem ghi chú ở ActivatePorts).
     laLenhAgent: (e) => e.kind === 'claude' || e.agentId === 'codex',
-    lenhTiepTucAgent: () => null,
+    chonLenhKhoiPhucAgent: async (e) => e.startCommand === undefined
+      ? undefined
+      : { command: e.startCommand, entry: e },
+    onAgentLaunched: () => {},
     coPhienDangChayNgoai: () => false,
     onMinted: async () => { calls.push('minted'); },
     warn: () => {},
@@ -63,17 +66,67 @@ describe('activateWorkspace', () => {
     expect(calls).not.toContain('minted');
   });
 
-  it('entry codex chưa có id phiên → nối lại phiên gần nhất thay vì chạy lại lệnh khởi chạy', async () => {
+  it('entry codex chạy lệnh khôi phục người dùng chọn thay vì lệnh khởi chạy ban đầu', async () => {
+    const codexMoi: TerminalEntry = {
+      id: U('8'), name: 'cdx', cwd: 'D:\\x', kind: 'plain', agentId: 'codex', startCommand: 'codex --yolo',
+    };
+    const onAgentLaunched = vi.fn();
+    const { ports, sent } = makePorts({
+      chonLenhKhoiPhucAgent: async (entry) => ({
+        command: 'codex --yolo resume --last',
+        entry,
+      }),
+      onAgentLaunched,
+    });
+    await activateWorkspace(ws([codexMoi]), ports);
+    expect(sent.get(codexMoi.id)).toEqual(['codex --yolo resume --last']);
+    expect(onAgentLaunched).toHaveBeenCalledWith(
+      codexMoi,
+      'codex --yolo resume --last',
+      expect.any(Number),
+    );
+  });
+
+  it('hủy chọn lệnh khôi phục Codex → không tạo terminal rỗng', async () => {
     const codexMoi: TerminalEntry = {
       id: U('8'), name: 'cdx', cwd: 'D:\\x', kind: 'plain', agentId: 'codex', startCommand: 'codex',
     };
-    const { ports, sent } = makePorts({
-      lenhTiepTucAgent: (e) => (e.agentId === 'codex' && e.agentSessionId === undefined
-        ? 'codex resume --last'
-        : null),
+    const { ports, calls } = makePorts({ chonLenhKhoiPhucAgent: async () => undefined });
+    const r = await activateWorkspace(ws([codexMoi]), ports);
+    expect(calls).not.toContain(`create:${codexMoi.id}`);
+    expect(r.opened).toEqual([]);
+  });
+
+  it('cwd Codex đã mất → báo lỗi trước, không mở QuickPick khôi phục', async () => {
+    const codexMoi: TerminalEntry = {
+      id: U('8'), name: 'cdx', cwd: 'D:/mat', kind: 'plain', agentId: 'codex', startCommand: 'codex',
+    };
+    const picker = vi.fn(async (entry: TerminalEntry) => ({ command: 'codex resume --last', entry }));
+    const { ports, calls } = makePorts({
+      fsExists: () => false,
+      chonLenhKhoiPhucAgent: picker,
     });
-    await activateWorkspace(ws([codexMoi]), ports);
-    expect(sent.get(codexMoi.id)).toEqual(['codex resume --last']);
+    const r = await activateWorkspace(ws([codexMoi]), ports);
+    expect(picker).not.toHaveBeenCalled();
+    expect(calls).not.toContain(`create:${codexMoi.id}`);
+    expect(r.failed).toEqual([{ id: codexMoi.id, reason: expect.stringContaining('D:/mat') }]);
+  });
+
+  it('sau QuickPick phải tạo terminal từ entry đã re-resolve, không dùng snapshot cũ', async () => {
+    const cu: TerminalEntry = {
+      id: U('8'), name: 'cdx', cwd: 'D:\\cu', kind: 'plain', agentId: 'codex', startCommand: 'codex',
+    };
+    const moi: TerminalEntry = { ...cu, cwd: 'D:\\moi' };
+    const created: TerminalEntry[] = [];
+    const { ports } = makePorts({
+      chonLenhKhoiPhucAgent: async () => ({ command: 'codex resume --last', entry: moi }),
+      createTerminal: (entry) => {
+        created.push(entry);
+        return { sendText: () => {} };
+      },
+    });
+    await activateWorkspace(ws([cu]), ports);
+    expect(created).toEqual([moi]);
   });
 
   it('plain có startCommand + đã trust → gửi lệnh; không startCommand → chỉ mở', async () => {

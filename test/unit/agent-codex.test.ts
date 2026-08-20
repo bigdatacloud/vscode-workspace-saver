@@ -54,6 +54,8 @@ describe('docSessionMeta', () => {
       );
     expect(doc(SID)?.sessionId).toBe(SID);
     expect(doc("x'; rm -rf /")).toBeNull();
+    expect(doc('--dangerously-bypass-approvals-and-sandbox')).toBeNull();
+    expect(doc('--last')).toBeNull();
     expect(doc('')).toBeNull();
   });
 
@@ -156,14 +158,59 @@ describe('CodexAdapter.timSessionMoi', () => {
 describe('CodexAdapter lệnh', () => {
   const a = new CodexAdapter('posix', fakeFs({}), HOME, '/');
 
-  it('3 biến thể khởi chạy, không có biến thể nào đặt trước id (Codex không hỗ trợ)', () => {
+  it('có đủ biến thể thường/yolo, không có biến thể nào đặt trước id (Codex không hỗ trợ)', () => {
     const ds = a.buildLaunchOptions();
-    expect(ds.map((o) => o.command)).toEqual(['codex', 'codex resume --last', 'codex resume']);
+    expect(ds.map((o) => o.command)).toEqual([
+      'codex',
+      'codex --yolo',
+      'codex resume --last',
+      'codex --yolo resume --last',
+      'codex resume',
+      'codex --yolo resume',
+    ]);
+    expect(ds.map((o) => o.mode)).toEqual(['new', 'new', 'last', 'last', 'picker', 'picker']);
     expect(ds.every((o) => o.sessionId === undefined)).toBe(true);
+  });
+
+  it('khôi phục mặc định đúng phiên đã lưu và giữ --yolo của lệnh ban đầu', () => {
+    const ds = a.buildRestoreOptions('codex --yolo', SID);
+    expect(ds.map((o) => [o.mode, o.command])).toEqual([
+      ['exact', `codex --yolo resume '${SID}'`],
+      ['last', 'codex --yolo resume --last'],
+      ['picker', 'codex --yolo resume'],
+      ['new', 'codex --yolo'],
+    ]);
+    expect(ds.every((o) => o.label.includes('bỏ qua phê duyệt và sandbox'))).toBe(true);
+  });
+
+  it('chưa có id phiên thì resume phiên cuối trong cwd là lựa chọn mặc định', () => {
+    const ds = a.buildRestoreOptions('codex --yolo');
+    expect(ds[0]).toMatchObject({ mode: 'last', command: 'codex --yolo resume --last' });
+  });
+
+  it('không chép phần đuôi tùy ý từ store vào lệnh khôi phục được miễn trust', () => {
+    for (const command of [
+      'codex --yolo; Write-Host pwn',
+      'codex --yolo ; Write-Host pwn',
+      'Write-Output --yolo',
+      './codex --yolo',
+      'C:\\tmp\\codex.exe --yolo',
+      "codex '--yolo",
+    ]) {
+      const ds = a.buildRestoreOptions(command, SID);
+      expect(ds.every((o) => !o.command.includes('Write-Host'))).toBe(true);
+      expect(ds[0]?.command).toBe(`codex resume '${SID}'`);
+    }
+  });
+
+  it('session id bắt đầu bằng dấu gạch không bao giờ thành option của Codex', () => {
+    expect(a.buildRestoreOptions('codex', '--last')[0]).toMatchObject({ mode: 'last' });
+    expect(() => a.buildResumeCommand('--dangerously-bypass-hook-trust')).toThrow(/session id/i);
   });
 
   it('resume trích dẫn id', () => {
     expect(a.buildResumeCommand(SID)).toBe(`codex resume '${SID}'`);
+    expect(a.buildResumeCommand(SID, 'codex --yolo')).toBe(`codex --yolo resume '${SID}'`);
   });
 
   it('mọi lệnh sinh ra đều được ownsCommand nhận (capture bỏ qua, không nhớ lệnh thô)', () => {

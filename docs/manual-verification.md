@@ -255,8 +255,8 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       chuyển sang nhãn "chưa mở" trong cây (KHÔNG biến mất khỏi workspace)
 - [ ] Đóng workspace rồi kích hoạt lại workspace đó → terminal "chưa mở" ở trên được mở lại
       bình thường (đúng cwd, resume/startCommand như đã khai báo)
-- [ ] `AI Workspace: Bỏ terminal khỏi workspace` trên một terminal ĐANG MỞ → entry biến mất
-      khỏi cây, nhưng terminal thật KHÔNG bị đóng (vẫn còn trong `vscode.window.terminals`)
+- [ ] `AI Workspace: Bỏ terminal khỏi workspace` trên một terminal ĐANG MỞ → modal hỏi đóng
+      luôn hay chỉ bỏ; kiểm đủ ba nhánh ở mục **Bỏ terminal khỏi workspace** bên dưới
 
 ## Vị trí terminal (editor area)
 - [ ] `AI Workspace: Tạo terminal mới` từ menu chuột phải workspace → hỏi một đường dẫn →
@@ -292,7 +292,12 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       hội thoại cũ (không phải hội thoại trắng), kể cả entry chưa từng bắt được session id
       (khi đó lệnh gửi là `claude -c`)
 - [ ] Terminal Codex chưa bắt được id phiên → kích hoạt lại chạy `codex resume --last`,
-      không mở phiên mới
+      không mở phiên mới; QuickPick đặt lựa chọn này ở đầu
+- [ ] Terminal Codex bắt đầu bằng `codex --yolo` → kích hoạt lại cho chọn
+      `codex --yolo resume <id>` (nếu đã dò được id) hoặc `codex --yolo resume --last`;
+      chọn `--last`/picker/new thì id mới được dò và lưu lại
+- [ ] Esc ở QuickPick khôi phục Codex → terminal đó vẫn đóng, không sinh tab shell rỗng;
+      các terminal khác trong workspace vẫn mở bình thường
 - [ ] Reload Window rồi kích hoạt workspace → KHÔNG sinh thêm tiến trình claude thứ hai cho
       cùng một hội thoại (kiểm bằng `claude agents --json`: mỗi sessionId chỉ một pid)
 - [ ] Tên terminal trong cây KHÔNG bị đổi thành "claude" hay dính ký hiệu ✳/◐ sau khi khôi
@@ -312,6 +317,10 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Có terminal chạy TRÙNG hội thoại với terminal vừa nối lại → hiện cảnh báo kèm nút "Đóng
       các terminal trùng"; bấm thì chỉ đóng đúng những cái trùng, terminal trong cây còn nguyên
 - [ ] Terminal Codex hồi sinh (trùng tên + cwd) cũng được nhận, không mở thêm tab
+- [ ] Hai terminal Codex cùng tên + cwd được VS Code hồi sinh đủ cả hai → nhận lại cả hai,
+      KHÔNG mở/resume thêm terminal nào
+- [ ] Hai entry Codex cùng tên + cwd nhưng chỉ còn một tab hồi sinh → không đoán entry, không
+      resume chồng; hiện cảnh báo yêu cầu đóng tab mơ hồ rồi kích hoạt lại
 
 ## Thêm terminal mồ côi từ menu tab
 - [ ] Chuột phải TAB terminal trong khu editor → có mục "AI Workspace: Thêm terminal đang mở
@@ -352,6 +361,14 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       bấm → modal xác nhận, Cancel thì không gì xảy ra, "Đóng" mới đóng terminal
 - [ ] Chuyển workspace (bấm workspace khác) vẫn chỉ hỏi MỘT modal "Lưu và đóng X trước khi
       mở Y?" — không hỏi confirm hai lần
+
+## Bỏ terminal khỏi workspace
+- [ ] Terminal còn mở → context menu **Bỏ terminal khỏi workspace** hiện modal với
+      **Bỏ và đóng terminal** / **Chỉ bỏ khỏi workspace** / Cancel
+- [ ] Chọn **Bỏ và đóng terminal** → entry biến mất và tab terminal tương ứng đóng
+- [ ] Chọn **Chỉ bỏ khỏi workspace** → entry biến mất nhưng tab terminal vẫn chạy
+- [ ] Cancel/Esc → cả entry và tab terminal giữ nguyên; terminal vốn đã đóng thì bỏ trực tiếp
+      không hỏi
 
 ## Khóa một workspace active mỗi cửa sổ (V5)
 - [ ] Kích hoạt một workspace ở cửa sổ VS Code A → mở một cửa sổ VS Code B khác (cùng máy),

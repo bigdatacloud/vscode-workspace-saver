@@ -36,9 +36,10 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   temp+rename (atomic) — không có thao tác Save thủ công nào.
 - **Nối lại thay vì resume lần hai**: sau khi reload cửa sổ VS Code, VS Code hồi sinh các
   terminal cũ kèm tiến trình Claude vẫn đang chạy bên trong. Kích hoạt workspace giờ nối lại
-  vào chính những terminal đó trước — theo phả hệ tiến trình với entry có session đang sống,
-  theo tên terminal duy nhất (kèm cwd khớp nếu biết) với phần còn lại — rồi mới mở những cái
-  thực sự còn thiếu. Không có bước này thì mỗi lần reload lại thêm một tiến trình `--resume`
+  vào chính những terminal đó trước — theo ID bền được nhúng lúc tạo terminal, theo phả hệ tiến
+  trình với entry Claude có session đang sống, hoặc theo tên + cwd duy nhất cho terminal legacy
+  — rồi mới mở những cái thực sự còn thiếu. Nhóm Codex legacy mơ hồ được giữ nguyên và bỏ qua,
+  không nhận nuôi/khởi chạy đoán. Không có bước này thì mỗi lần reload lại thêm một tiến trình `--resume`
   vào hội thoại đang chạy dở, nhiều tiến trình cùng ghi một file phiên.
 - **Kích hoạt / chuyển workspace**: bấm một workspace chưa active → mở lại từng terminal đã
   lưu. Nếu đang có workspace khác active, extension hỏi modal "Lưu và đóng X trước khi mở
@@ -57,10 +58,12 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   `startCommand` (kể cả do tự bắt) làm mất trust cũ (vân tay đổi) — lần mở kế tiếp hỏi trust lại.
 - **Không chỉ Claude — Codex cũng khôi phục được hội thoại**: lệnh *Tạo terminal Codex mới*
   mở terminal rồi **dò id phiên** từ `~/.codex/sessions` (Codex không có cờ đặt trước id như
-  `--session-id` của Claude, nên phải dò sau khi chạy); có id rồi thì lần khôi phục sau chạy
-  `codex resume <id>`. Chưa dò ra (bạn chưa gõ gì, hoặc hai phiên Codex cùng thư mục nên mơ
-  hồ) thì entry vẫn giữ lệnh khởi chạy ban đầu — mở lại được, chỉ là phiên mới. Codex không
-  có registry phiên đang chạy nên **không có trạng thái bận/rảnh**, chỉ "đang mở".
+  `--session-id` của Claude, nên phải dò sau khi chạy). Khi mở lại, extension hiện danh sách
+  lệnh: đúng session id đã lưu đứng đầu; nếu chưa có id thì `codex resume --last` đứng đầu,
+  sau đó là bộ chọn session và phiên mới. Cờ toàn quyền ban đầu được giữ nguyên, ví dụ
+  `codex --yolo` khôi phục thành `codex --yolo resume --last` hoặc
+  `codex --yolo resume <id>`. Bấm Esc thì bỏ qua terminal đó, không tạo shell rỗng. Codex
+  không có registry phiên đang chạy nên **không có trạng thái bận/rảnh**, chỉ "đang mở".
   Công cụ khác (gemini, opencode…) vẫn được khôi phục ở mức ứng dụng qua `startCommand`, và
   nếu chúng có lệnh resume riêng thì đặt tay bằng *Đặt lệnh khởi động cho terminal*.
 - **Bắt Claude session tự động**: mỗi ~3 giây, extension đối chiếu cwd của các terminal đang
@@ -99,12 +102,12 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
 | AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — hỏi đường dẫn, rồi tên worktree (để trống thì làm thẳng trên đường dẫn đó; worktree được tạo CẠNH repo ở `<repo>-worktrees/<tên>`, không nằm trong repo), rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
-| AI Workspace: Tạo terminal Codex mới | `aiWorkspace.newCodexTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn rồi chọn cách chạy (`codex`, `codex resume --last`, `codex resume`); id phiên được dò từ `~/.codex/sessions` sau đó, lần sau khôi phục bằng `codex resume <id>` |
+| AI Workspace: Tạo terminal Codex mới | `aiWorkspace.newCodexTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn rồi chọn cách chạy (`codex`, `codex resume --last`, `codex resume`, kèm các biến thể `--yolo`); id phiên được dò từ `~/.codex/sessions`, lần mở lại cho chọn đúng id / phiên cuối / bộ chọn / phiên mới |
 | AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | **Nút "+" ngay trên dòng workspace** (hiện khi rê chuột) / palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
 | AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
 | AI Workspace: Xem đường dẫn terminal | `aiWorkspace.showTerminalPath` | Context menu terminal item — hiện đầy đủ cwd kèm nút "Sao chép đường dẫn" / "Mở thư mục" (hover vào item cũng thấy đường dẫn) |
 | AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
-| AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal |
+| AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal — terminal còn mở thì hỏi đóng luôn / chỉ bỏ / hủy |
 | AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây |
 | AI Workspace: Thêm terminal đang mở vào workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Menu chuột phải tab terminal / palette |
 | AI Workspace: Gắn session AI vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây — terminal Claude thì chọn trong các session đang chạy, terminal Codex thì chọn trong các phiên gần đây đọc từ `~/.codex/sessions` (phiên cùng thư mục xếp trước) |
@@ -154,7 +157,8 @@ bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn củ
 
 - Không tự chạy `startCommand` nào chưa được xác nhận tin tưởng (trust theo vân tay nội dung
   lệnh, đổi lệnh là mất trust cũ).
-- Không tự đóng terminal thật khi xóa workspace hay khi gỡ terminal khỏi workspace.
+- Xóa workspace không tự đóng terminal thật; khi gỡ một terminal đang mở, chỉ đóng nếu bạn
+  chọn rõ **Bỏ và đóng terminal** trong modal.
 - `workspaces.json` hỏng/parse lỗi → sao lưu sang `workspaces.json.bak-<epoch>` rồi khởi tạo
   lại danh sách rỗng, kèm cảnh báo một lần — không bao giờ âm thầm vứt dữ liệu hỏng.
 - Terminal có `--resume` id không còn hội thoại: extension không tự xử lý, terminal vẫn mở và

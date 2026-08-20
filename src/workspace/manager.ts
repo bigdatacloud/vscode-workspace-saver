@@ -4,7 +4,11 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ZodError } from 'zod';
 
-import { classifyTerminal, pickCwd } from '../adopt/filter';
+import {
+  classifyTerminal,
+  pickCwd,
+  pickUniqueMatch,
+} from '../adopt/filter';
 import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
 import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
 import { CodexAdapter } from '../agent/codex';
@@ -38,10 +42,11 @@ import {
   type ShardResult,
 } from '../model/store';
 import { upsertTerminal } from '../model/store';
-import { TerminalManager } from '../terminal/manager';
+import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
 import { gopGoiYDuongDan } from './paths';
+import { decideTerminalRemoval, type RemoveTerminalDecision } from './remove';
 
 export type TerminalState = 'busy' | 'idle' | 'blocked' | 'loading' | 'open' | 'closed' | 'error';
 
@@ -97,6 +102,7 @@ const LUI_SAU_GHI_HONG_MS = 5_000;
 const LUI_TOI_DA_MS = 600_000;
 /** Hỏng liên tiếp chừng này lần thì coi như máy không tra được: cảnh báo và thôi ưu tiên. */
 const HONG_LIEN_TIEP_BO_CUOC = 3;
+const ENTRY_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * `pickCwd` cố tình chỉ bỏ qua `undefined` (chuỗi rỗng là lỗi của caller — đã ghim bằng test).
@@ -112,6 +118,34 @@ function creationCwd(terminal: vscode.Terminal): string | undefined {
   const cwd = (terminal.creationOptions as vscode.TerminalOptions).cwd;
   if (cwd === undefined) return undefined;
   return nonEmpty(typeof cwd === 'string' ? cwd : cwd.fsPath);
+}
+
+function terminalCwd(terminal: vscode.Terminal): string | undefined {
+  return terminal.shellIntegration?.cwd?.fsPath ?? creationCwd(terminal);
+}
+
+function nameCwdKey(name: string, cwd: string): string {
+  return JSON.stringify([name, normalizeCwd(cwd)]);
+}
+
+function restoredTerminalKey(terminal: vscode.Terminal): string | null {
+  const cwd = terminalCwd(terminal);
+  return cwd === undefined ? null : nameCwdKey(boKyHieuTrangThai(terminal.name), cwd);
+}
+
+function managedTerminalId(terminal: vscode.Terminal): string | undefined {
+  const env = (terminal.creationOptions as vscode.TerminalOptions).env;
+  const value = env?.[MANAGED_TERMINAL_ID_ENV];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function terminalMatchesEntry(terminal: vscode.Terminal, entry: TerminalEntry): boolean {
+  const cwd = terminalCwd(terminal);
+  if (cwd === undefined || normalizeCwd(cwd) !== normalizeCwd(entry.cwd)) return false;
+  const actualName = entry.kind === 'claude' || entry.agentId !== undefined
+    ? boKyHieuTrangThai(terminal.name)
+    : terminal.name;
+  return actualName === entry.name || (entry.claudeName !== undefined && actualName === entry.claudeName);
 }
 
 
@@ -618,7 +652,9 @@ export class WorkspaceManager implements vscode.Disposable {
           // gõ thẳng vào hội thoại đang sống. Chỉ mở những entry thực sự chưa có terminal.
           const toOpen: Workspace = {
             ...wsNow,
-            terminals: wsNow.terminals.filter((entry) => !this.terminals.has(entry.id)),
+            terminals: wsNow.terminals.filter(
+              (entry) => !this.terminals.has(entry.id) && !noiLai.boQua.includes(entry.id),
+            ),
           };
           // Claude cần nhiều giây boot + resume trước khi registry thấy session — đánh dấu
           // "đang tải" ngay để cây có phản hồi tức thì, không trông như đơ.
@@ -640,6 +676,11 @@ export class WorkspaceManager implements vscode.Disposable {
       if (ketQua.noiLai.ids.length > 0) {
         void vscode.window.showInformationMessage(
           `Đã nối lại ${ketQua.noiLai.ids.length} terminal đang chạy sẵn (không mở lại phiên lần hai).`,
+        );
+      }
+      if (ketQua.noiLai.boQua.length > 0) {
+        void vscode.window.showWarningMessage(
+          `Chưa mở lại ${ketQua.noiLai.boQua.length} terminal Codex vì các tab legacy cùng tên/thư mục không có ID để phân biệt. Các tab sống được giữ nguyên và không resume thêm. Hãy đóng các tab Codex mơ hồ, đóng workspace, rồi kích hoạt lại.`,
         );
       }
       const thua = ketQua.noiLai.thua;
@@ -725,12 +766,16 @@ export class WorkspaceManager implements vscode.Disposable {
    */
   private async noiLaiTerminalHoiSinh(
     ws: Workspace,
-  ): Promise<{ ids: string[]; trung: number; thua: vscode.Terminal[] }> {
+  ): Promise<{ ids: string[]; boQua: string[]; trung: number; thua: vscode.Terminal[] }> {
     const chuaTrack = () =>
       vscode.window.terminals.filter((t) => this.terminals.ownsTerminal(t) === null);
-    if (chuaTrack().length === 0) return { ids: [], trung: 0, thua: [] };
+    // Mọi phase thấp hơn exact marker chỉ được xét terminal legacy. Marker khác entry là
+    // ownership evidence mạnh hơn cả name/cwd lẫn phả hệ của một session claim đã cũ/trùng.
+    const legacyChuaTrack = () =>
+      chuaTrack().filter((terminal) => managedTerminalId(terminal) === undefined);
+    if (chuaTrack().length === 0) return { ids: [], boQua: [], trung: 0, thua: [] };
     const cho = ws.terminals.filter((e) => !this.terminals.has(e.id));
-    if (cho.length === 0) return { ids: [], trung: 0, thua: [] };
+    if (cho.length === 0) return { ids: [], boQua: [], trung: 0, thua: [] };
 
     const daNhan: string[] = [];
     let soTrung = 0;
@@ -740,6 +785,15 @@ export class WorkspaceManager implements vscode.Disposable {
       else this.ghiNhanShellPid(entry.id);
       daNhan.push(entry.id);
     };
+
+    // (0) Terminal do bản mới tạo mang id entry trong creationOptions.env; VS Code giữ lại
+    // creation options khi persistent terminal hồi sinh. Đây là bằng chứng trực tiếp, mạnh hơn
+    // tên/cwd và phân biệt được nhiều Codex giống hệt nhau dù thứ tự tab đã đổi.
+    for (const entry of cho) {
+      if (this.terminals.has(entry.id)) continue;
+      const khop = chuaTrack().filter((terminal) => managedTerminalId(terminal) === entry.id);
+      if (khop.length === 1) nhan(entry, khop[0]!);
+    }
 
     // (1) Bằng chứng phả hệ tiến trình. Xét MỌI phiên đang chạy chứ không riêng phiên mà
     // entry đang giữ id: sau reload, terminal hồi sinh có thể đang chạy một hội thoại mà
@@ -778,7 +832,7 @@ export class WorkspaceManager implements vscode.Disposable {
       // processId của một terminal chưa gắn tiến trình có thể không bao giờ resolve —
       // Promise.all chờ TẤT CẢ, nên phải có hạn giờ, nếu không luồng activate treo vĩnh viễn.
       await Promise.all(
-        chuaTrack().map(async (t) => {
+        legacyChuaTrack().map(async (t) => {
           let hen: NodeJS.Timeout | undefined;
           const pid = await Promise.race([
             t.processId,
@@ -870,12 +924,12 @@ export class WorkspaceManager implements vscode.Disposable {
     // chưa kịp báo cwd → không đủ bằng chứng → mở terminal mới (như trước bản này), thà thừa
     // một shell còn hơn giết nhầm một shell đang chạy dở.
     for (const entry of cho) {
-      if (entry.kind !== 'plain' || this.terminals.has(entry.id)) continue;
+      if (entry.kind !== 'plain' || entry.agentId === 'codex' || this.terminals.has(entry.id)) continue;
       // Tên shell mặc định KHÔNG phải bằng chứng: mọi terminal người dùng tự mở đều tên
       // `pwsh`/`bash`/…, nên "trùng tên + trùng cwd" khi tên là tên shell chỉ nghĩa là "có
       // một terminal nào đó ở cùng thư mục" — nhận nuôi nhầm rồi `closeActive` giết nó.
       if (TEN_SHELL_MAC_DINH.has(entry.name.trim().toLowerCase())) continue;
-      const khop = chuaTrack().filter((t) => {
+      const khop = legacyChuaTrack().filter((t) => {
         if (t.name !== entry.name) return false;
         // Ngay sau reload, Shell Integration thường chưa kịp báo cwd, nhưng cwd LÚC TẠO thì
         // VS Code khôi phục cùng terminal — dùng nó làm nguồn thứ hai thay vì bó tay.
@@ -884,7 +938,45 @@ export class WorkspaceManager implements vscode.Disposable {
       });
       if (khop.length === 1) nhan(entry, khop[0]!);
     }
-    return { ids: daNhan, trung: soTrung, thua: this.terminalThua(phienTrongTerminal) };
+
+    // (2b) Codex phải xét THEO NHÓM, không xét từng entry: hai entry cùng tên/cwd với một tab
+    // sống vẫn làm tab đó trông "duy nhất" ở lượt entry đầu, nhưng ta không biết nó thuộc id
+    // nào. Codex không có registry PID như Claude để phân biệt. Đúng đủ số lượng thì ghép ổn
+    // định được nhóm một-một; mọi nhóm nhiều phần tử hoặc lệch số lượng đều bỏ qua mở lại CẢ
+    // nhóm để không resume chồng và cũng không nhận nuôi nhầm terminal rồi đóng nó về sau.
+    // Người dùng có thể đóng tab mơ hồ rồi kích hoạt lại để mở đủ từ store.
+    const codexConLai = cho.filter(
+      (entry) => entry.agentId === 'codex' && !this.terminals.has(entry.id),
+    );
+    const terminalConLai = legacyChuaTrack();
+    const soEntryTheoKey = new Map<string, number>();
+    const soTerminalTheoKey = new Map<string, number>();
+    for (const entry of codexConLai) {
+      const key = nameCwdKey(entry.name, entry.cwd);
+      soEntryTheoKey.set(key, (soEntryTheoKey.get(key) ?? 0) + 1);
+    }
+    for (const terminal of terminalConLai) {
+      const key = restoredTerminalKey(terminal);
+      if (key !== null) soTerminalTheoKey.set(key, (soTerminalTheoKey.get(key) ?? 0) + 1);
+    }
+    const boQua = codexConLai
+      .filter((entry) => {
+        const key = nameCwdKey(entry.name, entry.cwd);
+        const live = soTerminalTheoKey.get(key) ?? 0;
+        return live > 0 && (live !== 1 || soEntryTheoKey.get(key) !== 1);
+      })
+      .map((entry) => entry.id);
+    const boQuaSet = new Set(boQua);
+    for (const entry of codexConLai) {
+      if (boQuaSet.has(entry.id)) continue;
+      const key = nameCwdKey(entry.name, entry.cwd);
+      const terminal = pickUniqueMatch(
+        terminalConLai,
+        (candidate) => restoredTerminalKey(candidate) === key,
+      );
+      if (terminal !== undefined) nhan(entry, terminal);
+    }
+    return { ids: daNhan, boQua, trung: soTrung, thua: this.terminalThua(phienTrongTerminal) };
   }
 
   /**
@@ -927,6 +1019,7 @@ export class WorkspaceManager implements vscode.Disposable {
 
   private buildPorts(ws: Workspace): ActivatePorts {
     const trustKey = `ws:${ws.id}`;
+    const codexRestoreModes = new Map<string, 'exact' | 'last' | 'picker' | 'new'>();
     return {
       createTerminal: (entry) => {
         const handle = this.terminals.create(entry.id, {
@@ -940,19 +1033,57 @@ export class WorkspaceManager implements vscode.Disposable {
       agent: this.agent,
       fsExists: (p) => nodeFs.existsSync(p),
       laLenhAgent: (entry) => this.laEntryAgent(entry),
-      lenhTiepTucAgent: (entry) => {
-        // Chỉ Codex: entry Claude đi nhánh riêng ở activateWorkspace. Có id rồi thì
-        // `startCommand` đã là `codex resume <id>` — chính xác hơn, cứ để nó chạy.
-        if (entry.agentId !== 'codex' || entry.agentSessionId !== undefined) return null;
-        if (!this.laEntryAgent(entry)) return null;
-        // KHÔNG dùng `resume --last`: nó lấy phiên gần nhất theo máy, có thể là hội thoại của
-        // dự án khác. Tự tra phiên gần nhất ĐÚNG THƯ MỤC này rồi resume theo id.
-        const cuaThuMuc = this.codex
-          .lietKeGanDay()
-          .filter((s) => normalizeCwd(s.cwd) === normalizeCwd(entry.cwd));
-        const moiNhat = cuaThuMuc[0];
-        if (!moiNhat) return null; // không có gì để nối lại → chạy lệnh khởi chạy đã lưu
-        return this.codex.buildResumeCommand(moiNhat.sessionId);
+      chonLenhKhoiPhucAgent: async (entry) => {
+        if (entry.agentId !== 'codex') return undefined;
+        const snapshot = {
+          cwd: entry.cwd,
+          name: entry.name,
+          startCommand: entry.startCommand,
+          agentSessionId: entry.agentSessionId,
+        };
+        const options = this.codex.buildRestoreOptions(entry.startCommand, entry.agentSessionId);
+        const picked = await vscode.window.showQuickPick(options, {
+          title: `Mở lại Codex: ${entry.name}`,
+          placeHolder: 'Chọn lệnh mở lại session (lựa chọn đầu là mặc định)',
+        });
+        if (!picked) return undefined;
+
+        // QuickPick có thể mở lâu; entry/workspace có thể đã bị xóa trong lúc chờ. Chỉ sửa
+        // object hiện hành. Các nhánh không resume đúng id cũ phải bỏ claim cũ để lượt dò sau
+        // gắn session thực sự vừa mở, nếu không lần activate kế tiếp lại quay về hội thoại cũ.
+        const entryNow = this.findEntry(ws.id, entry.id);
+        if (!entryNow || entryNow.agentId !== 'codex') return undefined;
+        if (
+          entryNow.cwd !== snapshot.cwd ||
+          entryNow.name !== snapshot.name ||
+          entryNow.startCommand !== snapshot.startCommand ||
+          entryNow.agentSessionId !== snapshot.agentSessionId
+        ) {
+          void vscode.window.showWarningMessage(
+            `Terminal "${snapshot.name}" đã thay đổi trong lúc chọn session; chưa mở để tránh resume nhầm.`,
+          );
+          return undefined;
+        }
+        codexRestoreModes.set(entry.id, picked.mode);
+        return { command: picked.command, entry: entryNow };
+      },
+      onAgentLaunched: (entry, command, startedAt) => {
+        if (entry.agentId !== 'codex') return;
+        const mode = codexRestoreModes.get(entry.id);
+        codexRestoreModes.delete(entry.id);
+        if (mode === undefined) return;
+        const entryNow = this.findEntry(ws.id, entry.id);
+        if (!entryNow || entryNow !== entry) return;
+        // Chỉ commit lựa chọn SAU khi terminal đã tạo và sendText thành công. Nếu create/send
+        // ném, exact session id cũ vẫn nguyên vẹn để thử lại lần sau.
+        if (mode !== 'exact') delete entryNow.agentSessionId;
+        entryNow.startCommand = command;
+        this.touch(ws.id);
+        this.scheduleSave();
+        if (mode === 'exact') return;
+        // `resume --last` và picker ghi tiếp file cũ; "new" phải chỉ nhận file mới. Cùng
+        // một bộ dò với lệnh tạo terminal nên vẫn giữ bất biến một session/một entry.
+        void this.khamPhaSessionCodex(ws.id, entry.id, entry.cwd, startedAt, mode !== 'new');
       },
       coPhienDangChayNgoai: (cwd) => {
         // Không đọc nổi registry ở bước nối lại = không biết → phải coi như CÓ (xem ghi chú
@@ -1238,7 +1369,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // Chỉ biến thể resume mới được nhận diện qua "file cũ vừa được ghi tiếp"; với phiên MỚI
     // thì bắt buộc phải có file rollout mới, nếu không sẽ vơ nhầm phiên của terminal khác
     // đang chạy trong cùng thư mục.
-    const laResume = luaChon.command !== this.codex.buildLaunchOptions()[0]?.command;
+    const laResume = luaChon.mode !== 'new';
     void this.khamPhaSessionCodex(workspaceId, entry.id, cwd, truocKhiChay, laResume);
   }
 
@@ -1303,18 +1434,20 @@ export class WorkspaceManager implements vscode.Disposable {
         if (t.id === terminalId || t.agentSessionId !== sessionId) continue;
         if (!this.touchedIds.has(w.id) && !this.terminals.has(t.id)) continue;
         delete t.agentSessionId;
-        if (t.startCommand === this.codex.buildResumeCommand(sessionId)) {
+        if (t.startCommand === this.codex.buildResumeCommand(sessionId, t.startCommand)) {
           // Không XÓA lệnh: entry còn là terminal Codex, xóa đi là lần mở lại chỉ có shell
           // trống. Hạ về "phiên mới" — mất hội thoại cũ (nó thuộc terminal khác) nhưng vẫn
           // mở đúng công cụ.
-          t.startCommand = this.codex.buildLaunchOptions()[0]?.command;
+          t.startCommand = this.codex
+            .buildRestoreOptions(t.startCommand)
+            .find((option) => option.mode === 'new')?.command;
         }
         this.touch(w.id);
       }
     }
     entry.agentId = 'codex';
     entry.agentSessionId = sessionId;
-    entry.startCommand = this.codex.buildResumeCommand(sessionId);
+    entry.startCommand = this.codex.buildResumeCommand(sessionId, entry.startCommand);
     this.touch(workspaceId);
     this.scheduleSave();
     return true;
@@ -1431,8 +1564,8 @@ export class WorkspaceManager implements vscode.Disposable {
     if (entry.kind === 'claude') return true;
     if (entry.agentId !== 'codex' || entry.startCommand === undefined) return false;
     const hopLe = new Set(this.codex.buildLaunchOptions().map((o) => o.command));
-    if (entry.agentSessionId !== undefined) {
-      hopLe.add(this.codex.buildResumeCommand(entry.agentSessionId));
+    for (const option of this.codex.buildRestoreOptions(entry.startCommand, entry.agentSessionId)) {
+      hopLe.add(option.command);
     }
     return hopLe.has(entry.startCommand);
   }
@@ -1798,18 +1931,91 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   async removeTerminal(workspaceId: string, terminalId: string): Promise<void> {
-    // Nhả trước mọi lối thoát sớm: workspace biến mất (đã bị xóa) mà key còn trong map thì
-    // terminal đó vĩnh viễn không được nhận nuôi lại. Không dispose terminal thật —
-    // gỡ khỏi workspace chỉ là quên nó đi.
+    const wsBefore = findWorkspace(this.store, workspaceId);
+    const entryBefore = wsBefore?.terminals.find((entry) => entry.id === terminalId);
+    if (!wsBefore || !entryBefore) {
+      // Item stale nhưng key còn track: nhả để terminal không bị khóa khỏi adoption mãi mãi.
+      this.terminals.release(terminalId);
+      this.quenTerminal(terminalId);
+      return;
+    }
+
+    const trackedBefore = this.terminals.get(terminalId);
+    const liveCandidates = (entry: TerminalEntry): vscode.Terminal[] => {
+      const untracked = vscode.window.terminals.filter(
+        (terminal) => this.terminals.ownsTerminal(terminal) === null,
+      );
+      // ID do TerminalManager nhúng lúc tạo là bằng chứng trực tiếp. Chỉ rơi về tên+cwd cho
+      // terminal legacy chưa có marker; marker của entry khác là bằng chứng terminal KHÔNG thuộc
+      // entry này, dù tên/cwd có giống hệt.
+      const exact = untracked.filter((terminal) => managedTerminalId(terminal) === entry.id);
+      if (exact.length > 0) return exact;
+      return untracked.filter(
+        (terminal) => managedTerminalId(terminal) === undefined && terminalMatchesEntry(terminal, entry),
+      );
+    };
+    const candidatesBefore = trackedBefore === undefined ? liveCandidates(entryBefore) : [];
+    const terminalBefore = trackedBefore ?? pickUniqueMatch(candidatesBefore, () => true);
+    let decision: RemoveTerminalDecision;
+    if (trackedBefore === undefined && candidatesBefore.length > 1) {
+      // Không đưa nút "đóng" khi không biết tab nào là của entry: một thao tác remove không
+      // được biến thành đóng đoán terminal người dùng. Modal vẫn chặn việc âm thầm quên entry.
+      const answer = await vscode.window.showWarningMessage(
+        `Tìm thấy ${candidatesBefore.length} terminal cùng khớp "${entryBefore.name}" nhưng không xác định được tab tương ứng. Chỉ bỏ entry khỏi workspace và giữ nguyên tất cả terminal?`,
+        { modal: true },
+        'Chỉ bỏ khỏi workspace',
+      );
+      decision = answer === 'Chỉ bỏ khỏi workspace' ? 'remove-only' : 'cancel';
+    } else {
+      decision = await decideTerminalRemoval(terminalBefore !== undefined, async () => {
+        const answer = await vscode.window.showWarningMessage(
+          `Có đóng terminal "${entryBefore.name}" đang mở khi bỏ khỏi workspace "${wsBefore.name}" không?`,
+          { modal: true },
+          'Bỏ và đóng terminal',
+          'Chỉ bỏ khỏi workspace',
+        );
+        if (answer === 'Bỏ và đóng terminal') return 'close';
+        if (answer === 'Chỉ bỏ khỏi workspace') return 'keep';
+        return undefined;
+      });
+    }
+    if (decision === 'cancel') return;
+
+    // Modal có thể mở lâu: chỉ sửa entry hiện hành. Nếu nó đã biến mất thì không tự ý đóng
+    // terminal dựa trên một item cũ; luồng xóa workspace chịu trách nhiệm release tracking.
+    const wsNow = findWorkspace(this.store, workspaceId);
+    const entryNow = wsNow?.terminals.find((entry) => entry.id === terminalId);
+    if (!wsNow || !entryNow) return;
+    const candidatesNow = trackedBefore === undefined ? liveCandidates(entryNow) : [];
+    const sameUniqueLive =
+      terminalBefore !== undefined &&
+      candidatesNow.length === 1 &&
+      candidatesNow[0] === terminalBefore &&
+      (
+        managedTerminalId(terminalBefore) === terminalId ||
+        (entryNow.name === entryBefore.name && entryNow.cwd === entryBefore.cwd)
+      );
+    const canStillClose =
+      terminalBefore !== undefined &&
+      (
+        this.terminals.get(terminalId) === terminalBefore ||
+        (trackedBefore === undefined && sameUniqueLive)
+      );
+    if (decision === 'remove-and-close' && !canStillClose) {
+      void vscode.window.showWarningMessage(
+        `Terminal "${entryBefore.name}" đã thay đổi trong lúc chờ xác nhận; chưa bỏ khỏi workspace để tránh đóng nhầm tab.`,
+      );
+      return;
+    }
+    if (decision === 'remove-and-close' && terminalBefore !== undefined) {
+      terminalBefore.dispose();
+    }
     this.terminals.release(terminalId);
     this.quenTerminal(terminalId);
-    const ws = findWorkspace(this.store, workspaceId);
-    if (!ws) return;
-    removeTerminalEntry(ws, terminalId);
-    this.touch(ws.id);
+    removeTerminalEntry(wsNow, terminalId);
+    this.touch(wsNow.id);
     this.scheduleSave();
     this.onChanged.fire();
-    await Promise.resolve();
   }
 
   focusTerminal(workspaceId: string, terminalId: string): void {
@@ -1992,6 +2198,15 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   private adoptInto(ws: Workspace, terminal: vscode.Terminal): TerminalEntry | null {
+    const marker = managedTerminalId(terminal);
+    if (
+      marker !== undefined &&
+      this.store.workspaces.some((candidate) => candidate.terminals.some((entry) => entry.id === marker))
+    ) {
+      // Terminal vẫn mang marker của entry còn tồn tại ở workspace khác. Tạo alias id mới sẽ
+      // khiến lần Reload sau không entry nào có thể nối đúng và có thể đóng nhầm terminal đó.
+      return null;
+    }
     const cwd = pickCwd(
       nonEmpty(terminal.shellIntegration?.cwd?.fsPath),
       creationCwd(terminal),
@@ -2002,7 +2217,10 @@ export class WorkspaceManager implements vscode.Disposable {
 
     // Schema bắt name >= 1 ký tự; terminal không tên sẽ làm hỏng file store khi ghi.
     const name = terminal.name.trim() === '' ? 'terminal' : terminal.name;
-    const entry: TerminalEntry = { id: randomUUID(), name, cwd, kind: 'plain' };
+    // Remove-only giữ terminal sống cùng marker cũ. Nếu marker ấy đã mồ côi và vẫn là UUID hợp
+    // lệ thì tái dùng nó, để terminal vừa thêm lại tiếp tục nối đúng qua các lần Reload sau.
+    const id = marker !== undefined && ENTRY_ID_RE.test(marker) ? marker : randomUUID();
+    const entry: TerminalEntry = { id, name, cwd, kind: 'plain' };
     upsertTerminal(ws, entry);
     this.terminals.adopt(entry.id, terminal);
     this.ghiNhanShellPid(entry.id);
@@ -2115,7 +2333,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry = this.adoptInto(ws, target);
     if (!entry) {
       void vscode.window.showWarningMessage(
-        'Không xác định được thư mục làm việc của terminal nên chưa thêm được.',
+        'Không thêm được terminal: chưa xác định được thư mục làm việc hoặc terminal vẫn thuộc một workspace khác.',
       );
       return;
     }

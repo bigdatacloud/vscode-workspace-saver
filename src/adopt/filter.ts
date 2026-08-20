@@ -21,3 +21,17 @@ export function pickCwd(
 ): string | null {
   return shellCwd ?? creationCwd ?? folderCwd ?? null;
 }
+
+/** Trả kết quả chỉ khi tiêu chí nhận diện dẫn tới đúng một phần tử. */
+export function pickUniqueMatch<T>(
+  items: readonly T[],
+  predicate: (item: T) => boolean,
+): T | undefined {
+  let found: T | undefined;
+  for (const item of items) {
+    if (!predicate(item)) continue;
+    if (found !== undefined) return undefined;
+    found = item;
+  }
+  return found;
+}

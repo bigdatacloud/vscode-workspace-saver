@@ -60,4 +60,13 @@ describe('WorkspaceSchema', () => {
     expect(WorkspaceSchema.safeParse(wsValid).success).toBe(true);
     expect(WorkspaceSchema.safeParse({ ...wsValid, terminalLocation: 'window' }).success).toBe(false);
   });
+
+  it('agentSessionId không được bắt đầu bằng dấu gạch để khỏi bị CLI hiểu thành option', () => {
+    const codex = {
+      id: uuid2, name: 'codex', cwd: 'D:\\Coding\\erp', kind: 'plain', agentId: 'codex',
+      agentSessionId: '--dangerously-bypass-approvals-and-sandbox', startCommand: 'codex',
+    };
+    expect(WorkspaceSchema.safeParse({ ...wsValid, terminals: [codex] }).success).toBe(false);
+    expect(WorkspaceSchema.safeParse({ ...wsValid, terminals: [{ ...codex, agentSessionId: 'session-name' }] }).success).toBe(true);
+  });
 });
