@@ -203,3 +203,63 @@ describe('loadShards — chỉ đọc file .json của workspace', () => {
     expect(r.hong).toEqual([{ id: uuidA, backup: `${D}${SEP}${uuidA}.json.bak-5` }]);
   });
 });
+
+describe('bia mộ terminal đã bỏ', () => {
+  const uuidC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const ws = (id: string, terminals: Workspace['terminals']): Workspace =>
+    ({ id, name: 'W', lastActiveAt: null, activeWindowId: null, terminals });
+  const term = (id: string, name = 't') => ({ id, name, cwd: String.raw`D:\x`, kind: 'plain' as const });
+
+  it('terminal đã bỏ KHÔNG sống lại từ bản trên đĩa', () => {
+    const dia = ws(uuidA, [term(uuidB, 'giu'), term(uuidC, 'bo')]);
+    const ram = ws(uuidA, [term(uuidB, 'giu'), term(uuidC, 'bo')]);
+    removeTerminal(ram, uuidC, 1_000);
+    const ra = gopShard(dia, ram, 1_000);
+    expect(ra.terminals.map((t) => t.id)).toEqual([uuidB]);
+  });
+
+  it('bia mộ đi vào file và không cản terminal cửa sổ khác vừa thêm', () => {
+    const ram = ws(uuidA, [term(uuidB)]);
+    removeTerminal(ram, uuidB, 1_000);
+    const dia = ws(uuidA, [term(uuidB), term(uuidC, 'cua-ho')]);
+    const ra = gopShard(dia, ram, 1_000);
+    expect(ra.terminals.map((t) => t.name)).toEqual(['cua-ho']);
+    const { fs, files } = memFs();
+    saveShard(fs, 'C:\\d', ra, '\\');
+    expect(JSON.parse(files.get('C:\\d\\' + uuidA + '.json')!).removedTerminals)
+      .toEqual([{ id: uuidB, at: 1_000 }]);
+  });
+
+  it('thêm lại terminal cùng id thì bia mộ bị xoá', () => {
+    const ram = ws(uuidA, []);
+    removeTerminal(ram, uuidB, 1_000);
+    upsertTerminal(ram, term(uuidB, 'moi'));
+    const ra = gopShard(ws(uuidA, [term(uuidB, 'cu')]), ram, 1_000);
+    expect(ra.terminals.map((t) => t.name)).toEqual(['moi']);
+    expect(ra.removedTerminals ?? []).toEqual([]);
+  });
+
+  it('vòng đời thật: lưu → bỏ → lưu → khởi động lại thì terminal KHÔNG quay về', () => {
+    const SEP = String.fromCharCode(92);
+    const D = 'C:' + SEP + 'd';
+    const { fs: mem } = memFs();
+    const ram = ws(uuidA, [term(uuidB, 'giu'), term(uuidC, 'bo')]);
+    const luu = (now: number) => {
+      const raw = mem.readFile(D + SEP + uuidA + '.json');
+      const dia = raw === null ? null : (JSON.parse(raw) as Workspace);
+      saveShard(mem, D, gopShard(dia, ram, now), SEP);
+    };
+    luu(1_000);
+    removeTerminal(ram, uuidC, 2_000);
+    luu(2_000);
+    const sauKhoiDongLai = loadShards(mem, D, () => 0, SEP).workspaces;
+    expect(sauKhoiDongLai[0]!.terminals.map((t) => t.name)).toEqual(['giu']);
+  });
+
+  it('bia mộ quá hạn được dọn để file không phình mãi', () => {
+    const ram = ws(uuidA, []);
+    removeTerminal(ram, uuidB, 0);
+    const ra = gopShard(ws(uuidA, []), ram, 40 * 24 * 3600 * 1000);
+    expect(ra.removedTerminals ?? []).toEqual([]);
+  });
+});

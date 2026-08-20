@@ -37,6 +37,18 @@ export const TerminalEntrySchema = z.object({
   ).optional(),
 }).passthrough();
 
+/**
+ * Bia mộ: terminal đã bị bỏ khỏi workspace, kèm mốc thời gian bỏ (epoch ms).
+ *
+ * Cần thiết vì phép gộp RAM/đĩa không có cách nào khác để phân biệt "cửa sổ khác vừa thêm
+ * terminal này" với "chính ta vừa bỏ nó" — thiếu bia mộ thì mọi thao tác bỏ đều bị bản trên
+ * đĩa dựng dậy. Bia được dọn sau `BIA_MO_TTL_MS` nên danh sách không phình mãi.
+ */
+export const BiaMoTerminalSchema = z.object({
+  id: uuid,
+  at: z.number().int().nonnegative(),
+});
+
 export const WorkspaceSchema = z
   .object({
     id: uuid,
@@ -46,6 +58,7 @@ export const WorkspaceSchema = z
     /** Vị trí mở terminal riêng của workspace — không có thì theo setting chung. */
     terminalLocation: z.enum(['editor', 'panel']).optional(),
     terminals: z.array(TerminalEntrySchema),
+    removedTerminals: z.array(BiaMoTerminalSchema).optional(),
   })
   .passthrough()
   .superRefine((ws, ctx) => {
@@ -76,6 +89,7 @@ export const StoreFileSchema = z
     });
   });
 
+export type BiaMoTerminal = z.infer<typeof BiaMoTerminalSchema>;
 export type TerminalEntry = z.infer<typeof TerminalEntrySchema>;
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type StoreFile = z.infer<typeof StoreFileSchema>;

@@ -369,6 +369,13 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Chọn **Chỉ bỏ khỏi workspace** → entry biến mất nhưng tab terminal vẫn chạy
 - [ ] Cancel/Esc → cả entry và tab terminal giữ nguyên; terminal vốn đã đóng thì bỏ trực tiếp
       không hỏi
+- [ ] **BỀN QUA KHỞI ĐỘNG LẠI**: bỏ 2-3 terminal → đóng hẳn VS Code (hoặc tắt máy) → mở lại
+      → những terminal đã bỏ KHÔNG quay về (đây là lỗi bia mộ: trước đây bản trên đĩa dựng
+      lại mọi terminal từng có)
+- [ ] Bỏ terminal ở cửa sổ A, workspace đó cũng đang trong danh sách của cửa sổ B → B không
+      đẩy nó trở lại đĩa ở lần lưu kế tiếp
+- [ ] File `<globalStorage>/workspaces/<id>.json` sau khi bỏ có mảng `removedTerminals`
+      chứa đúng id vừa bỏ, và terminal đó biến khỏi `terminals`
 
 ## Khóa một workspace active mỗi cửa sổ (V5)
 - [ ] Kích hoạt một workspace ở cửa sổ VS Code A → mở một cửa sổ VS Code B khác (cùng máy),

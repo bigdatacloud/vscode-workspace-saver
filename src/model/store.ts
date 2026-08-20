@@ -3,6 +3,7 @@ import {
   StoreFileSchema,
   WorkspaceSchema,
   emptyStore,
+  type BiaMoTerminal,
   type StoreFile,
   type TerminalEntry,
   type Workspace,
@@ -40,6 +41,13 @@ export interface ShardResult {
 }
 
 const DUOI = '.json';
+
+/**
+ * Bia mộ sống bao lâu trước khi bị dọn. Nó chỉ cần sống lâu hơn bản RAM cũ trong một cửa sổ
+ * VS Code khác đang mở mà không lưu gì; 30 ngày là thừa cho việc đó, và mỗi bia chỉ tốn vài
+ * chục byte nên file không phình đáng kể.
+ */
+export const BIA_MO_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function tenFileWorkspace(dir: string, id: string, sep = '/'): string {
   return `${dir}${sep}${id}${DUOI}`;
@@ -90,19 +98,41 @@ export function deleteShard(fs: StoreFs, dir: string, id: string, sep = '/'): vo
   fs.remove(tenFileWorkspace(dir, id, sep));
 }
 
+/** Gom bia mộ của hai bên, mỗi id giữ mốc thời gian mới nhất. */
+function gomBiaMo(...nguon: (BiaMoTerminal[] | undefined)[]): Map<string, number> {
+  const ra = new Map<string, number>();
+  for (const ds of nguon) {
+    for (const b of ds ?? []) ra.set(b.id, Math.max(ra.get(b.id) ?? 0, b.at));
+  }
+  return ra;
+}
+
 /**
  * Gộp bản RAM của cửa sổ này với bản trên đĩa của CÙNG workspace trước khi ghi đè.
  *
- * Chỉ còn một luật, và nó phản ánh đúng thực tế: cửa sổ này là chủ những gì nó đang mở.
- * Terminal chỉ có trên đĩa (cửa sổ khác vừa thêm vào chính workspace này) được giữ lại thay
- * vì bị xoá; mọi thứ còn lại lấy theo bản của ta.
+ * Hai luật, và luật thứ hai là thứ trước đây thiếu:
+ *
+ * 1. Terminal chỉ có trên đĩa (cửa sổ khác vừa thêm vào chính workspace này) được giữ lại.
+ * 2. TRỪ KHI nó nằm trong bia mộ. Không có bia mộ thì phép gộp thuần hợp không có cách nào
+ *    phân biệt "cửa sổ khác vừa thêm" với "chính ta vừa bỏ" — nên MỌI lần bỏ terminal đều bị
+ *    chính bản trên đĩa dựng dậy ở nhịp ghi kế tiếp, và người dùng thấy lại toàn bộ terminal
+ *    từng có sau khi khởi động lại máy.
+ *
+ * Terminal còn sống trong bản của ta thì xoá bia mộ của nó: nó đã được thêm lại.
  */
-export function gopShard(disk: Workspace | null, ram: Workspace): Workspace {
+export function gopShard(disk: Workspace | null, ram: Workspace, now = Date.now()): Workspace {
   if (disk === null) return ram;
+  const bia = gomBiaMo(disk.removedTerminals, ram.removedTerminals);
+  for (const t of ram.terminals) bia.delete(t.id);
+  for (const [id, at] of bia) {
+    if (now - at > BIA_MO_TTL_MS) bia.delete(id);
+  }
   const coTrongRam = new Set(ram.terminals.map((t) => t.id));
-  const chiCoTrenDia = disk.terminals.filter((t) => !coTrongRam.has(t.id));
-  if (chiCoTrenDia.length === 0) return ram;
-  return { ...ram, terminals: [...ram.terminals, ...chiCoTrenDia] };
+  const chiCoTrenDia = disk.terminals.filter((t) => !coTrongRam.has(t.id) && !bia.has(t.id));
+  const ra: Workspace = { ...ram, terminals: [...ram.terminals, ...chiCoTrenDia] };
+  if (bia.size === 0) delete ra.removedTerminals;
+  else ra.removedTerminals = [...bia].map(([id, at]) => ({ id, at }));
+  return ra;
 }
 
 /**
@@ -174,11 +204,25 @@ export function upsertTerminal(ws: Workspace, entry: TerminalEntry): void {
   const i = ws.terminals.findIndex((t) => t.id === entry.id);
   if (i >= 0) ws.terminals[i] = entry;
   else ws.terminals.push(entry);
+  // Thêm lại thì bia mộ cũ phải biến mất, nếu không lần gộp sau lại chôn nó lần nữa.
+  const bia = ws.removedTerminals;
+  if (bia !== undefined) {
+    const con = bia.filter((b) => b.id !== entry.id);
+    if (con.length === 0) delete ws.removedTerminals;
+    else ws.removedTerminals = con;
+  }
 }
 
-export function removeTerminal(ws: Workspace, terminalId: string): void {
+/**
+ * Bỏ terminal khỏi workspace VÀ ghi bia mộ. Bia mộ là phần bắt buộc: xoá suông khỏi mảng thì
+ * bản trên đĩa (vẫn còn terminal đó) sẽ dựng nó dậy ở lần gộp kế tiếp — xem `gopShard`.
+ */
+export function removeTerminal(ws: Workspace, terminalId: string, now = Date.now()): void {
   const i = ws.terminals.findIndex((t) => t.id === terminalId);
   if (i >= 0) ws.terminals.splice(i, 1);
+  const bia = (ws.removedTerminals ?? []).filter((b) => b.id !== terminalId);
+  bia.push({ id: terminalId, at: now });
+  ws.removedTerminals = bia;
 }
 
 export const realStoreFs: StoreFs = {
@@ -190,7 +234,17 @@ export const realStoreFs: StoreFs = {
       throw e;
     }
   },
-  writeFile(p, c) { nodeFs.writeFileSync(p, c, 'utf8'); },
+  // fsync trước khi rename: không có nó thì nội dung mới có thể còn nằm trong cache của HĐH
+  // lúc mất điện, và cái rename "nguyên tử" chỉ đổi tên một file rỗng ra file thật.
+  writeFile(p, c) {
+    const fd = nodeFs.openSync(p, 'w');
+    try {
+      nodeFs.writeFileSync(fd, c, 'utf8');
+      nodeFs.fsyncSync(fd);
+    } finally {
+      nodeFs.closeSync(fd);
+    }
+  },
   rename(a, b) { nodeFs.renameSync(a, b); },
   list(dir) {
     try {
