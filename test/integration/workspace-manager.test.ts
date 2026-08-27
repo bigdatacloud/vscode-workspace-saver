@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const vscodeMock = vi.hoisted(() => ({
   window: {
     terminals: [] as unknown[],
+    activeTerminal: undefined as unknown,
     showWarningMessage: vi.fn(),
   },
   workspace: {
@@ -364,5 +365,120 @@ describe('WorkspaceManager — terminal hồi sinh', () => {
     expect(ws.terminals).toEqual([entry]);
     expect(terminals.release).not.toHaveBeenCalled();
     expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('WorkspaceManager — nhiều workspace cùng mở', () => {
+  const A = U('5');
+  const B = U('6');
+  const tA = U('7');
+  const tB = U('8');
+
+  function storeHaiWs(): StoreFile {
+    return {
+      version: 2,
+      workspaces: [
+        {
+          id: A, name: 'A', lastActiveAt: '2026-01-01T00:00:00.000Z', activeWindowId: 'cua-so-nay',
+          terminals: [{ id: tA, name: 'a', cwd: 'D:/a', kind: 'plain' }],
+        },
+        {
+          id: B, name: 'B', lastActiveAt: '2026-01-02T00:00:00.000Z', activeWindowId: 'cua-so-nay',
+          terminals: [{ id: tB, name: 'b', cwd: 'D:/b', kind: 'plain' }],
+        },
+      ],
+    };
+  }
+
+  interface Multi {
+    store: StoreFile;
+    activeIds: string[];
+    close(workspaceId: string): Promise<void>;
+    wsNhan(): string | null;
+    workspaceViews(): { id: string; isActive: boolean; isReceiving: boolean }[];
+  }
+
+  function multiManager(store: StoreFile, mo: string[], term: Map<string, vscode.Terminal>): Multi {
+    const m = Object.create(WorkspaceManager.prototype) as Multi;
+    Object.assign(m, {
+      store,
+      activeIds: mo,
+      terminals: {
+        get: (id: string) => term.get(id),
+        has: (id: string) => term.has(id),
+        ownsTerminal: (t: vscode.Terminal) => [...term].find(([, v]) => v === t)?.[0] ?? null,
+        release: vi.fn(),
+      },
+      statuses: new Map(),
+      errorIds: new Set(),
+      loadingIds: new Set(),
+      loadingTimer: null,
+      touch: vi.fn(),
+      scheduleSave: vi.fn(),
+      flush: vi.fn(),
+      onChanged: { fire: vi.fn() },
+      finalClaimSweep: vi.fn(async () => {}),
+      stopActivePoll: vi.fn(),
+      quenTerminal: vi.fn(),
+    });
+    return m;
+  }
+
+  beforeEach(() => {
+    vscodeMock.window.activeTerminal = undefined;
+  });
+
+  it('đóng một workspace KHÔNG đụng tới terminal của workspace kia', async () => {
+    const store = storeHaiWs();
+    const termA = fakeTerminal('a', 'D:/a', tA);
+    const termB = fakeTerminal('b', 'D:/b', tB);
+    const m = multiManager(store, [A, B], new Map([[tA, termA], [tB, termB]]));
+
+    await m.close(A);
+
+    expect(termA.dispose).toHaveBeenCalledOnce();
+    expect(termB.dispose).not.toHaveBeenCalled();
+    expect(m.activeIds).toEqual([B]);
+  });
+
+  it('đóng workspace chỉ gỡ khoá cửa sổ của chính nó', async () => {
+    const store = storeHaiWs();
+    const m = multiManager(store, [A, B], new Map());
+
+    await m.close(A);
+
+    expect(store.workspaces[0]?.activeWindowId).toBeNull();
+    expect(store.workspaces[1]?.activeWindowId).toBe('cua-so-nay');
+  });
+
+  it('đóng workspace chưa mở thì không làm gì cả', async () => {
+    const store = storeHaiWs();
+    const termB = fakeTerminal('b', 'D:/b', tB);
+    const m = multiManager(store, [B], new Map([[tB, termB]]));
+
+    await m.close(A);
+
+    expect(termB.dispose).not.toHaveBeenCalled();
+    expect(m.activeIds).toEqual([B]);
+  });
+
+  it('cây đánh dấu MỌI workspace đang mở, và đúng một cái đang nhận', () => {
+    const m = multiManager(storeHaiWs(), [A, B], new Map());
+    const views = m.workspaceViews();
+    const xem = (id: string) => views.find((v) => v.id === id);
+
+    expect(xem(A)?.isActive).toBe(true);
+    expect(xem(B)?.isActive).toBe(true);
+    // Không focus terminal nào → workspace mở gần nhất nhận.
+    expect(xem(A)?.isReceiving).toBe(false);
+    expect(xem(B)?.isReceiving).toBe(true);
+  });
+
+  it('workspace đang nhận là workspace của terminal đang focus, không phải cái mở sau', () => {
+    const termA = fakeTerminal('a', 'D:/a', tA);
+    const m = multiManager(storeHaiWs(), [A, B], new Map([[tA, termA]]));
+    vscodeMock.window.activeTerminal = termA;
+
+    expect(m.wsNhan()).toBe(A);
   });
 });

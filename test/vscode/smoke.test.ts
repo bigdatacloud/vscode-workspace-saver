@@ -6,7 +6,7 @@ import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../../src/terminal/man
 const EXPECTED_COMMANDS = [
   'aiWorkspace.createWorkspace',
   'aiWorkspace.activateWorkspace',
-  'aiWorkspace.closeActiveWorkspace',
+  'aiWorkspace.closeWorkspace',
   'aiWorkspace.renameWorkspace',
   'aiWorkspace.deleteWorkspace',
   'aiWorkspace.newClaudeTerminal',
@@ -56,9 +56,9 @@ suite('AI Workspace extension', () => {
     // Khai báo trong package.json thôi chưa đủ: chạy thật một lệnh để chứng minh
     // activate() đã đăng ký handler. Cố tình chỉ dùng lệnh KHÔNG mở hộp thoại nào:
     // mọi showInputBox/showWarningMessage trong Extension Host headless sẽ không có ai
-    // bấm, await sẽ treo tới hết timeout. 'closeActiveWorkspace' khi chưa có workspace
-    // active thì return ngay TRƯỚC khi mở modal confirm (xem closeActiveConfirmed()).
-    await vscode.commands.executeCommand('aiWorkspace.closeActiveWorkspace');
+    // bấm, await sẽ treo tới hết timeout. 'closeWorkspace' khi chưa có workspace nào mở thì
+    // return ngay TRƯỚC khi mở modal confirm (xem closeConfirmed()).
+    await vscode.commands.executeCommand('aiWorkspace.closeWorkspace');
   });
 
   test('view aiWorkspace.workspaces được đăng ký và focus được', async () => {

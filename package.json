@@ -37,8 +37,8 @@
         "title": "AI Workspace: Kích hoạt workspace"
       },
       {
-        "command": "aiWorkspace.closeActiveWorkspace",
-        "title": "AI Workspace: Đóng workspace đang active"
+        "command": "aiWorkspace.closeWorkspace",
+        "title": "AI Workspace: Đóng workspace"
       },
       {
         "command": "aiWorkspace.renameWorkspace",
@@ -148,7 +148,7 @@
           "group": "1_activate"
         },
         {
-          "command": "aiWorkspace.closeActiveWorkspace",
+          "command": "aiWorkspace.closeWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem == aiWorkspaceActive",
           "group": "9_close"
         },

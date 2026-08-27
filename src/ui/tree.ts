@@ -33,10 +33,19 @@ export class WorkspaceItem extends vscode.TreeItem {
   constructor(readonly view: WorkspaceView) {
     super(view.name, vscode.TreeItemCollapsibleState.Expanded);
     this.id = `ws:${view.id}`;
-    this.description = view.isActive
-      ? `(đang active) · ${view.terminalCount} terminal`
-      : `${view.terminalCount} terminal`;
+    // "đang nhận" phải hiện ra: quy tắc chọn workspace nhận terminal mới là ngầm định, không
+    // hiện thì người dùng không đoán được terminal tiếp theo rơi vào đâu.
+    const trangThai = !view.isActive
+      ? null
+      : view.isReceiving
+        ? '(đang mở · nhận terminal mới)'
+        : '(đang mở)';
+    this.description =
+      trangThai === null
+        ? `${view.terminalCount} terminal`
+        : `${trangThai} · ${view.terminalCount} terminal`;
     const dong = [view.name, `${view.terminalCount} terminal`];
+    if (view.isReceiving) dong.push('Terminal bạn tự mở tay sẽ được thêm vào workspace này');
     dong.push(
       view.lastActiveAt === null
         ? 'Chưa từng kích hoạt'

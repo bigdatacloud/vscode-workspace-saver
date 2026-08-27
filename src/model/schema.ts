@@ -4,6 +4,21 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const uuid = z.string().regex(UUID_RE, 'phải là UUID');
 
 /**
+ * Worktree riêng của một terminal agent.
+ *
+ * Giữ riêng thay vì suy ra từ `cwd`: `cwd` có thể bị các luồng khác đổi, còn lệnh dọn cần
+ * biết CHÍNH XÁC thư mục nào và nhánh nào phải gỡ.
+ */
+export const WorktreeRefSchema = z.object({
+  path: z.string().min(1),
+  /**
+   * KHÔNG ép regex như ô nhập: worktree dùng lại có thể mang tên nhánh do người khác đặt, mà
+   * bộ ký tự hợp lệ của git rộng hơn bộ ta cho người dùng gõ. Chặn ở cửa nhập là đủ.
+   */
+  branch: z.string().min(1),
+});
+
+/**
  * `.passthrough()` ở cả hai schema: zod mặc định VỨT mọi khoá lạ, nên một bản extension cũ
  * đọc file do bản mới ghi sẽ âm thầm xoá sạch trường nó chưa biết (agentId, agentSessionId,
  * terminalLocation…) ngay ở lần lưu kế tiếp — đúng thứ mà ghi chú "giữ kind:'plain' cho bản
@@ -35,6 +50,7 @@ export const TerminalEntrySchema = z.object({
     /^[A-Za-z0-9_][\w.:-]{0,127}$/,
     'id phiên agent có ký tự không hợp lệ hoặc bắt đầu bằng dấu gạch',
   ).optional(),
+  worktree: WorktreeRefSchema.optional(),
 }).passthrough();
 
 /**
@@ -90,6 +106,7 @@ export const StoreFileSchema = z
   });
 
 export type BiaMoTerminal = z.infer<typeof BiaMoTerminalSchema>;
+export type WorktreeRef = z.infer<typeof WorktreeRefSchema>;
 export type TerminalEntry = z.infer<typeof TerminalEntrySchema>;
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type StoreFile = z.infer<typeof StoreFileSchema>;

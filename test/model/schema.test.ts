@@ -70,3 +70,27 @@ describe('WorkspaceSchema', () => {
     expect(WorkspaceSchema.safeParse({ ...wsValid, terminals: [{ ...codex, agentSessionId: 'session-name' }] }).success).toBe(true);
   });
 });
+
+describe('TerminalEntry.worktree', () => {
+  const base = { id: uuid2, name: 'fix-login-claude', cwd: 'D:/Coding/erp-worktrees/fix-login-claude', kind: 'plain' as const };
+  const ws = (t: unknown) => ({ id: uuid1, name: 'ERP', lastActiveAt: null, activeWindowId: null, terminals: [t] });
+
+  it('chấp nhận entry có worktree đủ path và branch', () => {
+    const t = { ...base, worktree: { path: 'D:/Coding/erp-worktrees/fix-login-claude', branch: 'fix-login-claude' } };
+    expect(WorkspaceSchema.parse(ws(t)).terminals[0]?.worktree?.branch).toBe('fix-login-claude');
+  });
+
+  it('worktree là tùy chọn — entry không có nó vẫn hợp lệ', () => {
+    expect(() => WorkspaceSchema.parse(ws(base))).not.toThrow();
+  });
+
+  it('từ chối worktree thiếu branch hoặc có trường rỗng', () => {
+    expect(WorkspaceSchema.safeParse(ws({ ...base, worktree: { path: '/a' } })).success).toBe(false);
+    expect(WorkspaceSchema.safeParse(ws({ ...base, worktree: { path: '', branch: 'b' } })).success).toBe(false);
+  });
+
+  it('KHÔNG ép bộ ký tự tên nhánh: worktree dùng lại có thể mang tên do người khác đặt', () => {
+    const t = { ...base, worktree: { path: '/a', branch: 'feat/áo-dài' } };
+    expect(WorkspaceSchema.safeParse(ws(t)).success).toBe(true);
+  });
+});
