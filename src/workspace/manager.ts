@@ -20,10 +20,13 @@ import { realGitRunner } from '../git/exec';
 import {
   GitClient,
   HAU_TO_WORKTREE,
+  chuanHoaDuongDan,
   ghepTenWorktree,
   laWorktreeCuaExtension,
   phanLoaiWorktree,
+  trongThuMuc,
   type LoaiWorktree,
+  type WorktreeInfo,
 } from '../git/worktree';
 import { chonWorkspaceNhan } from './receiving';
 import { docBangTienTrinh } from '../proc/real';
@@ -34,6 +37,7 @@ import {
   type StoreFile,
   type TerminalEntry,
   type Workspace,
+  type WorktreeRef,
 } from '../model/schema';
 import {
   createWorkspace,
@@ -57,6 +61,21 @@ import { gopGoiYDuongDan } from './paths';
 import { decideTerminalRemoval, type RemoveTerminalDecision } from './remove';
 
 export type TerminalState = 'busy' | 'idle' | 'blocked' | 'loading' | 'open' | 'closed' | 'error';
+
+/** Kết quả hỏi worktree: thư mục làm việc, kèm worktree khi thật sự có một cái. */
+interface KetQuaWorktree {
+  cwd: string;
+  worktree?: WorktreeRef;
+}
+
+/** Một worktree do extension tạo, kèm phân loại và các entry của workspace trỏ vào nó. */
+interface UngVienDon {
+  repoRoot: string;
+  path: string;
+  branch: string | null;
+  loai: LoaiWorktree;
+  entryIds: string[];
+}
 
 export interface WorkspaceView {
   id: string;
@@ -1307,9 +1326,12 @@ export class WorkspaceManager implements vscode.Disposable {
 
     // Hỏi worktree SAU CÙNG, vì bước này TẠO THẬT thư mục + nhánh git. Hỏi trước rồi người
     // dùng Esc ở hộp thoại sau là để lại rác không ai dọn (addWorktree cố ý không có đường gỡ).
-    const cwd = await this.hoiWorktree(duongDan);
-    if (cwd === undefined) return;
+    const kq = await this.hoiWorktree(duongDan, this.agent.id);
+    if (kq === undefined) return;
+    const cwd = kq.cwd;
+    // Tên terminal = tên worktree. Tên ghép PHẲNG nên basename của đường dẫn chính là nó.
     const ten = path.basename(cwd) || 'claude';
+    const wt = kq.worktree === undefined ? {} : { worktree: kq.worktree };
 
     // Lấy lại object sau chuỗi input/quickpick rồi mới touch (xem ghi chú ở activate()).
     const wsNow = findWorkspace(this.store, workspaceId);
@@ -1331,8 +1353,9 @@ export class WorkspaceManager implements vscode.Disposable {
             kind: 'claude',
             claudeSessionId: luaChon.sessionId,
             claudeName: ten,
+            ...wt,
           }
-        : { id: randomUUID(), name: ten, cwd, kind: 'plain' };
+        : { id: randomUUID(), name: ten, cwd, kind: 'plain', ...wt };
     upsertTerminal(wsNow, entry);
     this.scheduleSave();
     // Id mint phải nằm trên đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại).
@@ -1370,8 +1393,9 @@ export class WorkspaceManager implements vscode.Disposable {
     if (!luaChon) return;
 
     // Hỏi worktree SAU CÙNG (xem ghi chú ở newClaudeTerminal): bước này tạo thật thư mục+nhánh.
-    const cwd = await this.hoiWorktree(duongDan);
-    if (cwd === undefined) return;
+    const kq = await this.hoiWorktree(duongDan, this.codex.id);
+    if (kq === undefined) return;
+    const cwd = kq.cwd;
     const ten = path.basename(cwd) || 'codex';
 
     // Lấy lại object sau chuỗi hộp thoại rồi mới touch (xem ghi chú ở activate()).
@@ -1389,6 +1413,7 @@ export class WorkspaceManager implements vscode.Disposable {
       kind: 'plain',
       agentId: 'codex',
       startCommand: luaChon.command,
+      ...(kq.worktree === undefined ? {} : { worktree: kq.worktree }),
     };
     upsertTerminal(wsNow, entry);
     this.scheduleSave();
@@ -1644,15 +1669,20 @@ export class WorkspaceManager implements vscode.Disposable {
    * thoại, và cơ chế bắt session theo cwd cũng không phân biệt nổi. Mỗi worktree là một thư
    * mục + một nhánh riêng nên hết đụng nhau.
    *
-   * Trả về thư mục làm việc cuối cùng; `undefined` nghĩa là người dùng hủy cả lệnh.
+   * Hỏi VIỆC chứ không hỏi tên worktree: tên là `<việc>-<vai>` (xem `ghepTenWorktree`), nên
+   * mọi vai cùng làm một việc nằm liền nhau trong `git branch`. `vai` tạm là id agent; khi
+   * có roles thì đây là chỗ duy nhất đổi nguồn sang tên vai.
+   *
+   * Trả về thư mục làm việc cuối cùng kèm worktree (nếu có); `undefined` nghĩa là người dùng
+   * hủy cả lệnh.
    */
-  private async hoiWorktree(cwd: string): Promise<string | undefined> {
+  private async hoiWorktree(cwd: string, vai: string): Promise<KetQuaWorktree | undefined> {
     const goc = await this.git.repoRoot(cwd);
-    if (goc === null) return cwd; // không phải repo git thì không có worktree để bàn
+    if (goc === null) return { cwd }; // không phải repo git thì không có worktree để bàn
 
-    const ten = await vscode.window.showInputBox({
+    const viec = await vscode.window.showInputBox({
       title: `Worktree trong repo ${path.basename(goc)}`,
-      prompt: 'Tên worktree (thư mục + nhánh riêng). Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.',
+      prompt: `Tên việc — thư mục + nhánh riêng sẽ là "<việc>-${vai}". Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.`,
       placeHolder: 'ví dụ: fix-login',
       validateInput: (v) => {
         const t = v.trim();
@@ -1664,9 +1694,9 @@ export class WorkspaceManager implements vscode.Disposable {
         return undefined;
       },
     });
-    if (ten === undefined) return undefined;
-    const tenWt = ten.trim();
-    if (tenWt === '') return cwd;
+    if (viec === undefined) return undefined;
+    if (viec.trim() === '') return { cwd };
+    const tenWt = ghepTenWorktree(viec, vai);
 
     // NGOÀI repo, không phải `<repo>/.worktrees/`: đặt bên trong repo thì `git clean -xdf`
     // (lệnh dọn rất thường dùng) xoá sạch worktree cùng mọi thay đổi chưa commit trong đó,
@@ -1681,7 +1711,9 @@ export class WorkspaceManager implements vscode.Disposable {
         );
         return undefined;
       }
-      return duongDan;
+      // DÙNG LẠI, không đánh số thứ tự: mở lại cùng việc + cùng vai phải cho ra cùng worktree.
+      // Thêm hậu tố `-2` ở đây là biến thao tác mở lại thành thao tác tạo mới.
+      return { cwd: duongDan, ...(await this.nhanhCuaWorktree(duongDan)) };
     }
 
     try {
@@ -1692,7 +1724,174 @@ export class WorkspaceManager implements vscode.Disposable {
       );
       return undefined;
     }
-    return duongDan;
+    return { cwd: duongDan, worktree: { path: duongDan, branch: tenWt } };
+  }
+
+  /**
+   * Nhánh của một worktree đã có sẵn. Đọc không được thì trả rỗng — terminal vẫn mở bình
+   * thường, chỉ là entry không mang `worktree`; không đáng chặn cả lệnh vì một lệnh đọc phụ.
+   */
+  private async nhanhCuaWorktree(duongDan: string): Promise<{ worktree?: WorktreeRef }> {
+    const ds = await this.git.listWorktrees(duongDan);
+    const khop = ds.find((w) => chuanHoaDuongDan(w.path) === chuanHoaDuongDan(duongDan));
+    const branch = khop?.branch;
+    if (branch === undefined || branch === null) return {};
+    return { worktree: { path: duongDan, branch } };
+  }
+
+  /**
+   * Dọn worktree do extension tạo. Bốn lớp chặn, theo thứ tự:
+   *  1. chỉ đụng đường dẫn nằm trong `<repo>-worktrees/` (`laWorktreeCuaExtension`),
+   *  2. cái đang có terminal mở thì không gỡ được,
+   *  3. cái còn thay đổi chưa commit / nhánh chưa merge thì không được tích sẵn,
+   *  4. `git worktree remove` không `--force`, `git branch -d` không `-D` — git từ chối là
+   *     lưới an toàn đang làm việc, không phải lỗi cần vượt qua.
+   */
+  async cleanWorktrees(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+
+    const ungVien = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Đang dò worktree…' },
+      () => this.doWorktree(ws),
+    );
+    if (ungVien.length === 0) {
+      void vscode.window.showInformationMessage(
+        'Không tìm thấy worktree nào do extension tạo cho workspace này.',
+      );
+      return;
+    }
+
+    const NHAN: Record<LoaiWorktree, string> = {
+      sach: 'sạch, đã merge',
+      chuaMerge: 'CHƯA merge vào nhánh mặc định',
+      banThayDoi: 'CÒN THAY ĐỔI CHƯA COMMIT',
+      dangDung: 'đang có terminal mở — đóng terminal trước đã',
+    };
+    const chon = await vscode.window.showQuickPick(
+      ungVien.map((u) => ({
+        label: path.basename(u.path),
+        description: NHAN[u.loai],
+        detail: u.path,
+        picked: u.loai === 'sach',
+        ung: u,
+      })),
+      { canPickMany: true, placeHolder: 'Chọn worktree để gỡ (chỉ cái sạch được tích sẵn)' },
+    );
+    if (!chon || chon.length === 0) return;
+
+    // QuickPick không có cách khoá một mục lại, nên lọc lần nữa ở đây: gỡ worktree đang có
+    // terminal mở là rút thư mục làm việc ra từ dưới chân một shell đang chạy dở.
+    const go = chon.map((c) => c.ung).filter((u) => u.loai !== 'dangDung');
+    if (go.length === 0) {
+      void vscode.window.showWarningMessage(
+        'Những worktree đó đang có terminal mở. Đóng terminal rồi chạy lại lệnh dọn.',
+      );
+      return;
+    }
+
+    const soEntry = go.reduce((t, u) => t + u.entryIds.length, 0);
+    const answer = await vscode.window.showWarningMessage(
+      `Gỡ ${go.length} worktree?`,
+      {
+        modal: true,
+        detail: [
+          ...go.map((u) => `• ${u.path}${u.branch === null ? '' : ` (nhánh ${u.branch})`}`),
+          '',
+          soEntry === 0
+            ? 'Không terminal nào của workspace này trỏ vào chúng.'
+            : `${soEntry} terminal trỏ vào các worktree này cũng sẽ bị bỏ khỏi workspace — thư mục mất rồi thì chúng không mở lại được nữa.`,
+          'Git sẽ TỪ CHỐI nếu còn thay đổi chưa commit hoặc nhánh chưa merge: lệnh này không có cờ ép.',
+        ].join('\n'),
+      },
+      'Gỡ',
+    );
+    if (answer !== 'Gỡ') return;
+
+    const loi: string[] = [];
+    let daGo = 0;
+    for (const u of go) {
+      const r = await this.git.removeWorktree(u.repoRoot, u.path);
+      if (!r.ok) {
+        loi.push(`${path.basename(u.path)}: ${r.stderr}`);
+        continue;
+      }
+      daGo += 1;
+      // Bỏ entry NGAY sau khi thư mục mất: để lại entry trỏ vào đường dẫn chết là để lại thứ
+      // không bao giờ mở lại được.
+      for (const id of u.entryIds) await this.removeTerminal(workspaceId, id);
+      if (u.branch === null) continue;
+      const rb = await this.git.deleteBranch(u.repoRoot, u.branch);
+      if (!rb.ok) loi.push(`nhánh ${u.branch}: ${rb.stderr}`);
+    }
+
+    const bao = `Đã gỡ ${daGo}/${go.length} worktree.`;
+    if (loi.length === 0) {
+      void vscode.window.showInformationMessage(bao);
+      return;
+    }
+    void vscode.window.showWarningMessage(`${bao} Git từ chối ${loi.length} việc: ${loi.join(' · ')}`);
+  }
+
+  /**
+   * Liệt kê worktree do extension tạo, cho các repo mà workspace này có dính tới.
+   *
+   * `git worktree list` chạy từ BẤT KỲ worktree nào cũng liệt kê cả repo, và mục ĐẦU TIÊN
+   * luôn là worktree chính — đó mới là repoRoot để đối chiếu `<repo>-worktrees/`. KHÔNG dùng
+   * `rev-parse --show-toplevel` ở đây: đứng trong một worktree thì nó trả về chính worktree
+   * đó, và bước lọc an toàn sẽ so sai hoàn toàn.
+   *
+   * Nhờ đi qua `worktree list`, worktree MỒ CÔI — cái mà entry trỏ vào nó đã bị bỏ khỏi
+   * workspace từ trước — vẫn hiện ra, miễn còn một entry nào đó neo được vào cùng repo. Đó là
+   * đường duy nhất dọn được rác của những lần trước.
+   */
+  private async doWorktree(ws: Workspace): Promise<UngVienDon[]> {
+    const thuMuc = new Set<string>();
+    for (const e of ws.terminals) {
+      thuMuc.add(e.cwd);
+      if (e.worktree !== undefined) thuMuc.add(e.worktree.path);
+    }
+
+    const theoRepo = new Map<string, WorktreeInfo[]>();
+    for (const d of thuMuc) {
+      if (!nodeFs.existsSync(d)) continue;
+      const ds = await this.git.listWorktrees(d);
+      const chinh = ds[0];
+      if (chinh === undefined) continue;
+      if (!theoRepo.has(chinh.path)) theoRepo.set(chinh.path, ds);
+    }
+
+    const trongWt = (t: TerminalEntry, wtPath: string): boolean =>
+      trongThuMuc(t.worktree?.path ?? t.cwd, wtPath);
+
+    const ra: UngVienDon[] = [];
+    for (const [repoRoot, ds] of theoRepo) {
+      const base = await this.git.defaultBranch(repoRoot);
+      // Không xác định được nhánh mặc định → coi MỌI nhánh là chưa merge. Đoán bừa ở đây là
+      // xoá nhầm việc của người dùng.
+      const daMerge =
+        base === null ? new Set<string>() : new Set(await this.git.mergedBranches(repoRoot, base));
+      for (const w of ds) {
+        if (!laWorktreeCuaExtension(w.path, repoRoot)) continue;
+        // "Đang dùng" xét MỌI workspace — terminal của workspace khác cũng không được kéo thảm
+        // dưới chân. Nhưng chỉ entry của workspace NÀY mới bị bỏ đi cùng.
+        const dangDung = this.store.workspaces.some((w2) =>
+          w2.terminals.some((t) => this.terminals.has(t.id) && trongWt(t, w.path)),
+        );
+        ra.push({
+          repoRoot,
+          path: w.path,
+          branch: w.branch,
+          loai: phanLoaiWorktree({
+            dangDung,
+            sachGit: await this.git.isClean(w.path),
+            daMerge: w.branch !== null && daMerge.has(w.branch),
+          }),
+          entryIds: ws.terminals.filter((t) => trongWt(t, w.path)).map((t) => t.id),
+        });
+      }
+    }
+    return ra;
   }
 
   private async hoiDuongDan(): Promise<string | undefined> {

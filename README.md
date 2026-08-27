@@ -107,7 +107,8 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 |---|---|---|
 | AI Workspace: Create new workspace | `aiWorkspace.createWorkspace` | Palette / "+" button on the view |
 | AI Workspace: Activate workspace | `aiWorkspace.activateWorkspace` | Click item / context menu of an inactive workspace |
-| AI Workspace: Close active workspace | `aiWorkspace.closeActiveWorkspace` | Palette / context menu of the active workspace (bottom group, with confirmation modal) |
+| AI Workspace: Close workspace | `aiWorkspace.closeWorkspace` | Palette / context menu of an open workspace (bottom group, with confirmation modal). Only that workspace closes — the others stay open. |
+| AI Workspace: Clean worktrees | `aiWorkspace.cleanWorktrees` | Context menu of a workspace. Lists worktrees under `<repo>-worktrees/` with their state; never uses `--force` or `-D`. |
 | AI Workspace: Show workspace info | `aiWorkspace.showWorkspaceInfo` | Workspace context menu — id, last activation, owning window, terminal location, store file path and every terminal with its cwd/start command/session; "Copy info" / "Open store file" |
 | AI Workspace: Workspace settings | `aiWorkspace.workspaceSettings` | Workspace context menu — per-workspace terminal location (follow global / editor area / bottom panel) |
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |

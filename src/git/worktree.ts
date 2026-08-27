@@ -72,8 +72,31 @@ export function parseWorktreeList(stdout: string): WorktreeInfo[] {
  * nhưng vẫn phải nằm trong một thư mục tên `<repo>-worktrees` mới khớp.
  */
 export function laWorktreeCuaExtension(duongDan: string, repoRoot: string): boolean {
-  const chuan = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  return chuan(duongDan).startsWith(`${chuan(repoRoot)}${HAU_TO_WORKTREE}/`);
+  const cha = `${chuanHoaDuongDan(repoRoot)}${HAU_TO_WORKTREE}`;
+  // Chính thư mục `<repo>-worktrees` KHÔNG phải worktree — phải nằm BÊN TRONG nó.
+  return chuanHoaDuongDan(duongDan) !== cha && trongThuMuc(duongDan, cha);
+}
+
+/**
+ * Đưa đường dẫn về một dạng so sánh được: gạch xuôi, không gạch cuối, chữ thường.
+ *
+ * Hạ chữ thường cho Windows. Trên hệ tệp phân biệt hoa thường thì về lý là nới lỏng, nhưng
+ * hai thư mục chỉ khác nhau hoa/thường trong cùng một repo là chuyện không ai làm.
+ */
+export function chuanHoaDuongDan(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+/**
+ * `con` có bằng `cha` hoặc nằm trong `cha` không.
+ *
+ * Đòi dấu phân cách ngay sau `cha` nên `/a/bc` KHÔNG nằm trong `/a/b` — so sánh tiền tố trần
+ * sẽ nhận nhầm, mà nhận nhầm ở đây nghĩa là đụng vào thư mục của người khác.
+ */
+export function trongThuMuc(con: string, cha: string): boolean {
+  const c = chuanHoaDuongDan(con);
+  const g = chuanHoaDuongDan(cha);
+  return c === g || c.startsWith(`${g}/`);
 }
 
 export type LoaiWorktree = 'dangDung' | 'banThayDoi' | 'chuaMerge' | 'sach';

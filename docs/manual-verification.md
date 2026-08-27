@@ -20,17 +20,27 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 
 ## Vòng đời workspace cơ bản
 - [ ] `AI Workspace: Tạo workspace mới` → nhập tên → workspace mới xuất hiện trong cây VÀ được
-      kích hoạt ngay (badge/mô tả "(đang active)")
+      kích hoạt ngay (mô tả "(đang mở …)")
 - [ ] Nhấn Esc ở hộp nhập tên → không có workspace nào được tạo
-- [ ] Bấm vào một workspace khác (chưa active) trong khi đang có workspace active → hiện modal
-      "Lưu và đóng X trước khi mở Y?"; bấm "Lưu và đóng" → X bị đóng (terminal của X đóng hết),
-      Y được kích hoạt và mở lại đúng terminal đã lưu của Y
-- [ ] Lặp lại bước trên nhưng bấm Hủy/Esc ở modal → KHÔNG có gì thay đổi: X vẫn active,
-      terminal của X vẫn mở nguyên, Y vẫn ở trạng thái chưa active
-- [ ] `AI Workspace: Đóng workspace đang active` → mọi terminal thật của workspace đó đóng hết,
-      cây không còn workspace nào active
+- [ ] **KHÔNG CÒN POPUP**: bấm vào workspace Y trong khi X đang mở → KHÔNG hiện hộp thoại nào
+      hỏi "Lưu và đóng X trước khi mở Y?"; Y mở ra, và terminal của X vẫn còn nguyên
+- [ ] Mở 3 workspace cùng lúc → cả 3 đều mang nhãn "(đang mở)", terminal của cả 3 cùng sống
+- [ ] Chuột phải workspace giữa → `Đóng workspace` → chỉ terminal của nó đóng, hai cái kia
+      nguyên vẹn và vẫn mang nhãn "(đang mở)"
+- [ ] Đúng MỘT workspace mang thêm nhãn "nhận terminal mới" tại mỗi thời điểm
 - [ ] Đóng cửa sổ Extension Host, mở lại → cây vẫn hiện đúng danh sách workspace đã tạo (đọc
       lại từ `workspaces.json` trong global storage), KHÔNG có workspace nào tự động active
+
+## Workspace đang nhận terminal mới
+- [ ] Mở workspace A rồi mở workspace B (B mở sau) → B mang nhãn "nhận terminal mới"
+- [ ] Bấm vào một terminal của A cho nó focus → nhãn "nhận terminal mới" chuyển sang A
+- [ ] Đang focus terminal của A, bấm `Ctrl+Shift+~` mở terminal mới → nó được thêm vào **A**,
+      không phải B; thông báo nói đúng tên A và nút "Bỏ ra" vẫn hoạt động
+- [ ] Click vào vùng editor (không focus terminal nào) rồi mở terminal mới → vào B (mở gần nhất)
+- [ ] Đóng A trong khi terminal của A vẫn còn được VS Code focus → terminal mới rơi về B,
+      không rơi vào workspace đã đóng
+- [ ] Phím tắt `Ctrl+Alt+A` (terminal Claude) khi không bấm chuột phải item nào → nhắm đúng
+      workspace đang nhận
 
 ## Trường hợp biên: hủy modal giữa chừng khi tạo workspace mới (orphan)
 - [ ] Đang có workspace A active → `AI Workspace: Tạo workspace mới` → nhập tên workspace B
@@ -48,7 +58,8 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       "Xóa workspace X? Terminal đang mở không bị đóng." → bấm "Xóa" → workspace biến mất khỏi
       cây NHƯNG các terminal thật của nó **vẫn mở nguyên** trong `vscode.window.terminals`
       (xóa workspace không đóng terminal thật)
-- [ ] Xóa một workspace đang active → sau khi xóa, không còn workspace nào active
+- [ ] Xóa một workspace đang mở → sau khi xóa, nó biến khỏi danh sách đang mở; các workspace
+      đang mở khác không bị ảnh hưởng
 
 ## Adoption — terminal tự mở tay (auto)
 - [ ] Có workspace active → mở terminal mới bằng <kbd>Ctrl+Shift+`</kbd> (không đặt tên qua
@@ -129,7 +140,7 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       cwd không trùng ai → sau ~3 giây entry vẫn tự thăng cấp thành `claude` (poll riêng của
       manager chạy khi có workspace active, không cần tree hiển thị)
 - [ ] **Quét bắt lần cuối lúc đóng**: tạo tình huống ambiguous rồi Esc QuickPick; sau đó
-      "Đóng workspace đang active" → QuickPick hỏi LẠI đúng cụm đã Esc trước khi terminal bị
+      "Đóng workspace" → QuickPick hỏi LẠI đúng cụm đã Esc trước khi terminal bị
       đóng; chọn xong, mở lại workspace → hội thoại Claude resume đúng
 - [ ] **Gắn tay session**: terminal `plain` của workspace đang chạy `claude` mà máy không tự
       bắt (vd nhiều terminal cùng cwd) → chuột phải terminal item trong cây → "Gắn session
@@ -219,7 +230,7 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Mở Command Palette gõ "AI Workspace: Tạo terminal" → VS Code hiện sẵn phím tắt bên phải
       tên lệnh (tự động, không cần extension làm gì)
 - [ ] Rê chuột vào dòng workspace → tooltip có dòng "Phím tắt mặc định: …"
-- [ ] Có workspace đang active → <kbd>Ctrl+Alt+T</kbd> → vào thẳng luồng tạo terminal cho
+- [ ] Có workspace đang mở → <kbd>Ctrl+Alt+T</kbd> → vào thẳng luồng tạo terminal cho
       workspace ĐANG ACTIVE, KHÔNG hiện danh sách chọn workspace
 - [ ] <kbd>Ctrl+Alt+A</kbd> → tương tự với terminal Claude
 - [ ] KHÔNG có workspace nào active → phím tắt hiện danh sách để chọn workspace (không im lặng)
@@ -230,7 +241,7 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 ## Nút "+" trên dòng workspace
 - [ ] Rê chuột vào một dòng workspace → hiện nút "+" bên phải; bấm → hỏi đường dẫn rồi mở
       terminal mới đúng workspace đó (KHÔNG phải workspace active nếu bấm ở dòng khác)
-- [ ] Bấm "+" KHÔNG kích hoạt workspace đó và không đóng workspace đang active
+- [ ] Bấm "+" KHÔNG kích hoạt workspace đó và không đóng workspace nào đang mở
 - [ ] Bấm vào TÊN workspace (không phải nút "+") vẫn là kích hoạt như cũ
 
 ## Xem thông tin workspace
@@ -331,15 +342,35 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 
 ## Worktree khi tạo terminal agent
 - [ ] `Tạo terminal Claude mới` trên một thư mục là repo git → sau khi chọn đường dẫn, hộp
-      thoại hỏi tên worktree; để TRỐNG → làm thẳng trên thư mục đã chọn
-- [ ] Nhập tên worktree mới → tạo `<repo>-worktrees/<tên>` NGOÀI repo (cạnh thư mục repo) +
-      nhánh cùng tên, terminal mở tại đó, tên terminal lấy theo tên worktree
+      thoại hỏi **tên việc**, và prompt ghi rõ thư mục/nhánh sẽ là `<việc>-claude`
+- [ ] Gõ `fix-login` → tạo `<repo>-worktrees/fix-login-claude` NGOÀI repo (cạnh thư mục repo)
+      + nhánh `fix-login-claude`, terminal mở tại đó và **tên terminal là `fix-login-claude`**
+- [ ] Làm lại với `Tạo terminal Codex mới`, cùng việc `fix-login` → ra `fix-login-codex`, tức
+      hai vai làm cùng một việc nằm liền nhau khi chạy `git branch`
+- [ ] Để TRỐNG ô việc → làm thẳng trên thư mục đã chọn, không tạo worktree
+- [ ] Gõ `fix-login-claude` (đã sẵn đuôi vai) → KHÔNG thành `fix-login-claude-claude`
 - [ ] `git status` trong repo sạch (worktree nằm ngoài nên không cần khai báo ignore gì)
 - [ ] Hỏi worktree diễn ra SAU khi chọn xong lệnh chạy; Esc ở bước chọn lệnh KHÔNG để lại
       thư mục/nhánh rác nào
-- [ ] Nhập lại đúng tên worktree đã có → dùng lại thư mục đó, không lỗi, không ghi đè
+- [ ] Nhập lại đúng việc + vai đã có → **dùng lại** đúng worktree đó, không lỗi, không ghi đè,
+      không sinh bản `-2`
 - [ ] Thư mục KHÔNG phải repo git → không hỏi worktree, mở thẳng
-- [ ] Tên worktree có ký tự lạ (`--foo`, `a/../b`) → bị chặn ngay ở ô nhập
+- [ ] Tên việc có ký tự lạ (`--foo`, `a/../b`) → bị chặn ngay ở ô nhập
+
+## Dọn worktree
+- [ ] Chuột phải workspace → `Dọn worktree` → liệt kê worktree trong `<repo>-worktrees/` kèm
+      phân loại; worktree bạn tự tạo ở chỗ khác và worktree chính của repo KHÔNG có trong danh sách
+- [ ] Chỉ mục "sạch, đã merge" được tích sẵn; mục còn thay đổi chưa commit và mục chưa merge
+      hiện nhãn cảnh báo và KHÔNG được tích sẵn
+- [ ] Cố chọn mục "đang có terminal mở" → lệnh từ chối và bảo đóng terminal trước
+- [ ] Hộp xác nhận liệt kê đúng đường dẫn + nhánh, và nói rõ bao nhiêu terminal sẽ bị bỏ khỏi
+      workspace; bấm Hủy → không có gì bị gỡ
+- [ ] Xác nhận Gỡ với một worktree sạch → thư mục biến mất, nhánh biến mất, entry terminal trỏ
+      vào đó bị bỏ khỏi workspace, và điều đó BỀN qua khởi động lại
+- [ ] Cố gỡ một worktree còn thay đổi chưa commit → git TỪ CHỐI, thư mục còn nguyên, thông báo
+      hiện lý do nguyên văn của git (không có cờ ép nào được dùng)
+- [ ] Gỡ một worktree có nhánh chưa merge → worktree gỡ được nhưng `git branch -d` từ chối,
+      báo cáo nêu rõ nhánh nào còn lại
 
 ## Trạng thái "đang tải phiên" (spinner)
 - [ ] Kích hoạt workspace có terminal Claude → NGAY khi terminal mở, item trong cây hiện
@@ -357,7 +388,7 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       sessionId (không double --resume khi kích hoạt lại)
 - [ ] Trong QuickPick gắn session, mục "Nhập session ID thủ công…" → nhập UUID (lấy từ
       /status trong Claude) → entry gắn đúng id; nhập chuỗi không phải UUID bị chặn
-- [ ] Menu chuột phải workspace active: "Đóng workspace đang active" nằm ở NHÓM CUỐI menu;
+- [ ] Menu chuột phải workspace đang mở: "Đóng workspace" nằm ở NHÓM CUỐI menu;
       bấm → modal xác nhận, Cancel thì không gì xảy ra, "Đóng" mới đóng terminal
 - [ ] Chuyển workspace (bấm workspace khác) vẫn chỉ hỏi MỘT modal "Lưu và đóng X trước khi
       mở Y?" — không hỏi confirm hai lần

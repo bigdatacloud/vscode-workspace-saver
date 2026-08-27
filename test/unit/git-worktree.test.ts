@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildAddWorktreeArgs,
+  chuanHoaDuongDan,
   GitClient,
   ghepTenWorktree,
   laWorktreeCuaExtension,
   parseWorktreeList,
   phanLoaiWorktree,
+  trongThuMuc,
 } from '../../src/git/worktree';
 import type { GitRunner, GitResult } from '../../src/git/exec';
 
@@ -263,5 +265,36 @@ describe('GitClient — các lệnh cho việc dọn worktree', () => {
     const r = await new GitClient(runner).deleteBranch('/repo', 'fix-login-claude');
     expect(runner.calls[0]).toEqual(['branch', '-d', 'fix-login-claude']);
     expect(r.ok).toBe(true);
+  });
+});
+
+/** Dấu gạch ngược dựng bằng mã ký tự: template raw KHÔNG được kết thúc bằng nó. */
+const NGUOC = String.fromCharCode(92);
+
+describe('chuanHoaDuongDan', () => {
+  it('đưa gạch ngược về gạch xuôi, bỏ gạch cuối, hạ chữ thường', () => {
+    expect(chuanHoaDuongDan(`D:${NGUOC}Coding${NGUOC}ERP${NGUOC}`)).toBe('d:/coding/erp');
+  });
+
+  it('bỏ nhiều gạch cuối liền nhau', () => {
+    expect(chuanHoaDuongDan('/a/b///')).toBe('/a/b');
+  });
+});
+
+describe('trongThuMuc', () => {
+  it('đường dẫn bằng chính thư mục là nằm trong', () => {
+    expect(trongThuMuc('D:/a/b', 'D:/a/b')).toBe(true);
+  });
+
+  it('thư mục con là nằm trong', () => {
+    expect(trongThuMuc('D:/a/b/c/d.ts', 'D:/a/b')).toBe(true);
+  });
+
+  it('anh em chỉ TRÙNG TIỀN TỐ thì không nằm trong', () => {
+    expect(trongThuMuc('D:/a/bc', 'D:/a/b')).toBe(false);
+  });
+
+  it('thư mục cha không nằm trong thư mục con', () => {
+    expect(trongThuMuc('D:/a', 'D:/a/b')).toBe(false);
   });
 });

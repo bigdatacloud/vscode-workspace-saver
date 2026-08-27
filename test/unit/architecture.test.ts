@@ -56,3 +56,40 @@ describe('hàng rào kiến trúc', () => {
     expect(chuaImportVscode(`import { helper } from './vscode-helpers';`)).toBe(false);
   });
 });
+
+describe('bất biến của phần worktree', () => {
+  const manager = readFileSync(join('src', 'workspace', 'manager.ts'), 'utf8');
+  const gitWorktree = readFileSync(join('src', 'git', 'worktree.ts'), 'utf8');
+
+  /** Thân của một phương thức, cắt từ chữ ký tới dòng `  }` đầu tiên ở đúng mức thụt lề. */
+  function thanPhuongThuc(src: string, chuKy: string): string {
+    const dau = src.indexOf(chuKy);
+    expect(dau, `không tìm thấy ${chuKy}`).toBeGreaterThan(-1);
+    const cuoi = src.indexOf('\n  }', dau);
+    return src.slice(dau, cuoi === -1 ? undefined : cuoi);
+  }
+
+  it('newPlainTerminal KHÔNG tạo worktree', () => {
+    // Shell thường là để chạy dev server, git log, test runner — worktree riêng cho chúng gần
+    // như luôn là sai ý. Đây là chủ ý, không phải chuyện tình cờ.
+    expect(thanPhuongThuc(manager, 'async newPlainTerminal(')).not.toContain('hoiWorktree');
+    // Và bảo đảm phép cắt thân hàm thật sự nhìn thấy nội dung: hai lệnh agent PHẢI có nó.
+    expect(thanPhuongThuc(manager, 'async newClaudeTerminal(')).toContain('hoiWorktree');
+    expect(thanPhuongThuc(manager, 'async newCodexTerminal(')).toContain('hoiWorktree');
+  });
+
+  it('không còn hộp thoại "Lưu và đóng workspace X trước khi mở Y"', () => {
+    // Nhiều workspace mở song song là hành vi mong muốn; nhãn nút đó quay lại nghĩa là ai đó
+    // đã khôi phục mô hình một-workspace.
+    expect(manager).not.toContain('Lưu và đóng');
+  });
+
+  it('lệnh git phá huỷ không bao giờ mang cờ ép', () => {
+    // git từ chối gỡ worktree còn thay đổi chưa commit, hoặc xoá nhánh chưa merge, là lưới an
+    // toàn cuối cùng của lệnh dọn. Thêm --force/-D là gỡ chính cái lưới đó.
+    // Soi CHUỖI trong mã, không soi comment: phần giải thích ở đây có nhắc tên các cờ đó.
+    for (const co of ['--force', '-D', '-f']) {
+      expect(gitWorktree, `cờ ${co} không được xuất hiện trong lệnh git`).not.toContain(`'${co}'`);
+    }
+  });
+});

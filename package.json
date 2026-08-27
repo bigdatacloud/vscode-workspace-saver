@@ -66,6 +66,10 @@
         "title": "AI Workspace: Cài đặt workspace"
       },
       {
+        "command": "aiWorkspace.cleanWorktrees",
+        "title": "AI Workspace: Dọn worktree"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -191,6 +195,11 @@
           "command": "aiWorkspace.deleteWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "3_edit@4"
+        },
+        {
+          "command": "aiWorkspace.cleanWorktrees",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "3_edit@5"
         },
         {
           "command": "aiWorkspace.setStartCommand",
