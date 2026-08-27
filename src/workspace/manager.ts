@@ -197,6 +197,17 @@ export class WorkspaceManager implements vscode.Disposable {
    * kích hoạt lại một workspace đang mở phải đẩy nó lên cuối.
    */
   private activeIds: string[] = [];
+  /**
+   * Key của terminal ta sở hữu được focus GẦN NHẤT.
+   *
+   * Không thể chỉ đọc `window.activeTerminal` lúc cần: VS Code focus terminal vừa mở ngay khi
+   * tạo, và không hứa hẹn thứ tự giữa việc đó với `onDidOpenTerminal`. Nhìn mỗi activeTerminal
+   * thì terminal mới (chưa thuộc workspace nào) làm quy tắc "theo terminal đang focus" rơi
+   * thẳng về "workspace mở gần nhất" — đúng cái nó sinh ra để tránh.
+   *
+   * KHÔNG xoá khi focus rời sang terminal lạ: "chỗ bạn vừa làm việc" vẫn là câu trả lời đúng.
+   */
+  private terminalFocusCuoi: string | null = null;
 
   private readonly trust: TrustStore;
 
@@ -366,6 +377,11 @@ export class WorkspaceManager implements vscode.Disposable {
       vscode.window.onDidOpenTerminal((terminal) => {
         void this.onTerminalOpened(terminal);
       }),
+      vscode.window.onDidChangeActiveTerminal((terminal) => {
+        if (terminal === undefined) return;
+        const key = this.terminals.ownsTerminal(terminal);
+        if (key !== null) this.terminalFocusCuoi = key;
+      }),
       vscode.window.onDidChangeTerminalShellIntegration((event) => {
         this.onShellIntegrationChanged(event);
       }),
@@ -430,7 +446,9 @@ export class WorkspaceManager implements vscode.Disposable {
    */
   private wsNhan(): string | null {
     const dangFocus = vscode.window.activeTerminal;
-    const key = dangFocus === undefined ? null : this.terminals.ownsTerminal(dangFocus);
+    const key =
+      (dangFocus === undefined ? null : this.terminals.ownsTerminal(dangFocus)) ??
+      this.terminalFocusCuoi;
     return chonWorkspaceNhan(
       key,
       (k) => this.store.workspaces.find((w) => w.terminals.some((t) => t.id === k))?.id ?? null,
@@ -2277,9 +2295,8 @@ export class WorkspaceManager implements vscode.Disposable {
 
   private async onTerminalOpened(terminal: vscode.Terminal): Promise<void> {
     if (this.terminals.ownsTerminal(terminal) !== null) return;
-    // Tra TRƯỚC mọi await: VS Code focus terminal vừa mở, nên hỏi muộn thì `wsNhan()` nhìn
-    // thấy chính nó (chưa thuộc workspace nào) và rơi về workspace mở gần nhất — đúng cái mà
-    // quy tắc "theo terminal đang focus" sinh ra để tránh.
+    // Tra TRƯỚC mọi await, và `wsNhan()` có `terminalFocusCuoi` làm lối lui cho đúng tình
+    // huống terminal vừa mở đã kịp thành activeTerminal.
     const nhan = this.wsNhan();
     if (nhan === null) return;
     const ws = findWorkspace(this.store, nhan);

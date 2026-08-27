@@ -420,6 +420,7 @@ describe('WorkspaceManager — nhiều workspace cùng mở', () => {
       finalClaimSweep: vi.fn(async () => {}),
       stopActivePoll: vi.fn(),
       quenTerminal: vi.fn(),
+      terminalFocusCuoi: null,
     });
     return m;
   }
@@ -480,5 +481,27 @@ describe('WorkspaceManager — nhiều workspace cùng mở', () => {
     vscodeMock.window.activeTerminal = termA;
 
     expect(m.wsNhan()).toBe(A);
+  });
+
+  it('terminal VỪA MỞ đã thành activeTerminal thì vẫn dùng terminal focus TRƯỚC đó', () => {
+    // VS Code focus terminal mới ngay khi tạo, và không hứa hẹn thứ tự giữa việc đó với
+    // onDidOpenTerminal. Nếu chỉ nhìn activeTerminal thì terminal mới (chưa thuộc workspace
+    // nào) làm quy tắc rơi thẳng về "workspace mở gần nhất" — đúng cái nó sinh ra để tránh.
+    const termA = fakeTerminal('a', 'D:/a', tA);
+    const termMoi = fakeTerminal('moi', 'D:/moi');
+    const m = multiManager(storeHaiWs(), [A, B], new Map([[tA, termA]]));
+    (m as unknown as { terminalFocusCuoi: string | null }).terminalFocusCuoi = tA;
+    vscodeMock.window.activeTerminal = termMoi;
+
+    expect(m.wsNhan()).toBe(A);
+  });
+
+  it('terminal focus trước đó thuộc workspace đã đóng thì không kéo nó về', () => {
+    const termMoi = fakeTerminal('moi', 'D:/moi');
+    const m = multiManager(storeHaiWs(), [B], new Map());
+    (m as unknown as { terminalFocusCuoi: string | null }).terminalFocusCuoi = tA;
+    vscodeMock.window.activeTerminal = termMoi;
+
+    expect(m.wsNhan()).toBe(B);
   });
 });

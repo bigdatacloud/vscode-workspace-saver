@@ -263,3 +263,39 @@ describe('bia mộ terminal đã bỏ', () => {
     expect(ra.removedTerminals ?? []).toEqual([]);
   });
 });
+
+describe('worktree của entry đi qua đĩa', () => {
+  const SEP = String.fromCharCode(92);
+  const DIR = `C:${SEP}store${SEP}workspaces`;
+  const wt = { path: `D:/repo-worktrees/fix-login-claude`, branch: 'fix-login-claude' };
+
+  const ws = (terminals: Workspace['terminals']): Workspace => ({
+    id: uuidA, name: 'W', lastActiveAt: null, activeWindowId: null, terminals,
+  });
+  const term = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, name: 'fix-login-claude', cwd: wt.path, kind: 'plain' as const, ...extra,
+  });
+
+  it('lưu rồi đọc lại giữ nguyên worktree', () => {
+    const { fs } = memFs();
+    saveShard(fs, DIR, ws([term(uuidB, { worktree: wt })]), SEP);
+    const r = loadShards(fs, DIR, () => 1, SEP);
+    expect(r.workspaces[0]?.terminals[0]?.worktree).toEqual(wt);
+  });
+
+  it('gộp RAM/đĩa giữ worktree của bản RAM', () => {
+    const disk = ws([term(uuidB, { worktree: { path: 'D:/cu', branch: 'cu' } })]);
+    const ram = ws([term(uuidB, { worktree: wt })]);
+    expect(gopShard(disk, ram).terminals[0]?.worktree).toEqual(wt);
+  });
+
+  it('bản extension cũ không hiểu worktree cũng KHÔNG xoá nó', () => {
+    // `.passthrough()` là thứ giữ lời hứa này; mất nó là mất dữ liệu của bản kia khi chạy lẫn.
+    const { fs, files } = memFs();
+    saveShard(fs, DIR, ws([term(uuidB, { worktree: wt, truongLaCuaBanMoiHon: 42 })]), SEP);
+    const raw = [...files.values()][0] ?? '';
+    expect(JSON.parse(raw).terminals[0].truongLaCuaBanMoiHon).toBe(42);
+    const r = loadShards(fs, DIR, () => 1, SEP);
+    expect((r.workspaces[0]?.terminals[0] as Record<string, unknown>).truongLaCuaBanMoiHon).toBe(42);
+  });
+});
