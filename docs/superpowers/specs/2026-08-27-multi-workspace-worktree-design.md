@@ -13,8 +13,8 @@ chạy thật.
 
 1. Kích hoạt một workspace **không** còn đóng workspace đang mở. Nhiều workspace mở song
    song trong cùng một cửa sổ VS Code là chuyện bình thường.
-2. Terminal agent (Claude/Codex) mặc định được gợi ý một worktree riêng, tên terminal lấy
-   theo tên worktree.
+2. Terminal agent (Claude/Codex) mặc định có worktree riêng đặt tên theo `<việc>-<vai>`,
+   và tên terminal lấy theo tên worktree đó.
 3. Có đường dọn worktree an toàn — vì làm việc 1 và 2 xong thì worktree sẽ sinh ra nhiều.
 
 ## 2. Bối cảnh: vì sao code hiện tại chỉ cho một workspace
@@ -161,29 +161,37 @@ không đoán được terminal tiếp theo rơi vào đâu.
 Đây là bất biến, không phải chuyện tình cờ → thêm một khẳng định vào
 `test/unit/architecture.test.ts`.
 
-### 4.2 Gợi ý tên worktree
+### 4.2 Tên worktree = `<việc>-<vai>`
 
-**File mới `src/git/wtname.ts`** — hàm thuần:
+Tên gắn với **việc** và với **vai**, ghép phẳng bằng dấu gạch. Nhóm theo việc khi sắp xếp
+chữ cái (`fix-login-impl`, `fix-login-reviewer`, `fix-login-test` nằm liền nhau), không sinh
+thư mục lồng, không để lại thư mục cha rỗng sau khi gỡ.
+
+Ở spec này roles chưa tồn tại nên **vai tạm là `agentId`** (`claude` / `codex`). Khi phần C
+có mặt, chỉ đúng một chỗ đổi: đối số `vai` truyền vào `hoiWorktree` lấy từ `role.name` thay
+vì `agentId`. Hình dạng tên không đổi lần nào nữa.
+
+Hàm thuần, đặt cạnh `buildAddWorktreeArgs` trong `src/git/worktree.ts`:
 
 ```ts
 /**
- * Tên worktree gợi ý: `<agent>-<n>` với n nhỏ nhất chưa bị dùng. Xét CẢ tên thư mục worktree
- * lẫn tên nhánh — `git worktree add -b X` hỏng nếu nhánh X đã tồn tại dù thư mục thì chưa.
+ * Ghép tên worktree từ việc và vai. Bỏ qua bước ghép nếu người dùng đã tự gõ sẵn đuôi vai —
+ * gõ `fix-login-claude` mà nhận về `fix-login-claude-claude` là kiểu bất ngờ vô nghĩa.
  */
-export function goiYTenWorktree(agentId: string, dangCo: readonly string[]): string {
-  const dung = new Set(dangCo);
-  for (let n = 1; ; n += 1) {
-    const ten = `${agentId}-${n}`;
-    if (!dung.has(ten)) return ten;
-  }
+export function ghepTenWorktree(viec: string, vai: string): string {
+  const v = viec.trim();
+  return v.endsWith(`-${vai}`) ? v : `${v}-${vai}`;
 }
 ```
 
-`GitClient` thêm hai hàm đọc:
+Không cần bộ đánh số thứ tự: mở lại **cùng việc + cùng vai** phải cho ra **cùng worktree**,
+và luồng "thư mục đã tồn tại thì dùng lại" ở 4.3 đã lo đúng việc đó. Thêm hậu tố `-2` vào
+đây sẽ biến thao tác mở lại thành thao tác tạo mới — sai hẳn ý.
+
+`GitClient` thêm một hàm đọc:
 
 ```ts
 listWorktrees(repoRoot: string): Promise<WorktreeInfo[]>   // git worktree list --porcelain
-listBranches(repoRoot: string): Promise<string[]>          // git for-each-ref --format=%(refname:short) refs/heads
 ```
 
 và một parser thuần trong `src/git/worktree.ts`:
@@ -202,20 +210,39 @@ export function parseWorktreeList(stdout: string): WorktreeInfo[]
 `worktree <path>`, có thể có `HEAD <sha>`, `branch refs/heads/<tên>`, `bare`, `detached`,
 `locked`, `prunable`. Parser bỏ qua khoá lạ và bỏ qua khối không có `worktree`.
 
-`hoiWorktree(cwd, agentId)` nhận thêm `agentId` (`'claude' | 'codex'`) và truyền
-`value: goiYTenWorktree(agentId, [...tênThưMụcWorktree, ...tênNhánh])` vào `showInputBox`.
-Prompt giữ nguyên câu "Để TRỐNG nếu làm thẳng trên thư mục vừa chọn." — lối thoát này vẫn
-cần cho repo không muốn tách nhánh.
+### 4.3 Luồng `hoiWorktree(cwd, vai)`
 
-Nếu `listWorktrees`/`listBranches` lỗi (repo hỏng, git chậm) → gợi ý `<agent>-1` và để
-validate của git chặn ở bước `addWorktree`. Không chặn cả lệnh chỉ vì không gợi ý được tên.
+Ô nhập hỏi **việc**, không hỏi tên worktree:
 
-### 4.3 Tên terminal
+- title: `Worktree trong repo <tên repo>`
+- prompt: ``Tên việc — thư mục + nhánh sẽ là `<việc>-<vai>`. Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.``
+- placeHolder: `ví dụ: fix-login`
+- validate: giữ nguyên bộ hiện có (`/^[\w.][\w./-]*$/`, chặn `..`), áp lên phần **việc**;
+  rỗng thì hợp lệ (là lối thoát).
 
-Đã đúng sẵn: `newClaudeTerminal`/`newCodexTerminal` đặt `ten = path.basename(cwd)` và `cwd`
-là đường dẫn worktree khi có worktree. Không cần đổi gì.
+Rỗng → trả `{ cwd }`, không tạo worktree. Lối thoát này vẫn cần cho repo không muốn tách
+nhánh, và cho terminal agent chỉ để đọc.
 
-### 4.4 Ghi worktree vào entry
+Có việc → `ten = ghepTenWorktree(viec, vai)`,
+`duongDan = <dirname(repo)>/<basename(repo)>-worktrees/<ten>`, rồi:
+
+| Tình huống | Xử lý |
+|---|---|
+| `duongDan` tồn tại và **là** worktree git hợp lệ | **dùng lại**; đọc nhánh của nó từ `listWorktrees(repo)` khớp theo path |
+| `duongDan` tồn tại nhưng **không** phải worktree hợp lệ | cảnh báo như hiện tại, huỷ lệnh |
+| chưa tồn tại | `addWorktree(repo, duongDan, ten)` — `buildAddWorktreeArgs` đã tự chọn `-b` hay không tuỳ nhánh đã có chưa |
+
+`listWorktrees` lỗi ở nhánh "dùng lại" → vẫn mở terminal tại `duongDan`, chỉ là không ghi
+được `entry.worktree`. Không chặn cả lệnh vì một lệnh đọc phụ hỏng.
+
+### 4.4 Tên terminal
+
+Tên terminal = **tên worktree** (`fix-login-reviewer`). Vì tên ghép phẳng nên nó bằng đúng
+`path.basename(cwd)` mà `newClaudeTerminal`/`newCodexTerminal` đang dùng — không cần đổi
+code, nhưng dùng thẳng tên trả về từ `hoiWorktree` khi có, rõ ý hơn là đi vòng qua đường dẫn.
+Không có worktree → giữ `path.basename(cwd)` như cũ.
+
+### 4.5 Ghi worktree vào entry
 
 `src/model/schema.ts`:
 
@@ -244,9 +271,9 @@ type KetQuaWorktree = { cwd: string; worktree?: { path: string; branch: string }
 Trường hợp dùng lại worktree đã tồn tại (nhánh nào chưa biết): đọc nhánh từ
 `listWorktrees(goc)` khớp theo `path`. Không đọc được → không ghi `worktree` vào entry;
 terminal vẫn chạy bình thường, chỉ là lệnh dọn sẽ không thấy nó qua entry (vẫn thấy qua
-bước quét thư mục ở 4.5).
+bước liệt kê worktree ở 4.6).
 
-### 4.5 Lệnh `aiWorkspace.cleanWorktrees` — "AI Workspace: Dọn worktree"
+### 4.6 Lệnh `aiWorkspace.cleanWorktrees` — "AI Workspace: Dọn worktree"
 
 Menu: chuột phải workspace (`aiWorkspace(Active|Inactive)`), group `3_edit@5`.
 
@@ -310,11 +337,10 @@ Với mỗi worktree gỡ thành công: gọi `removeTerminal(wsId, entryId)` ch
 
 **Bước 6 — báo cáo.** `Đã gỡ N worktree. M cái git từ chối:` + danh sách lý do.
 
-### 4.6 Bổ sung `GitClient`
+### 4.7 Bổ sung `GitClient`
 
 ```ts
 listWorktrees(repoRoot)                 // đọc
-listBranches(repoRoot)                  // đọc
 isClean(dir): Promise<boolean>          // git status --porcelain, stdout rỗng
 mergedBranches(repoRoot, base)          // git branch --merged <base> --format=%(refname:short)
 defaultBranch(repoRoot)                 // symbolic-ref → main → master → null
@@ -362,8 +388,10 @@ terminal có agent đang chạy thật theo registry (bơm chữ vào shell tr�
 
 **A và B chuẩn bị gì cho chúng:** `activeIds` cho phép orchestrator ở workspace này giám sát
 trong khi bạn làm việc ở workspace khác; `entry.worktree` là địa chỉ mà `dispatch` cần để
-biết worker đang ở nhánh nào; và gợi ý tên worktree sẽ đổi từ `<agent>-<n>` sang
-`<role>-<n>` khi C có mặt.
+biết worker đang ở nhánh nào; và hình dạng tên `<việc>-<vai>` đã đúng dạng cuối — khi C có
+mặt, chỉ đối số `vai` đổi nguồn từ `agentId` sang `role.name`, không đổi hình dạng lần nào
+nữa. Nhờ đó `fix-login-impl`, `fix-login-reviewer`, `fix-login-test` nằm liền nhau trong
+`git branch`, tức nhìn một cái là thấy cả tổ đang làm gì trên cùng một việc.
 
 ## 6. Kiểm thử
 
@@ -372,7 +400,7 @@ biết worker đang ở nhánh nào; và gợi ý tên worktree sẽ đổi từ
 | Hàm | Ca kiểm |
 |---|---|
 | `chonWorkspaceNhan` | focus terminal của ws đang mở → ws đó; focus terminal không thuộc ws nào → ws mở gần nhất; focus terminal của ws đã đóng → ws mở gần nhất; không mở ws nào → `null` |
-| `goiYTenWorktree` | rỗng → `claude-1`; có `claude-1` → `claude-2`; nhánh `codex-1` tồn tại mà thư mục chưa → vẫn nhảy sang `codex-2` |
+| `ghepTenWorktree` | `fix-login` + `claude` → `fix-login-claude`; đã sẵn đuôi `-claude` → giữ nguyên, không ghép hai lần; khoảng trắng thừa hai đầu bị cắt |
 | `parseWorktreeList` | khối thường; `bare`; `detached` (không có dòng `branch`); khoá lạ bị bỏ qua; stdout rỗng → `[]` |
 | `laWorktreeCuaExtension` | trong `<repo>-worktrees/` → true; worktree chính → false; thư mục khác cùng tiền tố → false; khác hoa/thường trên Windows → true |
 | `phanLoaiWorktree` | đủ 4 nhánh + thứ tự ưu tiên (`dangDung` thắng `banThayDoi`) |
