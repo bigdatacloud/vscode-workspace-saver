@@ -132,3 +132,37 @@ describe('listRunning', () => {
   });
 });
 
+
+describe('cờ thêm cho vai và điều phối', () => {
+  const adapter = new ClaudeCodeAdapter('powershell', { run: async () => ({ stdout: '', code: 0 }) }, () => '11111111-1111-4111-8111-111111111111');
+
+  it('phiên mới kèm file vai và cấu hình MCP', () => {
+    const cmd = adapter.buildLaunchCommand({
+      name: 'x',
+      mode: { kind: 'new', sessionId: '11111111-1111-4111-8111-111111111111' },
+      coThem: { fileVai: 'C:/gs/roles/w/r.md', cauHinhMcp: 'C:/gs/orch/w/mcp-t.json' },
+    });
+    expect(cmd).toContain('--append-system-prompt-file');
+    expect(cmd).toContain('--mcp-config');
+    expect(cmd).toContain('C:/gs/roles/w/r.md');
+  });
+
+  it('đường dẫn có khoảng trắng vẫn được bọc nháy', () => {
+    const cmd = adapter.buildLaunchCommand({
+      name: 'x',
+      mode: { kind: 'continue' },
+      coThem: { fileVai: "C:/My Files/vai's.md" },
+    });
+    expect(cmd).toContain("'C:/My Files/vai''s.md'");
+  });
+
+  it('không có cờ thêm thì lệnh giữ nguyên như cũ', () => {
+    expect(adapter.buildLaunchCommand({ name: 'x', mode: { kind: 'continue' } })).toBe('claude -c');
+  });
+
+  it('mọi biến thể trong buildLaunchOptions đều mang cờ thêm', () => {
+    const ds = adapter.buildLaunchOptions('peer', { fileVai: 'C:/r.md' });
+    expect(ds.length).toBeGreaterThan(0);
+    for (const o of ds) expect(o.command).toContain('--append-system-prompt-file');
+  });
+});

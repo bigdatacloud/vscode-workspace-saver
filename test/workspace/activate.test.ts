@@ -32,6 +32,7 @@ function makePorts(over: Partial<ActivatePorts> = {}) {
       return { sendText: (t) => { calls.push(`send:${e.id}`); box.push(t); } };
     },
     agent: fakeAgent(U('9')),
+    coThemCuaEntry: () => undefined,
     fsExists: () => true,
     isTrusted: () => true,
     confirmTrust: async () => true,

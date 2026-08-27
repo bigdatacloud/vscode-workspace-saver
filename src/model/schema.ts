@@ -51,7 +51,33 @@ export const TerminalEntrySchema = z.object({
     'id phiên agent có ký tự không hợp lệ hoặc bắt đầu bằng dấu gạch',
   ).optional(),
   worktree: WorktreeRefSchema.optional(),
+  /**
+   * Vai đang gắn. CỐ Ý không ép toàn vẹn tham chiếu ở schema: xoá một vai sẽ làm CẢ shard
+   * hỏng schema → backup + khởi tạo rỗng → mất nguyên workspace. Vai treo được coi là "không
+   * có vai" lúc đọc và dọn dần.
+   */
+  roleId: uuid.optional(),
 }).passthrough();
+
+/**
+ * Vai của một agent trong quy trình phát triển.
+ *
+ * Mô tả vai KHÔNG nằm ở đây mà ở file `<globalStorage>/roles/<wsId>/<roleId>.md` — đó là nguồn
+ * sự thật. Lý do: `claude --append-system-prompt-file` cần một FILE, và mô tả vai là văn bản
+ * nhiều dòng mà `showInputBox` không nhập nổi.
+ */
+export const RoleSchema = z.object({
+  id: uuid,
+  /**
+   * Tên vai đi thẳng vào tên nhánh git (`<việc>-<vai>`) nên phải hợp lệ với git: không dấu,
+   * không khoảng trắng, không bắt đầu bằng dấu gạch.
+   */
+  name: z.string().regex(
+    /^[A-Za-z0-9_.][\w.-]*$/,
+    'tên vai chỉ dùng chữ không dấu, số, . _ - và không bắt đầu bằng dấu gạch',
+  ),
+  kind: z.enum(['worker', 'orchestrator']),
+});
 
 /**
  * Bia mộ: terminal đã bị bỏ khỏi workspace, kèm mốc thời gian bỏ (epoch ms).
@@ -75,6 +101,7 @@ export const WorkspaceSchema = z
     terminalLocation: z.enum(['editor', 'panel']).optional(),
     terminals: z.array(TerminalEntrySchema),
     removedTerminals: z.array(BiaMoTerminalSchema).optional(),
+    roles: z.array(RoleSchema).optional(),
   })
   .passthrough()
   .superRefine((ws, ctx) => {
@@ -84,6 +111,19 @@ export const WorkspaceSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['terminals', i, 'id'], message: `Terminal id trùng: ${t.id}` });
       }
       seen.add(t.id);
+    });
+    const tenVai = new Set<string>();
+    const idVai = new Set<string>();
+    (ws.roles ?? []).forEach((r, i) => {
+      const thuong = r.name.toLowerCase();
+      if (tenVai.has(thuong)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['roles', i, 'name'], message: `Tên vai trùng: ${r.name}` });
+      }
+      if (idVai.has(r.id)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['roles', i, 'id'], message: `Id vai trùng: ${r.id}` });
+      }
+      tenVai.add(thuong);
+      idVai.add(r.id);
     });
   });
 
@@ -107,6 +147,7 @@ export const StoreFileSchema = z
 
 export type BiaMoTerminal = z.infer<typeof BiaMoTerminalSchema>;
 export type WorktreeRef = z.infer<typeof WorktreeRefSchema>;
+export type Role = z.infer<typeof RoleSchema>;
 export type TerminalEntry = z.infer<typeof TerminalEntrySchema>;
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type StoreFile = z.infer<typeof StoreFileSchema>;

@@ -1,4 +1,4 @@
-import type { AgentAdapter } from '../agent/types';
+import type { AgentAdapter, CoTheThem } from '../agent/types';
 import { normalizeCwd } from '../claude/match';
 import type { TerminalEntry, Workspace } from '../model/schema';
 
@@ -13,6 +13,11 @@ export interface AgentRestoreSelection {
 export interface ActivatePorts {
   createTerminal(entry: TerminalEntry): ActivateTerminalHandle;
   agent: AgentAdapter;
+  /**
+   * Cờ vai + cờ MCP cho entry này. Phải hỏi lúc KHÔI PHỤC chứ không chỉ lúc tạo mới: vai có
+   * thể được gắn sau khi terminal đã tồn tại, và system prompt chỉ vào được ở lệnh khởi chạy.
+   */
+  coThemCuaEntry(entry: TerminalEntry): CoTheThem | undefined;
   fsExists(p: string): boolean;
   isTrusted(commands: string[]): boolean;
   confirmTrust(commands: string[]): Promise<boolean>;
@@ -91,8 +96,11 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
       if (currentEntry.kind === 'claude') {
         const ten = currentEntry.claudeName ?? currentEntry.name;
         const sessionId = currentEntry.claudeSessionId;
+        const coThem = ports.coThemCuaEntry(currentEntry);
         if (sessionId !== undefined) {
-          handle.sendText(ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'resume', sessionId } }));
+          handle.sendText(
+            ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'resume', sessionId }, ...(coThem === undefined ? {} : { coThem }) }),
+          );
         } else if (cwdDaNoiTiep.has(normalizeCwd(currentEntry.cwd)) || ports.coPhienDangChayNgoai(currentEntry.cwd)) {
           // `-c` nối vào hội thoại GẦN NHẤT của thư mục — nên nó chỉ an toàn khi thư mục đó
           // không còn tiến trình nào đang giữ hội thoại ấy, và chỉ cho MỘT entry mỗi thư mục.
@@ -100,10 +108,14 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
           // không dám `-c` thì mint phiên mới: mất chỗ đang dở còn hơn trộn hai hội thoại.
           const moi = ports.agent.newSessionId();
           await ports.onMinted(currentEntry.id, moi);
-          handle.sendText(ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'new', sessionId: moi } }));
+          handle.sendText(
+            ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'new', sessionId: moi }, ...(coThem === undefined ? {} : { coThem }) }),
+          );
         } else {
           cwdDaNoiTiep.add(normalizeCwd(currentEntry.cwd));
-          handle.sendText(ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'continue' } }));
+          handle.sendText(
+            ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'continue' }, ...(coThem === undefined ? {} : { coThem }) }),
+          );
         }
       } else if (restoreCommand !== undefined) {
         handle.sendText(restoreCommand);

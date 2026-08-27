@@ -9,7 +9,7 @@ import {
   pickCwd,
   pickUniqueMatch,
 } from '../adopt/filter';
-import type { AgentAdapter, RunningSession, RunningStatus } from '../agent/types';
+import type { AgentAdapter, CoTheThem, RunningSession, RunningStatus } from '../agent/types';
 import { khiKetThucLenh, nenBatLenh, type LenhDangCho } from '../capture/rules';
 import { CodexAdapter } from '../agent/codex';
 import { chonSessionChoTerminal, gomSessionTheoTerminal } from '../claude/ancestry';
@@ -28,12 +28,15 @@ import {
   type LoaiWorktree,
   type WorktreeInfo,
 } from '../git/worktree';
+import { chenKhoiRole, goKhoiRole, type KetQuaChen } from '../role/agentsmd';
+import { duongDanRole, mauNoiDungRole } from '../role/paths';
 import { chonWorkspaceNhan } from './receiving';
 import { docBangTienTrinh } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
 import {
   WorkspaceSchema,
   emptyStore,
+  type Role,
   type StoreFile,
   type TerminalEntry,
   type Workspace,
@@ -94,6 +97,15 @@ export interface WorkspaceView {
 export interface TerminalView {
   id: string;
   workspaceId: string;
+  /** Tên vai đang gắn; vắng mặt nghĩa là chưa gắn vai nào. */
+  roleName?: string;
+  /** Vai là điều phối — cây cho nó icon khác hẳn để nhận ra ngay. */
+  laDieuPhoi?: boolean;
+  /**
+   * Mô tả vai đã đổi SAU khi terminal khởi chạy. AGENTS.md đã cập nhật nhưng system prompt
+   * thì không — chỉ khởi chạy lại mới khớp hẳn.
+   */
+  vaiDaDoi?: boolean;
   name: string;
   kind: 'claude' | 'plain';
   state: TerminalState;
@@ -188,6 +200,13 @@ export class WorkspaceManager implements vscode.Disposable {
   private readonly filePath: string;
   /** Thư mục chứa mỗi workspace một file — nguồn dữ liệu thật kể từ bản tách file. */
   private readonly thuMucShard: string;
+  /** Gốc globalStorage — nơi đặt cả shard, file mô tả vai, và thư mục điều phối. */
+  private readonly thuMucGoc: string;
+  /**
+   * Terminal đang chạy mà mô tả vai đã đổi sau lúc khởi chạy. System prompt đóng băng từ lệnh
+   * khởi chạy nên chỉ mở lại mới ăn — đánh dấu để cây HIỆN sự lệch đó thay vì giấu nó đi.
+   */
+  private readonly vaiDaDoi = new Set<string>();
   private readonly boNhoChung: vscode.Memento;
   private store: StoreFile;
   /**
@@ -307,6 +326,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const dir = context.globalStorageUri.fsPath;
     this.filePath = path.join(dir, STORE_FILE);
     this.thuMucShard = path.join(dir, THU_MUC_SHARD);
+    this.thuMucGoc = dir;
     try {
       nodeFs.mkdirSync(dir, { recursive: true });
     } catch (error) {
@@ -377,6 +397,9 @@ export class WorkspaceManager implements vscode.Disposable {
       vscode.window.onDidOpenTerminal((terminal) => {
         void this.onTerminalOpened(terminal);
       }),
+      vscode.workspace.onDidSaveTextDocument((doc) => {
+        this.khiLuuFileRole(doc);
+      }),
       vscode.window.onDidChangeActiveTerminal((terminal) => {
         if (terminal === undefined) return;
         const key = this.terminals.ownsTerminal(terminal);
@@ -419,16 +442,21 @@ export class WorkspaceManager implements vscode.Disposable {
   terminalViews(workspaceId: string): TerminalView[] {
     const ws = findWorkspace(this.store, workspaceId);
     if (!ws) return [];
-    return ws.terminals.map((entry) => ({
+    return ws.terminals.map((entry) => {
+      const role = this.vaiCuaEntry(ws, entry);
+      return {
       id: entry.id,
       workspaceId: ws.id,
+      ...(role === undefined ? {} : { roleName: role.name, laDieuPhoi: role.kind === 'orchestrator' }),
+      ...(this.vaiDaDoi.has(entry.id) ? { vaiDaDoi: true } : {}),
       name: entry.name,
       kind: entry.kind,
       state: this.terminalState(entry),
       hasStartCommand: entry.startCommand !== undefined,
       cwd: entry.cwd,
       agent: this.agentCuaEntry(entry),
-    }));
+      };
+    });
   }
 
   /** Workspace sẽ nhận terminal mới khi lệnh được gọi bằng phím tắt (không có item cây). */
@@ -702,6 +730,15 @@ export class WorkspaceManager implements vscode.Disposable {
       this.touch(wsNow.id);
 
       for (const entry of wsNow.terminals) this.errorIds.delete(entry.id);
+
+      // Ghi lại khối vai TRƯỚC khi mở terminal: agent đọc AGENTS.md lúc khởi động, ghi sau là
+      // muộn một phiên. File nào người dùng đã sửa tay thì báo chứ không đè.
+      const suaTay = this.dongBoAgentsMd(wsNow);
+      if (suaTay.length > 0) {
+        void vscode.window.showWarningMessage(
+          `${suaTay.length} file AGENTS.md có khối vai bị sửa tay nên KHÔNG được ghi đè: ${suaTay.join(', ')}`,
+        );
+      }
 
       // Cả bước dò lẫn bước mở đều nằm trong MỘT thanh tiến trình: bước dò có thể mất vài
       // giây (đọc registry + bảng tiến trình), để trần thì trông như VS Code treo.
@@ -1095,6 +1132,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const trustKey = `ws:${ws.id}`;
     const codexRestoreModes = new Map<string, 'exact' | 'last' | 'picker' | 'new'>();
     return {
+      coThemCuaEntry: (entry) => this.coThemCuaEntry(ws, entry),
       createTerminal: (entry) => {
         const handle = this.terminals.create(entry.id, {
           name: entry.name,
@@ -1324,6 +1362,479 @@ export class WorkspaceManager implements vscode.Disposable {
     this.onChanged.fire();
   }
 
+  // ------------------------------------------------------------------ vai
+
+  private duongDanFileRole(wsId: string, roleId: string): string {
+    return duongDanRole(this.thuMucGoc, wsId, roleId, path.sep);
+  }
+
+  /** Mô tả vai. File mất (người dùng xoá tay) → null; bên gọi coi như không có vai, không sập. */
+  private docNoiDungRole(wsId: string, roleId: string): string | null {
+    try {
+      return nodeFs.readFileSync(this.duongDanFileRole(wsId, roleId), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  private vaiCuaEntry(ws: Workspace, entry: TerminalEntry): Role | undefined {
+    if (entry.roleId === undefined) return undefined;
+    // Vai TREO (trỏ vào vai đã xoá) được coi là không có vai — xem ghi chú ở schema: ép toàn
+    // vẹn tham chiếu ở cửa đọc là đánh đổi một vai treo lấy cả workspace.
+    return (ws.roles ?? []).find((r) => r.id === entry.roleId);
+  }
+
+  /** Terminal đang giữ vai điều phối; null nếu chưa có ai. Tối đa MỘT cái mỗi workspace. */
+  private terminalDieuPhoi(ws: Workspace): TerminalEntry | null {
+    const idDieuPhoi = new Set(
+      (ws.roles ?? []).filter((r) => r.kind === 'orchestrator').map((r) => r.id),
+    );
+    return ws.terminals.find((t) => t.roleId !== undefined && idDieuPhoi.has(t.roleId)) ?? null;
+  }
+
+  private coThemChoRole(wsId: string, role: Role): CoTheThem | undefined {
+    const fileVai = this.duongDanFileRole(wsId, role.id);
+    // File vai mất thì ĐỪNG truyền cờ: `claude` từ chối khởi chạy hẳn khi file không tồn tại
+    // ("Append system prompt file not found") — mất vai còn hơn mất cả terminal.
+    if (!nodeFs.existsSync(fileVai)) return undefined;
+    return { fileVai };
+  }
+
+  private coThemCuaEntry(ws: Workspace, entry: TerminalEntry): CoTheThem | undefined {
+    const role = this.vaiCuaEntry(ws, entry);
+    return role === undefined ? undefined : this.coThemChoRole(ws.id, role);
+  }
+
+  /** Ghi khối vai cho một entry vừa tạo; im lặng khi không có vai hoặc file vai đã mất. */
+  private ghiKhoiVaiChoEntry(wsId: string, thuMuc: string, role: Role | undefined): void {
+    if (role === undefined) return;
+    const noiDung = this.docNoiDungRole(wsId, role.id);
+    if (noiDung === null || !nodeFs.existsSync(thuMuc)) return;
+    this.ghiKhoiVai(thuMuc, role, noiDung);
+  }
+
+  /**
+   * Ghi khối vai vào `<worktree>/AGENTS.md`. Nội dung ngoài mốc không bị đụng một ký tự.
+   * Trả trạng thái để bên gọi biết có phải đi hỏi người dùng không.
+   */
+  private ghiKhoiVai(thuMuc: string, role: Role, noiDung: string): KetQuaChen | 'loi' {
+    const file = path.join(thuMuc, 'AGENTS.md');
+    let cu = '';
+    let daCo = true;
+    try {
+      cu = nodeFs.readFileSync(file, 'utf8');
+    } catch {
+      daCo = false;
+    }
+    const r = chenKhoiRole(cu, noiDung, role.name, role.id);
+    if (r.ketQua === 'khongDoi' || r.ketQua === 'nguoiDungDaSua') return r.ketQua;
+    try {
+      nodeFs.writeFileSync(file, r.noiDung, 'utf8');
+    } catch {
+      return 'loi';
+    }
+    // Chỉ khai báo bỏ qua khi file do TA tạo mới. Repo đã theo dõi AGENTS.md thì đừng đụng.
+    if (!daCo) void this.boQuaAgentsMd(thuMuc);
+    return r.ketQua;
+  }
+
+  private goKhoiVai(thuMuc: string, roleId: string): void {
+    const file = path.join(thuMuc, 'AGENTS.md');
+    let cu: string;
+    try {
+      cu = nodeFs.readFileSync(file, 'utf8');
+    } catch {
+      return;
+    }
+    const moi = goKhoiRole(cu, roleId);
+    if (moi === cu) return;
+    try {
+      // Rỗng hẳn nghĩa là file vốn chỉ chứa khối của ta — xoá hẳn thay vì để lại file trống.
+      if (moi.trim() === '') nodeFs.unlinkSync(file);
+      else nodeFs.writeFileSync(file, moi, 'utf8');
+    } catch {
+      /* tiện ích phụ, không chặn luồng chính */
+    }
+  }
+
+  /**
+   * Thêm `AGENTS.md` vào `.git/info/exclude`, chỉ khi dòng đó chưa có.
+   *
+   * Dùng `info/exclude` chứ KHÔNG phải `.gitignore`: `.gitignore` là file được theo dõi của
+   * người dùng, sửa nó là sửa lịch sử repo của họ. `info/exclude` là chỗ riêng của bản sao
+   * làm việc, đúng nghĩa "thứ chỉ máy này quan tâm".
+   */
+  private async boQuaAgentsMd(thuMuc: string): Promise<void> {
+    const common = await this.git.gitCommonDir(thuMuc);
+    if (common === null) return;
+    const file = path.join(common, 'info', 'exclude');
+    try {
+      let cu = '';
+      try {
+        cu = nodeFs.readFileSync(file, 'utf8');
+      } catch {
+        /* chưa có file exclude */
+      }
+      if (cu.split(/\r?\n/).some((d) => d.trim() === 'AGENTS.md')) return;
+      nodeFs.mkdirSync(path.dirname(file), { recursive: true });
+      const dau = cu.trim() === '' ? '' : `${cu.replace(/\s*$/, '')}\n`;
+      nodeFs.writeFileSync(file, `${dau}AGENTS.md\n`, 'utf8');
+    } catch {
+      /* tiện ích phụ, không chặn luồng chính */
+    }
+  }
+
+  /** Ghi lại khối vai cho mọi terminal có vai; trả danh sách file người dùng đã sửa tay. */
+  private dongBoAgentsMd(ws: Workspace): string[] {
+    const suaTay: string[] = [];
+    for (const entry of ws.terminals) {
+      const role = this.vaiCuaEntry(ws, entry);
+      if (role === undefined) continue;
+      const noiDung = this.docNoiDungRole(ws.id, role.id);
+      if (noiDung === null) continue;
+      const thuMuc = entry.worktree?.path ?? entry.cwd;
+      if (!nodeFs.existsSync(thuMuc)) continue;
+      if (this.ghiKhoiVai(thuMuc, role, noiDung) === 'nguoiDungDaSua') {
+        suaTay.push(path.join(thuMuc, 'AGENTS.md'));
+      }
+    }
+    return suaTay;
+  }
+
+  /**
+   * Người dùng lưu file mô tả vai → `AGENTS.md` cập nhật NGAY (ăn liền), còn system prompt thì
+   * đóng băng từ lúc khởi chạy nên terminal đang chạy được đánh dấu "vai đã đổi". Lệch được
+   * HIỂN THỊ chứ không bị giấu.
+   */
+  private khiLuuFileRole(doc: vscode.TextDocument): void {
+    const duongDan = doc.uri.fsPath;
+    if (!trongThuMuc(duongDan, path.join(this.thuMucGoc, 'roles'))) return;
+    if (!duongDan.toLowerCase().endsWith('.md')) return;
+    const roleId = path.basename(duongDan, path.extname(duongDan));
+    let doi = false;
+    for (const ws of this.store.workspaces) {
+      const role = (ws.roles ?? []).find((r) => r.id === roleId);
+      if (role === undefined) continue;
+      for (const entry of ws.terminals) {
+        if (entry.roleId !== roleId) continue;
+        const thuMuc = entry.worktree?.path ?? entry.cwd;
+        if (nodeFs.existsSync(thuMuc)) this.ghiKhoiVai(thuMuc, role, doc.getText());
+        if (this.terminals.has(entry.id)) {
+          this.vaiDaDoi.add(entry.id);
+          doi = true;
+        }
+      }
+    }
+    if (doi) this.onChanged.fire();
+  }
+
+  private async moFileRole(wsId: string, roleId: string): Promise<void> {
+    const duongDan = this.duongDanFileRole(wsId, roleId);
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(duongDan));
+      await vscode.window.showTextDocument(doc, { preview: false });
+    } catch (e) {
+      void vscode.window.showWarningMessage(
+        `Không mở được file vai: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  private laTenVaiHopLe(v: string, ws: Workspace, boQuaId?: string): string | undefined {
+    const t = v.trim();
+    if (t === '') return 'Tên không được để trống';
+    if (!/^[A-Za-z0-9_.][\w.-]*$/.test(t)) {
+      return 'Tên vai đi vào tên nhánh git: chỉ chữ không dấu, số, . _ - và không bắt đầu bằng dấu gạch';
+    }
+    const trung = (ws.roles ?? []).some(
+      (r) => r.id !== boQuaId && r.name.toLowerCase() === t.toLowerCase(),
+    );
+    return trung ? `Vai "${t}" đã có trong workspace này` : undefined;
+  }
+
+  async addRole(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+
+    const ten = await vscode.window.showInputBox({
+      title: `Vai mới trong workspace "${ws.name}"`,
+      prompt: 'Tên vai — sẽ thành phần đuôi của tên worktree/nhánh (ví dụ fix-login-reviewer)',
+      placeHolder: 'ví dụ: reviewer',
+      validateInput: (v) => {
+        const wsNow = findWorkspace(this.store, workspaceId);
+        return wsNow ? this.laTenVaiHopLe(v, wsNow) : 'Workspace không còn tồn tại';
+      },
+    });
+    if (ten === undefined) return;
+
+    const loai = await vscode.window.showQuickPick(
+      [
+        // `loaiVai` chứ không phải `kind`: `kind` là trường DÀNH RIÊNG của QuickPickItem
+        // (QuickPickItemKind.Separator) — dùng lại tên đó là ép kiểu sai ngay ở API.
+        { label: 'Worker', description: 'nhận việc và làm', loaiVai: 'worker' as const },
+        {
+          label: 'Orchestrator',
+          description: 'điều phối các agent khác — tối đa MỘT terminal mỗi workspace',
+          loaiVai: 'orchestrator' as const,
+        },
+      ],
+      { placeHolder: 'Loại vai' },
+    );
+    if (!loai) return;
+
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) {
+      void vscode.window.showWarningMessage('Workspace không còn tồn tại.');
+      return;
+    }
+    if (this.laTenVaiHopLe(ten, wsNow) !== undefined) {
+      void vscode.window.showWarningMessage(`Vai "${ten.trim()}" vừa được tạo ở nơi khác.`);
+      return;
+    }
+
+    const role: Role = { id: randomUUID(), name: ten.trim(), kind: loai.loaiVai };
+    // Ghi FILE trước rồi mới ghi shard: shard trỏ vào file không tồn tại là trạng thái khó
+    // hiểu hơn hẳn một file mồ côi không ai trỏ tới.
+    try {
+      const duongDan = this.duongDanFileRole(workspaceId, role.id);
+      nodeFs.mkdirSync(path.dirname(duongDan), { recursive: true });
+      nodeFs.writeFileSync(duongDan, mauNoiDungRole(role.name, role.kind), 'utf8');
+    } catch (e) {
+      void vscode.window.showErrorMessage(
+        `Không tạo được file mô tả vai: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return;
+    }
+
+    wsNow.roles = [...(wsNow.roles ?? []), role];
+    this.touch(wsNow.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+    await this.moFileRole(workspaceId, role.id);
+  }
+
+  async manageRoles(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    const roles = ws.roles ?? [];
+    if (roles.length === 0) {
+      const tra = await vscode.window.showInformationMessage(
+        `Workspace "${ws.name}" chưa có vai nào.`,
+        'Thêm vai',
+      );
+      if (tra === 'Thêm vai') await this.addRole(workspaceId);
+      return;
+    }
+
+    const chon = await vscode.window.showQuickPick(
+      roles.map((r) => ({
+        label: r.name,
+        description: r.kind === 'orchestrator' ? 'điều phối' : 'worker',
+        detail: `${ws.terminals.filter((t) => t.roleId === r.id).length} terminal đang mang vai này`,
+        role: r,
+      })),
+      { placeHolder: 'Chọn vai' },
+    );
+    if (!chon) return;
+
+    const viec = await vscode.window.showQuickPick(
+      [
+        { label: '$(edit) Sửa mô tả', id: 'sua' },
+        { label: '$(pencil) Đổi tên', id: 'doiTen' },
+        { label: '$(trash) Xoá vai', id: 'xoa' },
+      ],
+      { placeHolder: `Vai "${chon.role.name}"` },
+    );
+    if (!viec) return;
+    if (viec.id === 'sua') return this.moFileRole(workspaceId, chon.role.id);
+    if (viec.id === 'doiTen') return this.doiTenRole(workspaceId, chon.role.id);
+    return this.xoaRole(workspaceId, chon.role.id);
+  }
+
+  private async doiTenRole(workspaceId: string, roleId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    const cu = (ws?.roles ?? []).find((r) => r.id === roleId);
+    if (!ws || cu === undefined) return;
+    const ten = await vscode.window.showInputBox({
+      title: `Đổi tên vai "${cu.name}"`,
+      value: cu.name,
+      validateInput: (v) => {
+        const wsNow = findWorkspace(this.store, workspaceId);
+        return wsNow ? this.laTenVaiHopLe(v, wsNow, roleId) : 'Workspace không còn tồn tại';
+      },
+    });
+    if (ten === undefined) return;
+
+    const wsNow = findWorkspace(this.store, workspaceId);
+    const roleNow = (wsNow?.roles ?? []).find((r) => r.id === roleId);
+    if (!wsNow || roleNow === undefined) return;
+    roleNow.name = ten.trim();
+    this.touch(wsNow.id);
+    this.scheduleSave();
+    this.flush();
+    // Tên nằm trong MỐC của khối, nên đổi tên phải ghi lại khối. Worktree đã tạo giữ nguyên
+    // tên cũ: đổi tên thư mục + nhánh git dưới chân một agent đang chạy là chuyện khác hẳn.
+    this.dongBoAgentsMd(wsNow);
+    this.onChanged.fire();
+  }
+
+  private async xoaRole(workspaceId: string, roleId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    const role = (ws?.roles ?? []).find((r) => r.id === roleId);
+    if (!ws || role === undefined) return;
+    const mang = ws.terminals.filter((t) => t.roleId === roleId);
+    const answer = await vscode.window.showWarningMessage(
+      `Xoá vai "${role.name}"?`,
+      {
+        modal: true,
+        detail: [
+          mang.length === 0
+            ? 'Không terminal nào đang mang vai này.'
+            : `${mang.length} terminal sẽ mất vai, và khối vai trong AGENTS.md của chúng bị gỡ.`,
+          'File mô tả vai cũng bị xoá. Worktree và nhánh git KHÔNG bị đụng tới.',
+        ].join('\n'),
+      },
+      'Xoá',
+    );
+    if (answer !== 'Xoá') return;
+
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow || (wsNow.roles ?? []).every((r) => r.id !== roleId)) return;
+    for (const entry of wsNow.terminals) {
+      if (entry.roleId !== roleId) continue;
+      this.goKhoiVai(entry.worktree?.path ?? entry.cwd, roleId);
+      delete entry.roleId;
+      this.vaiDaDoi.delete(entry.id);
+    }
+    const con = (wsNow.roles ?? []).filter((r) => r.id !== roleId);
+    if (con.length === 0) delete wsNow.roles;
+    else wsNow.roles = con;
+    try {
+      nodeFs.unlinkSync(this.duongDanFileRole(workspaceId, roleId));
+    } catch {
+      /* file đã mất từ trước — không phải lỗi đáng báo */
+    }
+    this.touch(wsNow.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+  }
+
+  async assignRole(workspaceId: string, terminalId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    const entry = ws?.terminals.find((t) => t.id === terminalId);
+    if (!ws || entry === undefined) return;
+    const roles = ws.roles ?? [];
+    if (roles.length === 0) {
+      const tra = await vscode.window.showInformationMessage(
+        `Workspace "${ws.name}" chưa có vai nào.`,
+        'Thêm vai',
+      );
+      if (tra === 'Thêm vai') await this.addRole(workspaceId);
+      return;
+    }
+
+    const BO = '__bo__';
+    const chon = await vscode.window.showQuickPick(
+      [
+        ...roles.map((r) => ({
+          label: r.name,
+          description: r.kind === 'orchestrator' ? 'điều phối' : 'worker',
+          id: r.id,
+        })),
+        { label: '$(circle-slash) Bỏ vai', description: '', id: BO },
+      ],
+      { placeHolder: `Vai cho terminal "${entry.name}"` },
+    );
+    if (!chon) return;
+
+    const wsNow = findWorkspace(this.store, workspaceId);
+    const entryNow = wsNow?.terminals.find((t) => t.id === terminalId);
+    if (!wsNow || entryNow === undefined) return;
+    const vaiCu = entryNow.roleId;
+
+    if (chon.id === BO) {
+      if (vaiCu !== undefined) this.goKhoiVai(entryNow.worktree?.path ?? entryNow.cwd, vaiCu);
+      delete entryNow.roleId;
+    } else {
+      const role = (wsNow.roles ?? []).find((r) => r.id === chon.id);
+      if (role === undefined) return;
+      if (role.kind === 'orchestrator') {
+        const dangGiu = this.terminalDieuPhoi(wsNow);
+        // Hai ông sếp cùng giao việc cho một worker là công thức tạo mâu thuẫn không gỡ được.
+        if (dangGiu !== null && dangGiu.id !== terminalId) {
+          void vscode.window.showWarningMessage(
+            `Terminal "${dangGiu.name}" đang giữ vai điều phối. Bỏ vai của nó trước đã — mỗi workspace chỉ một người điều phối.`,
+          );
+          return;
+        }
+      }
+      // Gỡ khối của vai CŨ trước khi chèn vai mới, nếu không AGENTS.md mang hai vai chồng nhau.
+      if (vaiCu !== undefined && vaiCu !== role.id) {
+        this.goKhoiVai(entryNow.worktree?.path ?? entryNow.cwd, vaiCu);
+      }
+      entryNow.roleId = role.id;
+      const noiDung = this.docNoiDungRole(wsNow.id, role.id);
+      const thuMuc = entryNow.worktree?.path ?? entryNow.cwd;
+      if (noiDung !== null && nodeFs.existsSync(thuMuc)) {
+        if (this.ghiKhoiVai(thuMuc, role, noiDung) === 'nguoiDungDaSua') {
+          const tra = await vscode.window.showWarningMessage(
+            `Khối vai trong ${path.join(thuMuc, 'AGENTS.md')} đã bị sửa tay. Ghi đè bằng nội dung vai?`,
+            { modal: true },
+            'Ghi đè',
+          );
+          if (tra === 'Ghi đè') {
+            this.goKhoiVai(thuMuc, role.id);
+            this.ghiKhoiVai(thuMuc, role, noiDung);
+          }
+        }
+      }
+      // Terminal đang chạy: system prompt đã đóng băng, chỉ khởi chạy lại mới mang vai mới.
+      if (this.terminals.has(entryNow.id)) this.vaiDaDoi.add(entryNow.id);
+    }
+
+    this.touch(wsNow.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+  }
+
+  /** Hỏi vai cho terminal agent sắp tạo. `'huy'` nghĩa là người dùng bỏ cả lệnh. */
+  private async hoiVai(workspaceId: string): Promise<Role | undefined | 'huy'> {
+    const ws = findWorkspace(this.store, workspaceId);
+    const roles = ws?.roles ?? [];
+    // Chưa định nghĩa vai nào thì đừng hỏi câu vô nghĩa — luồng cũ giữ nguyên.
+    if (roles.length === 0) return undefined;
+    const KHONG = '__khong__';
+    const chon = await vscode.window.showQuickPick(
+      [
+        ...roles.map((r) => ({
+          label: r.name,
+          description: r.kind === 'orchestrator' ? 'điều phối' : 'worker',
+          id: r.id,
+        })),
+        { label: '$(circle-slash) Không gắn vai', description: '', id: KHONG },
+      ],
+      { placeHolder: 'Vai cho terminal này (quyết định luôn đuôi tên worktree)' },
+    );
+    if (!chon) return 'huy';
+    if (chon.id === KHONG) return undefined;
+    const wsNow = findWorkspace(this.store, workspaceId);
+    const role = (wsNow?.roles ?? []).find((r) => r.id === chon.id);
+    if (role === undefined) return undefined;
+    if (role.kind === 'orchestrator' && wsNow !== undefined) {
+      const dangGiu = this.terminalDieuPhoi(wsNow);
+      if (dangGiu !== null) {
+        void vscode.window.showWarningMessage(
+          `Terminal "${dangGiu.name}" đang giữ vai điều phối. Mỗi workspace chỉ một người điều phối.`,
+        );
+        return 'huy';
+      }
+    }
+    return role;
+  }
+
   // ------------------------------------------------------------- terminal
 
   /**
@@ -1336,15 +1847,21 @@ export class WorkspaceManager implements vscode.Disposable {
     const duongDan = await this.hoiDuongDan();
     if (duongDan === undefined) return;
 
+    // Hỏi vai TRƯỚC khi dựng lệnh: vai quyết định cả cờ --append-system-prompt-file lẫn đuôi
+    // tên worktree, nên mọi bước sau đều phụ thuộc nó.
+    const vai = await this.hoiVai(workspaceId);
+    if (vai === 'huy') return;
+    const coThem = vai === undefined ? undefined : this.coThemChoRole(workspaceId, vai);
+
     const luaChon = await vscode.window.showQuickPick(
-      this.agent.buildLaunchOptions(path.basename(duongDan) || 'claude'),
+      this.agent.buildLaunchOptions(path.basename(duongDan) || 'claude', coThem),
       { placeHolder: 'Chạy Claude thế nào?' },
     );
     if (!luaChon) return;
 
     // Hỏi worktree SAU CÙNG, vì bước này TẠO THẬT thư mục + nhánh git. Hỏi trước rồi người
     // dùng Esc ở hộp thoại sau là để lại rác không ai dọn (addWorktree cố ý không có đường gỡ).
-    const kq = await this.hoiWorktree(duongDan, this.agent.id);
+    const kq = await this.hoiWorktree(duongDan, vai?.name ?? this.agent.id);
     if (kq === undefined) return;
     const cwd = kq.cwd;
     // Tên terminal = tên worktree. Tên ghép PHẲNG nên basename của đường dẫn chính là nó.
@@ -1372,8 +1889,11 @@ export class WorkspaceManager implements vscode.Disposable {
             claudeSessionId: luaChon.sessionId,
             claudeName: ten,
             ...wt,
+            ...(vai === undefined ? {} : { roleId: vai.id }),
           }
-        : { id: randomUUID(), name: ten, cwd, kind: 'plain', ...wt };
+        : { id: randomUUID(), name: ten, cwd, kind: 'plain', ...wt, ...(vai === undefined ? {} : { roleId: vai.id }) };
+    // Khối vai vào AGENTS.md TRƯỚC khi lệnh chạy — agent đọc file lúc khởi động.
+    this.ghiKhoiVaiChoEntry(wsNow.id, cwd, vai);
     upsertTerminal(wsNow, entry);
     this.scheduleSave();
     // Id mint phải nằm trên đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại).
@@ -1405,13 +1925,16 @@ export class WorkspaceManager implements vscode.Disposable {
     const duongDan = await this.hoiDuongDan();
     if (duongDan === undefined) return;
 
+    const vai = await this.hoiVai(workspaceId);
+    if (vai === 'huy') return;
+
     const luaChon = await vscode.window.showQuickPick(this.codex.buildLaunchOptions(), {
       placeHolder: 'Chạy Codex thế nào?',
     });
     if (!luaChon) return;
 
     // Hỏi worktree SAU CÙNG (xem ghi chú ở newClaudeTerminal): bước này tạo thật thư mục+nhánh.
-    const kq = await this.hoiWorktree(duongDan, this.codex.id);
+    const kq = await this.hoiWorktree(duongDan, vai?.name ?? this.codex.id);
     if (kq === undefined) return;
     const cwd = kq.cwd;
     const ten = path.basename(cwd) || 'codex';
@@ -1432,7 +1955,11 @@ export class WorkspaceManager implements vscode.Disposable {
       agentId: 'codex',
       startCommand: luaChon.command,
       ...(kq.worktree === undefined ? {} : { worktree: kq.worktree }),
+      ...(vai === undefined ? {} : { roleId: vai.id }),
     };
+    // Codex KHÔNG có cờ tương đương --append-system-prompt-file, nên với nó AGENTS.md là
+    // kênh DUY NHẤT mang vai vào. Phải ghi trước khi lệnh chạy.
+    this.ghiKhoiVaiChoEntry(wsNow.id, cwd, vai);
     upsertTerminal(wsNow, entry);
     this.scheduleSave();
 
@@ -2502,6 +3029,9 @@ export class WorkspaceManager implements vscode.Disposable {
     this.loadingIds.delete(terminalId);
     this.statuses.delete(terminalId);
     this.errorIds.delete(terminalId);
+    // Terminal đóng rồi thì không còn system prompt cũ nào để lệch: lần mở sau đọc lại file
+    // vai. Giữ cờ lại chỉ làm cây báo "vai đã đổi" vĩnh viễn cho một thứ đã hết lệch.
+    this.vaiDaDoi.delete(terminalId);
   }
 
   /** Trả startCommand về giá trị trước khi lệnh đang dở chiếm chỗ (lệnh không bao giờ kết thúc). */

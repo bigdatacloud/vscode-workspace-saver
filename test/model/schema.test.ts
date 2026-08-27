@@ -94,3 +94,52 @@ describe('TerminalEntry.worktree', () => {
     expect(WorkspaceSchema.safeParse(ws(t)).success).toBe(true);
   });
 });
+
+describe('roles', () => {
+  const ws = (extra: Record<string, unknown>) => ({
+    id: uuid1, name: 'ERP', lastActiveAt: null, activeWindowId: null, terminals: [], ...extra,
+  });
+  const role = (over: Record<string, unknown> = {}) => ({
+    id: uuid2, name: 'reviewer', kind: 'worker', ...over,
+  });
+
+  it('chấp nhận workspace có danh sách vai', () => {
+    expect(() => WorkspaceSchema.parse(ws({ roles: [role()] }))).not.toThrow();
+  });
+
+  it('roles là tùy chọn', () => {
+    expect(() => WorkspaceSchema.parse(ws({}))).not.toThrow();
+  });
+
+  it('tên vai đi vào tên nhánh git nên phải hợp lệ cho git', () => {
+    expect(WorkspaceSchema.safeParse(ws({ roles: [role({ name: 'người rà soát' })] })).success).toBe(false);
+    expect(WorkspaceSchema.safeParse(ws({ roles: [role({ name: '-bat-dau-bang-gach' })] })).success).toBe(false);
+    expect(WorkspaceSchema.safeParse(ws({ roles: [role({ name: 'code.reviewer-2' })] })).success).toBe(true);
+  });
+
+  it('từ chối loại vai lạ', () => {
+    expect(WorkspaceSchema.safeParse(ws({ roles: [role({ kind: 'sep-tong' })] })).success).toBe(false);
+  });
+
+  it('từ chối hai vai trùng tên không phân biệt hoa thường', () => {
+    const r = WorkspaceSchema.safeParse(ws({ roles: [role(), role({ id: uuid3, name: 'Reviewer' })] }));
+    expect(r.success).toBe(false);
+  });
+
+  it('từ chối hai vai trùng id', () => {
+    expect(WorkspaceSchema.safeParse(ws({ roles: [role(), role({ name: 'impl' })] })).success).toBe(false);
+  });
+
+  it('terminal mang roleId', () => {
+    const t = { id: uuid3, name: 't', cwd: 'D:/a', kind: 'plain', roleId: uuid2 };
+    expect(WorkspaceSchema.parse(ws({ roles: [role()], terminals: [t] })).terminals[0]?.roleId).toBe(uuid2);
+  });
+
+  it('roleId TRỎ VÀO VAI ĐÃ XOÁ vẫn parse được', () => {
+    // Ép toàn vẹn tham chiếu ở đây là tự bắn vào chân: xoá một vai sẽ làm CẢ shard hỏng
+    // schema → backup + khởi tạo rỗng → mất nguyên workspace. Vai treo được coi là "không
+    // có vai" lúc đọc và dọn dần.
+    const t = { id: uuid3, name: 't', cwd: 'D:/a', kind: 'plain', roleId: uuid2 };
+    expect(WorkspaceSchema.safeParse(ws({ terminals: [t] })).success).toBe(true);
+  });
+});

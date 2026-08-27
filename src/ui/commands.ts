@@ -63,6 +63,17 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.workspaceSettings(id);
     }),
+    vscode.commands.registerCommand('aiWorkspace.addRole', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.addRole(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.manageRoles', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.manageRoles(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.assignRole', (item: TerminalItem) =>
+      manager.assignRole(item.view.workspaceId, item.view.id),
+    ),
     vscode.commands.registerCommand('aiWorkspace.cleanWorktrees', async (item?: WorkspaceItem) => {
       const id = await wsArg(item);
       if (id) await manager.cleanWorktrees(id);

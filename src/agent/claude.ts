@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { parseAgentsJson } from './registry';
 import { quoteArg, type ShellKind } from './quote';
-import type { AgentAdapter, LaunchOption, LaunchSpec, RunningSession } from './types';
+import type { AgentAdapter, CoTheThem, LaunchOption, LaunchSpec, RunningSession } from './types';
 
 export interface CommandRunner {
   run(command: string, args: string[]): Promise<{ stdout: string; code: number }>;
@@ -38,13 +38,27 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     return this.uuid();
   }
 
+  /**
+   * Cờ vai + cờ MCP. Nối vào CUỐI lệnh, sau mọi cờ phiên: thứ tự không quan trọng với
+   * commander, nhưng đặt cuối thì lệnh người dùng nhìn thấy vẫn mở đầu bằng phần quen thuộc.
+   */
+  private coThemFlags(coThem: CoTheThem | undefined): string[] {
+    if (coThem === undefined) return [];
+    const q = (v: string): string => quoteArg(v, this.shell);
+    const ra: string[] = [];
+    if (coThem.fileVai !== undefined) ra.push('--append-system-prompt-file', q(coThem.fileVai));
+    if (coThem.cauHinhMcp !== undefined) ra.push('--mcp-config', q(coThem.cauHinhMcp));
+    return ra;
+  }
+
   buildLaunchCommand(spec: LaunchSpec): string {
     const q = (v: string): string => quoteArg(v, this.shell);
+    const them = this.coThemFlags(spec.coThem);
     // `-c` không đi kèm id nào cả; cũng KHÔNG kèm `-n`: tên hiển thị là của hội thoại đang
     // được nối lại, ép tên mới vào là ghi đè tên phiên người dùng đã có.
-    if (spec.mode.kind === 'continue') return `${CLAUDE_BIN} -c`;
+    if (spec.mode.kind === 'continue') return [CLAUDE_BIN, '-c', ...them].join(' ');
     const idFlag = spec.mode.kind === 'new' ? '--session-id' : '--resume';
-    return `${CLAUDE_BIN} ${idFlag} ${q(spec.mode.sessionId)} -n ${q(spec.name)}`;
+    return [CLAUDE_BIN, idFlag, q(spec.mode.sessionId), '-n', q(spec.name), ...them].join(' ');
   }
 
   async listRunning(): Promise<RunningSession[]> {
@@ -53,21 +67,24 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     return parseAgentsJson(r.stdout);
   }
 
-  buildLaunchOptions(peerName: string): LaunchOption[] {
+  buildLaunchOptions(peerName: string, coThem?: CoTheThem): LaunchOption[] {
     const q = (v: string): string => quoteArg(v, this.shell);
+    const them = this.coThemFlags(coThem);
+    // `description` là dòng người dùng ĐỌC để duyệt, cố ý KHÔNG nhồi cờ vai/MCP vào đó: đường
+    // dẫn dài làm che mất phần phân biệt các biến thể với nhau.
     const moi = (label: string, flags: string[]): LaunchOption => {
       const sessionId = this.uuid();
       return {
         label,
         description: [CLAUDE_BIN, ...flags, '(resume đảm bảo)'].join(' '),
-        command: [CLAUDE_BIN, '--session-id', q(sessionId), '-n', q(peerName), ...flags].join(' '),
+        command: [CLAUDE_BIN, '--session-id', q(sessionId), '-n', q(peerName), ...flags, ...them].join(' '),
         sessionId,
       };
     };
     const tiep = (label: string, flags: string[]): LaunchOption => ({
       label,
       description: [CLAUDE_BIN, ...flags].join(' '),
-      command: [CLAUDE_BIN, ...flags].join(' '),
+      command: [CLAUDE_BIN, ...flags, ...them].join(' '),
     });
     return [
       moi('Phiên mới', []),

@@ -70,6 +70,18 @@
         "title": "AI Workspace: Dọn worktree"
       },
       {
+        "command": "aiWorkspace.addRole",
+        "title": "AI Workspace: Thêm vai"
+      },
+      {
+        "command": "aiWorkspace.manageRoles",
+        "title": "AI Workspace: Quản lý vai"
+      },
+      {
+        "command": "aiWorkspace.assignRole",
+        "title": "AI Workspace: Gắn vai cho terminal"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -202,6 +214,21 @@
           "group": "3_edit@5"
         },
         {
+          "command": "aiWorkspace.addRole",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "4_role@1"
+        },
+        {
+          "command": "aiWorkspace.manageRoles",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "4_role@2"
+        },
+        {
+          "command": "aiWorkspace.assignRole",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "1_edit"
+        },
+        {
           "command": "aiWorkspace.setStartCommand",
           "when": "view == aiWorkspace.workspaces && viewItem == aiTerminalPlain",
           "group": "1_edit"
@@ -266,6 +293,10 @@
         },
         {
           "command": "aiWorkspace.showTerminalPath",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.assignRole",
           "when": "false"
         }
       ]

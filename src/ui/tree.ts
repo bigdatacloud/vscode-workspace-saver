@@ -76,10 +76,23 @@ export class TerminalItem extends vscode.TreeItem {
     this.id = `term:${view.id}`;
     const kindLabel =
       view.agent === 'claude' ? 'AI' : view.agent === 'codex' ? 'Codex' : 'shell';
-    this.description = `${kindLabel} · ${STATE_LABELS[view.state]}`;
+    // Vai đứng TRƯỚC trạng thái: khi nhìn lướt cả cây, câu hỏi đầu tiên là "ai làm gì",
+    // trạng thái là câu hỏi thứ hai.
+    const phan = [kindLabel];
+    if (view.roleName !== undefined) phan.push(view.laDieuPhoi === true ? `${view.roleName} ★` : view.roleName);
+    phan.push(STATE_LABELS[view.state]);
+    if (view.vaiDaDoi === true) phan.push('vai đã đổi');
+    this.description = phan.join(' · ');
     // Đường dẫn nằm ngay trong tooltip: hover là thấy, không phải mở menu. Menu "Xem đường
     // dẫn" vẫn cần cho việc sao chép (tooltip không bôi đen copy được).
     const dong = [view.name, `Đường dẫn: ${view.cwd}`, `Trạng thái: ${STATE_LABELS[view.state]}`];
+    if (view.roleName !== undefined) {
+      dong.push(`Vai: ${view.roleName}${view.laDieuPhoi === true ? ' (điều phối)' : ''}`);
+    }
+    if (view.vaiDaDoi === true) {
+      dong.push('Mô tả vai đã đổi sau khi terminal chạy — AGENTS.md đã cập nhật, nhưng system');
+      dong.push('prompt thì phải đóng terminal và kích hoạt lại workspace mới khớp.');
+    }
     if (view.hasStartCommand) dong.push('Có lệnh khởi động');
     this.tooltip = dong.join('\n');
     const icon = STATE_ICONS[view.state];

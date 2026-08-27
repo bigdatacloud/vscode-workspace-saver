@@ -19,9 +19,23 @@ export type LaunchMode =
    */
   | { kind: 'continue' };
 
+/**
+ * Cờ do MANAGER quyết, adapter chỉ nối vào lệnh và lo việc bọc nháy.
+ *
+ * Tách khỏi `mode` vì chúng không phải chuyện của phiên: cùng một phiên có thể được mở lại
+ * với vai khác hoặc không còn là orchestrator nữa.
+ */
+export interface CoTheThem {
+  /** File mô tả vai — Claude nhận qua `--append-system-prompt-file`. */
+  fileVai?: string;
+  /** Cấu hình MCP điều phối — chỉ terminal mang vai orchestrator mới có. */
+  cauHinhMcp?: string;
+}
+
 export interface LaunchSpec {
   name: string;
   mode: LaunchMode;
+  coThem?: CoTheThem;
 }
 
 /** Một biến thể lệnh khởi chạy agent, cho người dùng duyệt bằng QuickPick. */
@@ -40,7 +54,7 @@ export interface AgentAdapter {
   newSessionId(): string;
   buildLaunchCommand(spec: LaunchSpec): string;
   /** Danh sách biến thể khởi chạy (phiên mới / tiếp tục / resume, kèm bỏ hỏi quyền). */
-  buildLaunchOptions(peerName: string): LaunchOption[];
+  buildLaunchOptions(peerName: string, coThem?: CoTheThem): LaunchOption[];
   listRunning(): Promise<RunningSession[]>;
   /**
    * Lệnh shell này có phải là lệnh chạy agent không? Dùng để cơ chế bắt startCommand
