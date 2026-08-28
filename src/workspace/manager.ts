@@ -145,6 +145,9 @@ const ACTIVE_POLL_MS = 3000;
  * mỗi nhịp chậm là mỗi nhịp người điều phối ngồi không.
  */
 const ORCH_POLL_MS = 500;
+const TEN_KENH_KIEM_TOAN = 'AI Workspace — Điều phối';
+/** Log kiểm toán bền, nằm cạnh bus của workspace: `orch/<wsId>/audit.log`. */
+const TEN_FILE_KIEM_TOAN = 'audit.log';
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
 const LOADING_TIMEOUT_MS = 90_000;
 /** Đọc chừng này byte cuối transcript để biết phiên có đang chờ người dùng không. */
@@ -2050,9 +2053,61 @@ export class WorkspaceManager implements vscode.Disposable {
     return path.join(this.thuMucGoc, 'orch', wsId);
   }
 
-  private ghiKiemToan(dong: string): void {
-    this.kenhKiemToan ??= vscode.window.createOutputChannel('AI Workspace — Điều phối');
-    this.kenhKiemToan.appendLine(`[${new Date().toLocaleTimeString('vi-VN')}] ${dong}`);
+  private taoKenhKiemToan(): vscode.OutputChannel {
+    this.kenhKiemToan ??= vscode.window.createOutputChannel(TEN_KENH_KIEM_TOAN);
+    return this.kenhKiemToan;
+  }
+
+  /**
+   * Ghi một dòng kiểm toán: vào Output Channel để xem sống, VÀ nối vào file để còn lại.
+   *
+   * Output Channel chỉ nằm trong bộ nhớ — reload cửa sổ là mất sạch. Với một thứ gọi là kiểm
+   * toán thì đó không chấp nhận được: chuyện đáng phải soi lại nhất thường là chuyện đã xảy ra
+   * trước lần reload gần nhất.
+   */
+  private ghiKiemToan(dong: string, wsId?: string): void {
+    const luc = new Date();
+    this.taoKenhKiemToan().appendLine(`[${luc.toLocaleTimeString('vi-VN')}] ${dong}`);
+    if (wsId === undefined) return;
+    try {
+      const thuMuc = this.thuMucOrch(wsId);
+      nodeFs.mkdirSync(thuMuc, { recursive: true });
+      // Nối thêm chứ không ghi đè, và có ngày tháng đầy đủ vì file sống qua nhiều phiên.
+      nodeFs.appendFileSync(
+        path.join(thuMuc, TEN_FILE_KIEM_TOAN),
+        `[${luc.toISOString()}] ${dong}\n`,
+        'utf8',
+      );
+    } catch {
+      /* mất một dòng file còn hơn làm chết vòng xử lý điều phối */
+    }
+  }
+
+  /**
+   * Mở khung kiểm toán. Tạo kênh kể cả khi chưa có hoạt động nào — không thì nó vắng mặt
+   * trong danh sách Output và người dùng tưởng tính năng hỏng.
+   */
+  async showAuditLog(workspaceId?: string): Promise<void> {
+    const kenh = this.taoKenhKiemToan();
+    kenh.show(true);
+
+    const wsId = workspaceId ?? this.wsNhan();
+    if (wsId === null || wsId === undefined) return;
+    const duongDan = path.join(this.thuMucOrch(wsId), TEN_FILE_KIEM_TOAN);
+    if (!nodeFs.existsSync(duongDan)) return;
+    const tra = await vscode.window.showInformationMessage(
+      'Khung này chỉ giữ log của phiên hiện tại. Bản đầy đủ nằm trong file.',
+      'Mở file log',
+    );
+    if (tra !== 'Mở file log') return;
+    try {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(duongDan));
+      await vscode.window.showTextDocument(doc, { preview: false });
+    } catch (e) {
+      void vscode.window.showWarningMessage(
+        `Không mở được ${duongDan}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   /**
@@ -2153,13 +2208,13 @@ export class WorkspaceManager implements vscode.Disposable {
       }
       const yc = docYeuCau(raw);
       if (yc === null) {
-        this.ghiKiemToan(`Yêu cầu hỏng, bỏ qua: ${t}`);
+        this.ghiKiemToan(`Yêu cầu hỏng, bỏ qua: ${t}`, ws.id);
         continue;
       }
       // Quá hạn thì KHÔNG thi hành: MCP server đã bỏ cuộc từ lâu, không ai còn chờ kết quả,
       // và bơm chỉ thị của một phiên đã chết vào worker đang làm việc khác là phá hoại.
       if (!yeuCauConHan(yc, Date.now())) {
-        this.ghiKiemToan(`Bỏ qua yêu cầu quá hạn (${yc.type}) gửi lúc ${new Date(yc.at).toLocaleString('vi-VN')}.`);
+        this.ghiKiemToan(`Bỏ qua yêu cầu quá hạn (${yc.type}) gửi lúc ${new Date(yc.at).toLocaleString('vi-VN')}.`, ws.id);
         continue;
       }
       await this.thucHienYeuCau(ws.id, yc);
@@ -2187,7 +2242,7 @@ export class WorkspaceManager implements vscode.Disposable {
         ...(yc.files === undefined ? {} : { files: yc.files }),
       });
       const keFile = yc.files === undefined || yc.files.length === 0 ? '' : ` [${yc.files.join(', ')}]`;
-      this.ghiKiemToan(`XONG ← "${nguoiBao.name}" (${yc.outcome}): ${yc.text}${keFile}`);
+      this.ghiKiemToan(`XONG ← "${nguoiBao.name}" (${yc.outcome}): ${yc.text}${keFile}`, wsId);
       // Ghi lại trạng thái NGAY thay vì đợi nhịp sau: người điều phối có thể đang treo trong
       // `wait` và mỗi nhịp chậm là mỗi nhịp nó ngồi không.
       this.ghiTrangThaiOrch(ws);
@@ -2197,7 +2252,7 @@ export class WorkspaceManager implements vscode.Disposable {
     }
 
     if (yc.type === 'report') {
-      this.ghiKiemToan(`BÁO CÁO: ${yc.text}`);
+      this.ghiKiemToan(`BÁO CÁO: ${yc.text}`, wsId);
       this.traLoiYeuCau(wsId, yc.id, true, 'Đã ghi vào khung kiểm toán và báo cho người dùng.');
       const rutGon = yc.text.length > 120 ? `${yc.text.slice(0, 120)}…` : yc.text;
       void vscode.window
@@ -2215,7 +2270,7 @@ export class WorkspaceManager implements vscode.Disposable {
       this.dsAgentTrangThai(ws),
     );
     if (!quyet.cho) {
-      this.ghiKiemToan(`TỪ CHỐI giao việc → ${yc.terminalId}: ${quyet.lyDo}`);
+      this.ghiKiemToan(`TỪ CHỐI giao việc → ${yc.terminalId}: ${quyet.lyDo}`, wsId);
       this.traLoiYeuCau(wsId, yc.id, false, quyet.lyDo);
       return;
     }
@@ -2240,7 +2295,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // người điều phối lại phải đi đoán — đúng cái mà kết quả có kiểu sinh ra để bỏ.
     const kemHopDong = `${motDong} — Khi xong việc này, gọi tool report_done với dispatch_id="${yc.id}".`;
     terminal.sendText(kemHopDong, true);
-    this.ghiKiemToan(`GIAO VIỆC → "${dich?.name ?? yc.terminalId}": ${motDong}`);
+    this.ghiKiemToan(`GIAO VIỆC → "${dich?.name ?? yc.terminalId}": ${motDong}`, wsId);
     this.traLoiYeuCau(wsId, yc.id, true, `Đã gửi vào terminal "${dich?.name ?? yc.terminalId}".`);
   }
 

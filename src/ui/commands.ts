@@ -63,6 +63,11 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.workspaceSettings(id);
     }),
+    // Không dùng wsArg: mở khung log KHÔNG cần chọn workspace — gọi từ palette thì nhắm
+    // workspace đang nhận, và kể cả không có cái nào thì vẫn mở được khung rỗng.
+    vscode.commands.registerCommand('aiWorkspace.showAuditLog', (item?: WorkspaceItem) =>
+      manager.showAuditLog(item?.view.id),
+    ),
     vscode.commands.registerCommand('aiWorkspace.addRole', async (item?: WorkspaceItem) => {
       const id = await wsArg(item);
       if (id) await manager.addRole(id);

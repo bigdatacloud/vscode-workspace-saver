@@ -106,6 +106,7 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Quản lý vai | `aiWorkspace.manageRoles` | Context menu workspace — sửa mô tả / đổi tên / xoá vai |
 | AI Workspace: Gắn vai cho terminal | `aiWorkspace.assignRole` | Context menu terminal item |
 | AI Workspace: Chuyển terminal sang workspace khác | `aiWorkspace.moveTerminal` | Context menu terminal item — terminal đang chạy KHÔNG bị đóng, vì id entry giữ nguyên nên cái tab đi theo |
+| AI Workspace: Xem log điều phối | `aiWorkspace.showAuditLog` | Context menu workspace / palette — mở Output Channel, và mời mở file `orch/<wsId>/audit.log` nếu có |
 
 Trong cây còn **kéo thả** được: thả một terminal lên terminal khác để chèn nó vào TRƯỚC cái đó,
 hoặc thả lên dòng workspace để chuyển sang workspace ấy. Chọn nhiều rồi kéo cả nhóm cũng được.

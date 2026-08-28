@@ -113,6 +113,7 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Manage roles | `aiWorkspace.manageRoles` | Context menu of a workspace. Edit / rename / delete a role. |
 | AI Workspace: Assign role to terminal | `aiWorkspace.assignRole` | Context menu of a terminal. |
 | AI Workspace: Move terminal to another workspace | `aiWorkspace.moveTerminal` | Context menu of a terminal. The running terminal is not closed — entry ids are stable, so the live tab follows. |
+| AI Workspace: Show orchestration log | `aiWorkspace.showAuditLog` | Context menu of a workspace, or the palette. Opens the output channel and offers the durable `orch/<wsId>/audit.log`. |
 
 Terminals can also be **dragged** inside the tree: drop one onto another terminal to insert it
 before that one, or onto a workspace row to move it there. Multi-select works. Moving a terminal
@@ -135,8 +136,10 @@ The terminal holding an orchestrator role is launched with `--mcp-config` pointi
 this extension ships. That gives the agent five tools — `list_agents`, `read_transcript`,
 `dispatch`, `wait`, `report` — so it can see the other agents, read what they actually did,
 send them instructions, and wait for them. At most one orchestrator terminal per workspace.
-Every dispatch and report is written to the `AI Workspace — Orchestration` output channel for
-auditing.
+Every dispatch and report is written to the `AI Workspace — Orchestration` output channel and
+appended to `orch/<wsId>/audit.log`. The channel is for reading live; the file is what survives a
+window reload, which matters because the thing worth re-reading is usually what happened before
+the last reload.
 
 Terminals holding a **worker** role get the same server but exactly one tool: `report_done`.
 Every dispatch carries a `dispatch_id`, and the worker answers with a schema-validated result —

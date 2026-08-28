@@ -561,7 +561,7 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">22</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">23</div><div class="so-t">lệnh</div></div>
       <div class="so-o"><div class="so-n">347</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">6</div><div class="so-t">tool điều phối</div></div>
@@ -959,21 +959,49 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
         </div>
 
         <div class="doc" style="margin-top:22px">
+          <h3>Đọc lại các agent đã nói gì với nhau</h3>
+          <p>
+            Chuột phải workspace → <strong>Xem log điều phối</strong>. Mọi lần giao việc, mọi báo
+            cáo, và mọi lần bị từ chối đều nằm ở đó — bạn đọc được toàn bộ những gì sếp đã nói với
+            lính, và ngắt bất cứ lúc nào bằng cách bỏ vai hoặc đóng terminal.
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Bốn loại dòng trong log</div>
+            <div class="bang-than">
+              <pre class="fs">[13:04:22] <b>GIAO VIỆC →</b> "fix-login-impl": Sửa hàm đăng nhập, chạy test rồi báo lại.
+[13:07:55] <b>XONG ←</b> "fix-login-impl" (succeeded): Đã sửa và test xanh [src/auth.ts]
+[13:08:01] <b>BÁO CÁO:</b> impl xong, đang cho reviewer soi.
+[13:08:40] <b>TỪ CHỐI giao việc →</b> abc123: Terminal "dev" là shell thường, không phải agent.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
           <div class="luu-y hay">
-            <span class="luu-y-nhan">Bạn vẫn đọc được hết</span>
+            <span class="luu-y-nhan">Hai nơi, hai mục đích</span>
             <p>
-              Mọi lần giao việc và mọi báo cáo đều được ghi vào Output Channel
-              <strong>AI Workspace — Điều phối</strong>. Bạn đọc được toàn bộ những gì sếp đã nói
-              với lính, và ngắt bất cứ lúc nào bằng cách bỏ vai hoặc đóng terminal.
+              Output Channel là để <strong>xem sống</strong> — nó trống lại sau mỗi lần reload cửa sổ,
+              vì chỉ nằm trong bộ nhớ. Bản <strong>còn lại</strong> nằm ở
+              <code>orch/&lt;wsId&gt;/audit.log</code> với mốc thời gian ISO đầy đủ, và lệnh trên
+              mời bạn mở nó. Thứ đáng soi lại nhất thường là chuyện xảy ra <em>trước</em> lần reload
+              gần nhất — nên một khung log chỉ sống trong bộ nhớ thì chưa gọi là kiểm toán được.
             </p>
           </div>
+          <p>
+            Muốn xem sâu hơn nữa thì có <code>read_transcript</code>: nó đọc thẳng bản ghi hội thoại
+            của worker, tức <em>bằng chứng</em>, chứ không phải lời worker tự thuật. Chính người điều
+            phối cũng được dặn dùng nó trước khi kết luận ai làm sai.
+          </p>
         </div>
       </section>
 
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>22 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>23 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -995,6 +1023,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
                 <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
                 <tr><td>Chuyển terminal sang workspace khác</td><td>Terminal đang chạy không bị đóng</td><td>chuột phải terminal</td></tr>
+                <tr><td>Xem log điều phối</td><td>Mở khung kiểm toán, kèm lối mở file log bền</td><td>chuột phải workspace</td></tr>
                 <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây</td><td>chuột phải terminal</td></tr>
                 <tr><td>Xem đường dẫn terminal</td><td>Kèm nút sao chép và mở thư mục</td><td>chuột phải terminal</td></tr>
                 <tr><td>Đặt lệnh khởi động</td><td>Cho terminal shell thường</td><td>chuột phải terminal</td></tr>
@@ -1275,9 +1304,23 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             <details>
               <summary>Sếp giao việc mà worker không nhận được gì</summary>
               <p>
-                Xem Output Channel <strong>AI Workspace — Điều phối</strong>. Nếu có dòng
+                Chuột phải workspace → <strong>Xem log điều phối</strong>. Nếu có dòng
                 <em>TỪ CHỐI giao việc</em>, lý do nằm ngay đó: worker đang đóng, đích là shell thường,
                 hoặc lệnh không đến từ terminal điều phối.
+              </p>
+            </details>
+
+            <details>
+              <summary>Mở Output ra mà không thấy kênh nào tên “AI Workspace”</summary>
+              <p>
+                Dùng lệnh <strong>Xem log điều phối</strong> thay vì tự tìm trong danh sách —
+                nó tạo kênh kể cả khi chưa có hoạt động điều phối nào. Trước đây kênh chỉ xuất hiện
+                sau dòng log đầu tiên, nên mở Output ra là thấy trống.
+              </p>
+              <p>
+                Nếu bạn cần log của một phiên đã reload mất, mở thẳng
+                <code>&lt;globalStorage&gt;/orch/&lt;wsId&gt;/audit.log</code> — id workspace lấy từ
+                <strong>Xem thông tin workspace</strong>.
               </p>
             </details>
 

@@ -86,6 +86,10 @@
         "title": "AI Workspace: Chuyển terminal sang workspace khác"
       },
       {
+        "command": "aiWorkspace.showAuditLog",
+        "title": "AI Workspace: Xem log điều phối"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -226,6 +230,11 @@
           "command": "aiWorkspace.manageRoles",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "4_role@2"
+        },
+        {
+          "command": "aiWorkspace.showAuditLog",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "4_role@3"
         },
         {
           "command": "aiWorkspace.assignRole",

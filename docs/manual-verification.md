@@ -423,6 +423,16 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] **CHẶN SHELL TRẦN**: bảo điều phối gửi vào terminal shell thường → bị từ chối
 - [ ] Bảo điều phối gửi cho CHÍNH NÓ → bị từ chối
 - [ ] Đóng workspace trong lúc điều phối đang chờ → tool báo hết hạn chứ không treo mãi
+
+## Log kiểm toán điều phối
+- [ ] Chuột phải workspace → `Xem log điều phối` → khung Output mở ra, kể cả khi CHƯA có hoạt
+      động điều phối nào (kênh phải tồn tại sẵn, không được vắng mặt trong danh sách Output)
+- [ ] Sau vài lần giao việc: mỗi dòng có giờ, và phân biệt rõ `GIAO VIỆC →`, `XONG ←`,
+      `BÁO CÁO`, `TỪ CHỐI giao việc →`
+- [ ] Có file `<globalStorage>/orch/<wsId>/audit.log` với cùng nội dung, mốc thời gian ISO đầy đủ
+- [ ] **BỀN QUA RELOAD**: reload cửa sổ → khung Output trống lại (đúng, nó chỉ giữ phiên hiện
+      tại) nhưng `audit.log` vẫn còn đủ, và lệnh mời mở file
+- [ ] Xoá workspace → `orch/<wsId>/` biến mất cùng `audit.log` của nó
 - [ ] **YÊU CẦU CŨ KHÔNG SỐNG LẠI**: để điều phối gửi một chỉ thị rồi đóng workspace ngay
       (tool sẽ báo hết hạn sau ~20s) → mở lại workspace sau vài phút: chỉ thị đó KHÔNG được
       gõ vào worker; khung kiểm toán ghi "Bỏ qua yêu cầu quá hạn"
