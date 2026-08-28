@@ -197,3 +197,37 @@ dependency mới trong vsix là thứ phải bảo trì mãi.
 - **Không thêm dependency runtime nào.**
 - `noUncheckedIndexedAccess` đang bật.
 - Mọi test hiện có phải xanh.
+
+---
+
+## Phụ lục (2026-08-28, sau khi khảo sát Oh My Pi)
+
+Đọc [`can1357/oh-my-pi`](https://github.com/can1357/oh-my-pi) — agent Rust, fork của pi-mono.
+Nó có `task` tool fan-out ra worktree cách ly, và điểm mạnh thật nằm ở **hợp đồng kết quả**:
+*"the final yield is a schema-validated object the parent reads directly. No prose to parse."*
+
+**Lấy: kết quả có kiểu.** Thiết kế cũ của mục 3.2 yếu đúng chỗ này — `wait` kết thúc khi
+worker `idle`, mà `idle` không phân biệt được "xong việc được giao" với "đang chờ người bấm"
+hay "vừa xong một việc khác hẳn"; người điều phối phải đọc transcript rồi tự đoán.
+
+Nay: terminal mang vai **worker** cũng được cấp MCP, nhưng bộ tool KHÁC — đúng một tool
+`report_done(outcome, summary, dispatch_id?, files?)` với `outcome ∈ {succeeded, failed,
+blocked}` được validate ở cửa đọc. Mỗi `dispatch` tự gắn `dispatch_id` vào chỉ thị và dặn
+worker gọi `report_done` khi xong. `wait` kết thúc khi worker BÁO XONG **hoặc** dừng tay, và
+trả kèm kết quả. Kết quả bị xoá khi có `dispatch` mới cho worker đó — không thì lần `wait` kế
+tiếp trả về báo cáo của việc trước và người điều phối tưởng việc mới đã xong ngay.
+
+Điều này KHÔNG nới độ sâu 1: worker không có `dispatch`, và `xetDispatch` vẫn từ chối mọi lệnh
+giao việc không đến từ terminal điều phối (đã khoá bằng test).
+
+**Không lấy: IRC DM giữa các peer.** omp cho subagent nhắn thẳng cho nhau, bỏ qua parent. Đó
+đúng là thứ luật độ-sâu-1 sinh ra để cấm, và nó phá mô hình "sếp kiểm bài" — nếu worker tự
+thoả thuận với nhau thì người điều phối không còn là nơi duy nhất biết toàn cảnh.
+
+**Không lấy: Agent Hub, `orchestrate`/`workflowz` keyword.** Agent Hub (đọc transcript sống,
+gõ chỉ thị, kill worker kẹt) là thứ cây AI Workspaces + terminal thật của VS Code đã làm sẵn.
+Hai keyword kia là mẹo prompt trong agent của họ; ở đây file mô tả vai đã giữ vai trò đó.
+
+Ghi nhận: [issue #2413](https://github.com/can1357/oh-my-pi/issues/2413) của chính omp còn mở,
+thừa nhận `task()` "chưa đủ cho phối hợp đa agent" — nên omp là nguồn tốt cho hợp đồng kết
+quả, không phải cho tô-pô điều phối.

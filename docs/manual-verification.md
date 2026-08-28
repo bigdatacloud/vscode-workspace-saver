@@ -407,6 +407,17 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       Output Channel `AI Workspace — Điều phối` có dòng `GIAO VIỆC → "<tên>"`
 - [ ] Bảo nó `đọc transcript của worker đó` → thấy tool worker đã gọi và file đã đụng
 - [ ] Bảo nó `report` một câu → hiện thông báo cho bạn kèm nút mở khung kiểm toán
+- [ ] Terminal WORKER có vai: gõ `/mcp` → thấy server `ai-workspace` với ĐÚNG MỘT tool
+      `report_done` (không có `dispatch`)
+- [ ] Điều phối giao việc → chỉ thị gõ vào worker có kèm `dispatch_id`
+- [ ] Bảo worker gọi `report_done` với outcome `succeeded` → khung kiểm toán ghi
+      `XONG ← "<tên>" (succeeded): …` kèm danh sách file
+- [ ] Điều phối gọi `wait` cho worker đó → trả về NGAY kèm dòng `ĐÃ BÁO XONG (succeeded)`,
+      không phải chờ tới lúc worker rảnh
+- [ ] `list_agents` cũng hiện dòng `ĐÃ BÁO XONG` đó
+- [ ] Giao việc MỚI cho chính worker đó → kết quả cũ biến mất khỏi `list_agents` (không để
+      người điều phối tưởng việc mới đã xong ngay)
+- [ ] Bảo worker gọi `report_done` với outcome bịa (`maybe`) → bị từ chối, nêu ba giá trị hợp lệ
 - [ ] **CHẶN ĐỘ SÂU**: trong terminal WORKER (không phải điều phối), thử làm nó gọi dispatch →
       bị từ chối với lý do "chỉ terminal giữ vai điều phối"
 - [ ] **CHẶN SHELL TRẦN**: bảo điều phối gửi vào terminal shell thường → bị từ chối

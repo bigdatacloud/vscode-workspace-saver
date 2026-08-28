@@ -171,3 +171,47 @@ describe('yeuCauConHan', () => {
     expect(yeuCauConHan(yc, yc.at + HAN_YEU_CAU_MS + 1)).toBe(false);
   });
 });
+
+describe('báo cáo kết quả có kiểu (report_done)', () => {
+  it('đọc được yêu cầu done đầy đủ', () => {
+    const r = docYeuCau('{"id":"1","from":"linh","at":1,"type":"done","outcome":"succeeded","text":"đã sửa login","dispatchId":"d1","files":["src/auth.ts"]}');
+    expect(r?.type).toBe('done');
+    if (r?.type === 'done') {
+      expect(r.outcome).toBe('succeeded');
+      expect(r.files).toEqual(['src/auth.ts']);
+      expect(r.dispatchId).toBe('d1');
+    }
+  });
+
+  it('outcome ngoài ba giá trị cho phép → null', () => {
+    // Đây là chỗ "schema-validated" thật sự: nhận bừa outcome thì kết quả có kiểu vô nghĩa.
+    expect(docYeuCau('{"id":"1","from":"l","at":1,"type":"done","outcome":"maybe","text":"x"}')).toBeNull();
+  });
+
+  it('thiếu outcome → null', () => {
+    expect(docYeuCau('{"id":"1","from":"l","at":1,"type":"done","text":"x"}')).toBeNull();
+  });
+
+  it('files và dispatchId là tuỳ chọn', () => {
+    const r = docYeuCau('{"id":"1","from":"l","at":1,"type":"done","outcome":"failed","text":"kẹt"}');
+    expect(r?.type).toBe('done');
+    if (r?.type === 'done') expect(r.files).toBeUndefined();
+  });
+
+  it('files có phần tử không phải chuỗi thì bị loại, không làm hỏng cả yêu cầu', () => {
+    const r = docYeuCau('{"id":"1","from":"l","at":1,"type":"done","outcome":"blocked","text":"x","files":["a.ts",7,null]}');
+    if (r?.type === 'done') expect(r.files).toEqual(['a.ts']);
+    else throw new Error('phải đọc được');
+  });
+});
+
+describe('xetDispatch với worker báo cáo', () => {
+  it('worker KHÔNG được dispatch dù nay đã có tool riêng', () => {
+    // Cấp report_done cho worker không được nới luật độ sâu 1.
+    const ds: AgentTrangThai[] = [
+      ag({ id: 'sep', roleKind: 'orchestrator' }),
+      ag({ id: 'linh', roleKind: 'worker' }),
+    ];
+    expect(xetDispatch('linh', 'sep', 'sep', ds).cho).toBe(false);
+  });
+});

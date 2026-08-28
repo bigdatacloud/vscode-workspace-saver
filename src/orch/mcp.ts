@@ -16,6 +16,7 @@ import { claudeHomeMacDinh, duongDanTranscript, tomTatTranscript } from '../clau
 import {
   docPhanHoi,
   docTrangThai,
+  KET_CUC,
   tenFilePhanHoi,
   tenFileTrangThai,
   tenFileYeuCau,
@@ -38,9 +39,23 @@ const HAN_WAIT_TOI_DA_MS = 900_000;
 /** Trạng thái nghĩa là worker đã dừng tay — `wait` kết thúc ở những trạng thái này. */
 const DA_DUNG = new Set(['idle', 'blocked', 'closed', 'error']);
 
+/**
+ * Worker này đã xong chưa.
+ *
+ * Ưu tiên BÁO CÁO CÓ KIỂU: `idle` không phân biệt được "xong việc được giao" với "đang chờ
+ * người bấm" hay "vừa xong một việc khác hẳn", còn `report_done` là do chính worker khai.
+ * Kết quả cũ đã bị xoá lúc giao việc mới nên không có chuyện đọc nhầm báo cáo của lần trước.
+ */
+function daXong(a: AgentTrangThai | undefined): boolean {
+  if (a === undefined) return true; // terminal biến mất thì chờ nữa cũng vô ích
+  return a.ketQua !== undefined || DA_DUNG.has(a.state);
+}
+
 interface ThamSo {
   orchDir: string;
   self: string;
+  /** Bộ tool được cấp phụ thuộc vai: worker CHỈ có report_done. */
+  vai: 'worker' | 'orchestrator';
 }
 
 function docThamSo(argv: readonly string[]): ThamSo {
@@ -50,7 +65,17 @@ function docThamSo(argv: readonly string[]): ThamSo {
     if (v === undefined || v === '') throw new Error(`Thiếu tham số ${ten}`);
     return v;
   };
-  return { orchDir: lay('--orch'), self: lay('--self') };
+  const tuyChon = (ten: string): string | undefined => {
+    const i = argv.indexOf(ten);
+    return i === -1 ? undefined : argv[i + 1];
+  };
+  // Cấu hình do bản extension cũ ghi không có `--vai`, mà bản đó chỉ cấp MCP cho điều phối —
+  // nên mặc định 'orchestrator' là đúng với dữ liệu cũ, không phải nới lỏng.
+  return {
+    orchDir: lay('--orch'),
+    self: lay('--self'),
+    vai: tuyChon('--vai') === 'worker' ? 'worker' : 'orchestrator',
+  };
 }
 
 function docFile(p: string): string | null {
@@ -115,10 +140,37 @@ function motDong(a: AgentTrangThai): string {
   phan.push(a.agent === null ? 'shell' : a.agent);
   if (a.branch !== undefined) phan.push(`nhánh=${a.branch}`);
   if (a.cwd !== undefined) phan.push(a.cwd);
-  return phan.join('  ·  ');
+  const dong = phan.join('  ·  ');
+  // Kết quả có kiểu đứng thành dòng riêng: nó là thứ đáng đọc nhất, đừng để nó lẫn vào đuôi
+  // một dòng dài toàn đường dẫn.
+  if (a.ketQua === undefined) return dong;
+  const f = a.ketQua.files === undefined || a.ketQua.files.length === 0 ? '' : ` [${a.ketQua.files.join(', ')}]`;
+  return `${dong}
+    ↳ ĐÃ BÁO XONG (${a.ketQua.outcome}): ${a.ketQua.text}${f}`;
 }
 
-const TOOLS: ToolDef[] = [
+const TOOL_REPORT_DONE: ToolDef = {
+  name: 'report_done',
+  description:
+    'Báo cho người điều phối rằng việc được giao đã xong, kèm kết cục có kiểu. Gọi nó khi làm xong việc mà dispatch giao cho bạn — trạng thái "rảnh" không phân biệt được "xong việc" với "đang chờ bạn bấm", nên không gọi thì người điều phối phải đi đoán.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      outcome: {
+        type: 'string',
+        enum: [...KET_CUC],
+        description: 'succeeded = xong và đạt; failed = đã thử và hỏng; blocked = kẹt, cần quyết',
+      },
+      summary: { type: 'string', description: 'tóm tắt ngắn: đã làm gì, kết quả ra sao' },
+      dispatch_id: { type: 'string', description: 'id nêu trong chỉ thị được giao' },
+      files: { type: 'array', items: { type: 'string' }, description: 'file đã sửa' },
+    },
+    required: ['outcome', 'summary'],
+    additionalProperties: false,
+  },
+};
+
+const TOOLS_DIEU_PHOI: ToolDef[] = [
   {
     name: 'list_agents',
     description:
@@ -156,7 +208,7 @@ const TOOLS: ToolDef[] = [
   {
     name: 'wait',
     description:
-      'Chờ tới khi các worker nêu tên dừng tay (rảnh, hoặc đang chờ người bấm, hoặc đã đóng). Trả về trạng thái cuối cùng của từng cái.',
+      'Chờ tới khi các worker nêu tên BÁO XONG bằng report_done, hoặc dừng tay (rảnh / đang chờ người bấm / đã đóng). Trả về trạng thái và kết quả có kiểu của từng cái.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -180,11 +232,33 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
+/** Worker chỉ có ĐÚNG một tool. Cấp thêm là mở đường cho nó giao việc tiếp — phá độ sâu 1. */
+const TOOLS_WORKER: ToolDef[] = [TOOL_REPORT_DONE];
+
 function chuoi(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
 async function goiTool(ts: ThamSo, ten: string, args: Record<string, unknown>): Promise<KetQuaTool> {
+  if (ten === 'report_done') {
+    const outcome = KET_CUC.find((k) => k === chuoi(args.outcome));
+    const summary = chuoi(args.summary);
+    if (outcome === undefined) {
+      return { text: `outcome phải là một trong: ${KET_CUC.join(', ')}.`, loi: true };
+    }
+    if (summary === '') return { text: 'report_done cần summary.', loi: true };
+    const files = Array.isArray(args.files)
+      ? args.files.filter((x): x is string => typeof x === 'string')
+      : undefined;
+    return goiYeuCau(ts, {
+      type: 'done',
+      outcome,
+      text: summary,
+      ...(chuoi(args.dispatch_id) === '' ? {} : { dispatchId: chuoi(args.dispatch_id) }),
+      ...(files === undefined || files.length === 0 ? {} : { files }),
+    });
+  }
+
   const anh = docAnhChup(ts);
   if (anh === null) {
     return {
@@ -242,10 +316,7 @@ async function goiTool(ts: ThamSo, ten: string, args: Record<string, unknown>): 
         const a = hienTai?.agents.find((x) => x.id === id);
         return a === undefined ? `${id}  KHÔNG CÒN` : motDong(a);
       });
-      const xong = ids.every((id) => {
-        const a = hienTai?.agents.find((x) => x.id === id);
-        return a === undefined || DA_DUNG.has(a.state);
-      });
+      const xong = ids.every((id) => daXong(hienTai?.agents.find((x) => x.id === id)));
       if (xong) return { text: dong.join('\n') };
       if (Date.now() >= han) {
         return { text: `Hết thời gian chờ. Trạng thái hiện tại:\n${dong.join('\n')}`, loi: true };
@@ -259,7 +330,8 @@ async function goiTool(ts: ThamSo, ten: string, args: Record<string, unknown>): 
 
 export function chay(argv: readonly string[]): void {
   const ts = docThamSo(argv);
-  const xuLy = taoBoXuLyRpc(TEN_SERVER, PHIEN_BAN, TOOLS, (ten, args) => goiTool(ts, ten, args));
+  const dsTool = ts.vai === 'worker' ? TOOLS_WORKER : TOOLS_DIEU_PHOI;
+  const xuLy = taoBoXuLyRpc(TEN_SERVER, PHIEN_BAN, dsTool, (ten, args) => goiTool(ts, ten, args));
 
   let dem = '';
   let dangBay = 0;

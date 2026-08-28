@@ -29,6 +29,11 @@ export interface AgentTrangThai {
   branch?: string;
   /** Id phiên để đọc transcript; vắng mặt thì `read_transcript` chịu. */
   sessionId?: string;
+  /**
+   * Kết quả worker này báo gần nhất. Bị xoá khi có lần giao việc MỚI cho nó — nếu không,
+   * người điều phối đọc lại kết quả cũ và tưởng việc mới đã xong.
+   */
+  ketQua?: KetQuaWorker;
 }
 
 export interface AnhChupTrangThai {
@@ -56,7 +61,39 @@ export interface YeuCauReport {
   text: string;
 }
 
-export type YeuCau = YeuCauDispatch | YeuCauReport;
+export const KET_CUC = ['succeeded', 'failed', 'blocked'] as const;
+export type KetCuc = (typeof KET_CUC)[number];
+
+/**
+ * Worker báo đã xong việc được giao, kèm kết cục có kiểu.
+ *
+ * Vì sao cần dù đã có `wait` và `read_transcript`: `idle` của registry KHÔNG phân biệt được
+ * "làm xong việc được giao" với "đang chờ người bấm" hay "vừa xong một việc khác hẳn", còn
+ * transcript là văn xuôi mà người điều phối phải tự đoán. Một kết cục có kiểu do chính worker
+ * khai là tín hiệu hoàn thành duy nhất không phải suy diễn.
+ */
+export interface YeuCauDone {
+  id: string;
+  from: string;
+  at: number;
+  type: 'done';
+  outcome: KetCuc;
+  text: string;
+  /** Id lần giao việc mà báo cáo này trả lời; vắng mặt nếu worker tự báo. */
+  dispatchId?: string;
+  files?: string[];
+}
+
+export type YeuCau = YeuCauDispatch | YeuCauReport | YeuCauDone;
+
+/** Kết quả gần nhất một worker đã báo — đi kèm trạng thái trong `status.json`. */
+export interface KetQuaWorker {
+  outcome: KetCuc;
+  text: string;
+  at: number;
+  dispatchId?: string;
+  files?: string[];
+}
 
 export interface PhanHoi {
   id: string;
@@ -159,6 +196,24 @@ export function docYeuCau(raw: string): YeuCau | null {
   if (o.type === 'dispatch' && laChuoi(o.terminalId)) {
     return { id: o.id, from: o.from, at: o.at, type: 'dispatch', terminalId: o.terminalId, text: o.text };
   }
+  if (o.type === 'done') {
+    // Đây mới là chỗ "schema-validated" thật: nhận bừa `outcome` thì kết quả có kiểu trở nên
+    // vô nghĩa, và người điều phối sẽ tin vào một chữ mà nó không hiểu.
+    const kc = KET_CUC.find((k) => k === o.outcome);
+    if (kc === undefined) return null;
+    // Một phần tử rác trong `files` không đáng làm hỏng cả báo cáo — lọc rồi đi tiếp.
+    const files = Array.isArray(o.files) ? o.files.filter(laChuoi) : undefined;
+    return {
+      id: o.id,
+      from: o.from,
+      at: o.at,
+      type: 'done',
+      outcome: kc,
+      text: o.text,
+      ...(laChuoi(o.dispatchId) ? { dispatchId: o.dispatchId } : {}),
+      ...(files === undefined ? {} : { files }),
+    };
+  }
   return null;
 }
 
@@ -225,12 +280,13 @@ export function dungCauHinhMcp(
   mcpJs: string,
   orchDir: string,
   terminalId: string,
+  vai: 'worker' | 'orchestrator' = 'orchestrator',
 ): CauHinhMcp {
   return {
     mcpServers: {
       'ai-workspace': {
         command: binary,
-        args: [mcpJs, '--orch', orchDir, '--self', terminalId],
+        args: [mcpJs, '--orch', orchDir, '--self', terminalId, '--vai', vai],
         env: { ELECTRON_RUN_AS_NODE: '1' },
       },
     },

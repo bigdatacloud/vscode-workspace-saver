@@ -22,6 +22,13 @@ describe('mauNoiDungRole', () => {
     expect(m.length).toBeGreaterThan(50);
   });
 
+  it('vai worker: DẠY hợp đồng report_done, nếu không nó không bao giờ báo xong', () => {
+    const m = mauNoiDungRole('reviewer', 'worker');
+    expect(m).toContain('report_done');
+    for (const kc of ['succeeded', 'failed', 'blocked']) expect(m).toContain(kc);
+    expect(m).toContain('dispatch_id');
+  });
+
   it('vai orchestrator: DẠY đủ năm tool, nếu không agent không biết mình có gì', () => {
     const m = mauNoiDungRole('lead', 'orchestrator');
     for (const tool of ['list_agents', 'read_transcript', 'dispatch', 'wait', 'report']) {

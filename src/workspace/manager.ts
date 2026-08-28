@@ -39,6 +39,7 @@ import {
   thuMucYeuCau,
   xetDispatch,
   yeuCauConHan,
+  type KetQuaWorker,
   type AgentTrangThai,
   type AnhChupTrangThai,
   type YeuCau,
@@ -230,6 +231,14 @@ export class WorkspaceManager implements vscode.Disposable {
   private timerOrch: NodeJS.Timeout | null = null;
   private dangXuLyOrch = false;
   private kenhKiemToan: vscode.OutputChannel | null = null;
+  /**
+   * Kết quả gần nhất mỗi worker đã báo (terminalId → kết quả).
+   *
+   * Chỉ sống trong RAM: một báo cáo của phiên trước không nói gì về việc của phiên này, và
+   * đọc lại nó sau khi khởi động lại chỉ làm người điều phối tưởng việc mới đã xong.
+   */
+  private readonly ketQuaWorker = new Map<string, KetQuaWorker>();
+  private daBaoThieuMcp = false;
   private readonly boNhoChung: vscode.Memento;
   private store: StoreFile;
   /**
@@ -1445,16 +1454,18 @@ export class WorkspaceManager implements vscode.Disposable {
     // ("Append system prompt file not found") — mất vai còn hơn mất cả terminal.
     if (!nodeFs.existsSync(fileVai)) return undefined;
     const ra: CoTheThem = { fileVai };
-    // CHỈ terminal điều phối mới được cấp tool. Worker không cần, và cấp cho nó là mở đường
-    // cho worker giao việc tiếp — đúng cái giới hạn độ sâu 1 sinh ra để chặn.
-    if (role.kind === 'orchestrator' && terminalId !== undefined) {
-      const cauHinhMcp = this.ghiCauHinhMcp(wsId, terminalId);
+    // CẢ HAI vai đều được cấp MCP, nhưng bộ tool KHÁC NHAU: điều phối có đủ năm, worker chỉ có
+    // report_done. Cấp cho worker không nới luật độ sâu 1 — nó vẫn không có `dispatch`, và
+    // extension vẫn từ chối mọi lệnh giao việc không đến từ terminal điều phối.
+    if (terminalId !== undefined) {
+      const cauHinhMcp = this.ghiCauHinhMcp(wsId, terminalId, role.kind);
       if (cauHinhMcp !== null) ra.cauHinhMcp = cauHinhMcp;
-      else {
-        // KHÔNG im lặng: agent vẫn mở ra và vẫn mang vai điều phối, nhưng không có tool nào.
-        // Người dùng sẽ ngồi bảo nó giao việc và không hiểu vì sao nó bảo không làm được.
+      else if (!this.daBaoThieuMcp) {
+        // KHÔNG im lặng, nhưng chỉ báo MỘT lần mỗi phiên: mở workspace năm worker mà bung ra
+        // năm hộp thoại giống nhau là tự biến cảnh báo thành thứ người dùng học cách bỏ qua.
+        this.daBaoThieuMcp = true;
         void vscode.window.showWarningMessage(
-          'Không ghi được cấu hình MCP điều phối, nên terminal này sẽ KHÔNG có bộ tool (list_agents, dispatch…). Kiểm tra xem dist/mcp.js có trong thư mục extension và globalStorage có ghi được không.',
+          'Không ghi được cấu hình MCP, nên các terminal có vai sẽ KHÔNG có tool điều phối (list_agents, dispatch, report_done…). Kiểm tra xem dist/mcp.js có trong thư mục extension và globalStorage có ghi được không.',
         );
       }
     }
@@ -1922,12 +1933,12 @@ export class WorkspaceManager implements vscode.Disposable {
    * sống sót qua hai tầng tiến trình (terminal → agent → server), tầng nào nuốt thì cả cơ chế
    * chết im lặng và rất khó truy.
    */
-  private ghiCauHinhMcp(wsId: string, terminalId: string): string | null {
+  private ghiCauHinhMcp(wsId: string, terminalId: string, vai: Role['kind']): string | null {
     const mcpJs = path.join(this.duongDanExtension, 'dist', 'mcp.js');
     if (!nodeFs.existsSync(mcpJs)) return null;
     const orchDir = this.thuMucOrch(wsId);
     const duongDan = path.join(orchDir, `mcp-${terminalId}.json`);
-    const cauHinh = dungCauHinhMcp(process.execPath, mcpJs, orchDir, terminalId);
+    const cauHinh = dungCauHinhMcp(process.execPath, mcpJs, orchDir, terminalId, vai);
     try {
       nodeFs.mkdirSync(orchDir, { recursive: true });
       nodeFs.writeFileSync(duongDan, JSON.stringify(cauHinh, null, 2), 'utf8');
@@ -1950,6 +1961,7 @@ export class WorkspaceManager implements vscode.Disposable {
         cwd: entry.cwd,
         ...(entry.worktree === undefined ? {} : { branch: entry.worktree.branch }),
         ...(entry.claudeSessionId === undefined ? {} : { sessionId: entry.claudeSessionId }),
+        ...(this.ketQuaWorker.has(entry.id) ? { ketQua: this.ketQuaWorker.get(entry.id) } : {}),
       };
     });
   }
@@ -2031,6 +2043,29 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
 
+    if (yc.type === 'done') {
+      const nguoiBao = ws.terminals.find((t) => t.id === yc.from);
+      if (nguoiBao === undefined) {
+        this.traLoiYeuCau(wsId, yc.id, false, 'Terminal gửi báo cáo không thuộc workspace này.');
+        return;
+      }
+      this.ketQuaWorker.set(yc.from, {
+        outcome: yc.outcome,
+        text: yc.text,
+        at: yc.at,
+        ...(yc.dispatchId === undefined ? {} : { dispatchId: yc.dispatchId }),
+        ...(yc.files === undefined ? {} : { files: yc.files }),
+      });
+      const keFile = yc.files === undefined || yc.files.length === 0 ? '' : ` [${yc.files.join(', ')}]`;
+      this.ghiKiemToan(`XONG ← "${nguoiBao.name}" (${yc.outcome}): ${yc.text}${keFile}`);
+      // Ghi lại trạng thái NGAY thay vì đợi nhịp sau: người điều phối có thể đang treo trong
+      // `wait` và mỗi nhịp chậm là mỗi nhịp nó ngồi không.
+      this.ghiTrangThaiOrch(ws);
+      this.traLoiYeuCau(wsId, yc.id, true, 'Đã ghi nhận kết quả; người điều phối sẽ thấy nó ở lần wait/list_agents kế tiếp.');
+      this.onChanged.fire();
+      return;
+    }
+
     if (yc.type === 'report') {
       this.ghiKiemToan(`BÁO CÁO: ${yc.text}`);
       this.traLoiYeuCau(wsId, yc.id, true, 'Đã ghi vào khung kiểm toán và báo cho người dùng.');
@@ -2060,6 +2095,9 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
     const dich = ws.terminals.find((t) => t.id === yc.terminalId);
+    // Xoá kết quả CŨ của worker này trước khi giao việc mới: để lại thì lần `wait` kế tiếp
+    // trả về báo cáo của việc trước và người điều phối tưởng việc mới đã xong ngay lập tức.
+    this.ketQuaWorker.delete(yc.terminalId);
     // GỘP VỀ MỘT DÒNG. `sendText` gõ thẳng vào pty, và trong TUI của agent mỗi xuống dòng là
     // một lần Enter — chỉ thị nhiều dòng sẽ thành nhiều lượt, agent bắt tay làm khi mới đọc
     // nửa câu. Mất ngắt dòng là cái giá rẻ hơn nhiều so với một chỉ thị bị cắt đôi.
@@ -2068,7 +2106,10 @@ export class WorkspaceManager implements vscode.Disposable {
       this.traLoiYeuCau(wsId, yc.id, false, 'Chỉ thị rỗng sau khi gộp dòng.');
       return;
     }
-    terminal.sendText(motDong, true);
+    // Gắn hợp đồng trả kết quả vào chính chỉ thị: không nói thì worker báo bằng văn xuôi và
+    // người điều phối lại phải đi đoán — đúng cái mà kết quả có kiểu sinh ra để bỏ.
+    const kemHopDong = `${motDong} — Khi xong việc này, gọi tool report_done với dispatch_id="${yc.id}".`;
+    terminal.sendText(kemHopDong, true);
     this.ghiKiemToan(`GIAO VIỆC → "${dich?.name ?? yc.terminalId}": ${motDong}`);
     this.traLoiYeuCau(wsId, yc.id, true, `Đã gửi vào terminal "${dich?.name ?? yc.terminalId}".`);
   }
@@ -3327,6 +3368,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // Terminal đóng rồi thì không còn system prompt cũ nào để lệch: lần mở sau đọc lại file
     // vai. Giữ cờ lại chỉ làm cây báo "vai đã đổi" vĩnh viễn cho một thứ đã hết lệch.
     this.vaiDaDoi.delete(terminalId);
+    this.ketQuaWorker.delete(terminalId);
   }
 
   /** Trả startCommand về giá trị trước khi lệnh đang dở chiếm chỗ (lệnh không bao giờ kết thúc). */

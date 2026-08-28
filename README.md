@@ -128,8 +128,19 @@ The terminal holding an orchestrator role is launched with `--mcp-config` pointi
 this extension ships. That gives the agent five tools — `list_agents`, `read_transcript`,
 `dispatch`, `wait`, `report` — so it can see the other agents, read what they actually did,
 send them instructions, and wait for them. At most one orchestrator terminal per workspace.
-Dispatch depth is fixed at 1: workers cannot dispatch. Every dispatch and report is written to
-the `AI Workspace — Orchestration` output channel for auditing.
+Every dispatch and report is written to the `AI Workspace — Orchestration` output channel for
+auditing.
+
+Terminals holding a **worker** role get the same server but exactly one tool: `report_done`.
+Every dispatch carries a `dispatch_id`, and the worker answers with a schema-validated result —
+`outcome` (`succeeded` / `failed` / `blocked`), a summary, and the files it changed. That is
+what `wait` returns. Without it the orchestrator only sees `idle`, which cannot distinguish
+"finished the assigned task" from "waiting for a keypress" from "finished something else
+entirely" — so it would have to read the transcript and guess. The result is cleared whenever a
+new task is dispatched to that worker, so a stale report can never be mistaken for a fresh one.
+
+Dispatch depth stays fixed at 1: giving workers a tool does not give them `dispatch`, and the
+extension refuses any dispatch that does not come from the orchestrator terminal.
 | AI Workspace: Show workspace info | `aiWorkspace.showWorkspaceInfo` | Workspace context menu — id, last activation, owning window, terminal location, store file path and every terminal with its cwd/start command/session; "Copy info" / "Open store file" |
 | AI Workspace: Workspace settings | `aiWorkspace.workspaceSettings` | Workspace context menu — per-workspace terminal location (follow global / editor area / bottom panel) |
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |

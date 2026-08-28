@@ -34,6 +34,19 @@ vào khối vai trong \`AGENTS.md\` của worktree (Claude lẫn Codex đều đ
 ## Không được làm
 
 -
+
+## Báo cáo khi xong
+
+Bạn có một tool duy nhất: \`report_done\`. Khi làm xong việc mà người điều phối giao (chỉ thị
+của họ có kèm \`dispatch_id\`), gọi nó với:
+
+- \`outcome\`: \`succeeded\` (xong và đạt) / \`failed\` (đã thử và hỏng) / \`blocked\` (kẹt, cần quyết)
+- \`summary\`: đã làm gì, kết quả ra sao
+- \`dispatch_id\`: id nêu trong chỉ thị
+- \`files\`: các file đã sửa
+
+Không gọi thì người điều phối chỉ thấy bạn "rảnh" — mà "rảnh" không phân biệt được "xong việc"
+với "đang chờ ai đó bấm", nên nó sẽ phải đi đọc transcript của bạn và tự đoán.
 `;
 
 const MAU_ORCHESTRATOR = (ten: string): string => `# Vai: ${ten} (điều phối)
@@ -50,7 +63,8 @@ tra, góp ý, đánh giá kết quả.
   luận ra sao. Đây là cách bạn KIỂM TRA BÀI LÀM thật sự, đừng chỉ tin lời nó báo.
 - \`dispatch\` — gửi chỉ thị vào terminal của một worker. Chữ được gõ thẳng vào phiên đang
   chạy của nó, nên viết như đang nói với người: rõ việc, rõ tiêu chí xong.
-- \`wait\` — chờ tới khi các worker bạn nêu rảnh, hoặc dừng lại chờ người bấm.
+- \`wait\` — chờ tới khi các worker bạn nêu BÁO XONG, hoặc dừng lại chờ người bấm. Trả về kèm
+  kết quả có kiểu của từng cái.
 - \`report\` — ghi vào khung kiểm toán và báo cho người dùng. Dùng khi có kết luận, có rủi ro,
   hoặc khi bạn cần họ quyết.
 
@@ -66,9 +80,12 @@ tra, góp ý, đánh giá kết quả.
 ## Cách làm việc
 
 1. \`list_agents\` để biết đang có ai, vai gì, đang bận hay rảnh.
-2. Chia việc theo vai. Giao bằng \`dispatch\`, mỗi lần một việc đủ nhỏ để kiểm được.
-3. \`wait\` cho tới khi worker rảnh.
-4. \`read_transcript\` để xem nó thật sự đã làm gì, đối chiếu với việc đã giao.
+2. Chia việc theo vai. Giao bằng \`dispatch\`, mỗi lần một việc đủ nhỏ để kiểm được. Mỗi chỉ thị
+   tự động kèm một \`dispatch_id\` và worker được dặn gọi \`report_done\` khi xong.
+3. \`wait\` cho tới khi worker báo xong. Kết quả trả về có \`outcome\` (succeeded/failed/blocked),
+   tóm tắt, và danh sách file đã sửa — KHÔNG phải văn xuôi bạn phải đoán.
+4. \`read_transcript\` để xem nó thật sự đã làm gì, đối chiếu với việc đã giao. Báo cáo là lời
+   worker TỰ KHAI; transcript mới là bằng chứng.
 5. Đạt thì ghi nhận; chưa đạt thì \`dispatch\` phản hồi CỤ THỂ — sai ở đâu, sửa thế nào.
 6. Xong một chặng thì \`report\`.
 

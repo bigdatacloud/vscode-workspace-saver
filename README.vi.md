@@ -239,6 +239,17 @@ chính extension này ship. Agent đó có năm tool:
 | `wait` | chờ tới khi các worker dừng tay |
 | `report` | ghi vào khung kiểm toán và báo cho người dùng |
 
+Terminal mang vai **worker** cũng được cấp server đó nhưng chỉ đúng một tool: `report_done`.
+Mỗi lần giao việc đều kèm một `dispatch_id`, và worker trả lời bằng một kết quả **có kiểu** —
+`outcome` (`succeeded` / `failed` / `blocked`), tóm tắt, và danh sách file đã sửa. Đó chính là
+thứ `wait` trả về. Không có nó thì người điều phối chỉ thấy `idle`, mà `idle` không phân biệt
+được "xong việc được giao" với "đang chờ người bấm" hay "vừa xong một việc khác hẳn" — nó sẽ
+phải đọc transcript rồi tự đoán. Kết quả bị xoá mỗi khi có việc mới giao cho worker đó, nên
+không bao giờ có chuyện đọc nhầm báo cáo cũ thành báo cáo của việc mới.
+
+Cấp tool cho worker KHÔNG nới luật độ sâu 1: nó vẫn không có `dispatch`, và extension vẫn từ
+chối mọi lệnh giao việc không đến từ terminal điều phối.
+
 Mỗi workspace tối đa **một** terminal điều phối. Độ sâu điều phối cố định là **1**: worker
 không giao việc tiếp cho ai. Chỉ bơm chữ được vào terminal đang chạy agent thật — bơm vào một
 shell trần chính là thực thi lệnh tuỳ ý, nên bị chặn. Mọi lần giao việc và báo cáo đều được
