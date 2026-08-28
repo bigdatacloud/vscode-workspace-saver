@@ -1,0 +1,1346 @@
+<title>AI Workspace Session Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  /* ---------------------------------------------------------------- tokens
+     Bảng màu lấy từ chính ngôn ngữ trạng thái của extension (xanh lá = đang
+     chạy, xanh dương = rảnh, hổ phách = chờ người, đỏ = lỗi), cộng một màu
+     cấu trúc riêng — teal — để phần điều hướng không lẫn vào nhóm ngữ nghĩa. */
+  :root {
+    --nen: #F6F8F8;
+    --nen-chim: #EDF2F2;
+    --mat: #FFFFFF;
+    --muc: #101719;
+    --mo: #586A6F;
+    --nhat: #7D8E93;
+    --vien: #DDE6E7;
+    --vien-dam: #C4D2D4;
+    --nhan: #0B7A83;
+    --nhan-nen: #E2F0F1;
+    --chay: #1E7A4C;
+    --ranh: #2A62A6;
+    --cho: #A2660B;
+    --loi: #AF2A22;
+    --tai: #6B4EA8;
+
+    --w-doc: 68ch;
+    --w-rong: 1180px;
+    --r: 3px;
+  }
+
+  /* Ba trạng thái, không phải hai: người xem để "system" thì gốc KHÔNG mang data-theme,
+     lúc đó chỉ prefers-color-scheme tách sáng khỏi tối. Chặn dưới lo trạng thái đó, chặn
+     sau lo lựa chọn tường minh — và mọi màu đều định nghĩa qua token nên không có màu nào
+     chỉ tồn tại bên trong một media query. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --nen: #0D1315;
+      --nen-chim: #121A1C;
+      --mat: #151E20;
+      --muc: #E7EEEF;
+      --mo: #94A6AA;
+      --nhat: #6F8085;
+      --vien: #233033;
+      --vien-dam: #33454A;
+      --nhan: #40C3CC;
+      --nhan-nen: #0F2C2E;
+      --chay: #4FB883;
+      --ranh: #6FA8E0;
+      --cho: #E0A44A;
+      --loi: #E8776E;
+      --tai: #A88FE0;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --nen: #0D1315;
+    --nen-chim: #121A1C;
+    --mat: #151E20;
+    --muc: #E7EEEF;
+    --mo: #94A6AA;
+    --nhat: #6F8085;
+    --vien: #233033;
+    --vien-dam: #33454A;
+    --nhan: #40C3CC;
+    --nhan-nen: #0F2C2E;
+    --chay: #4FB883;
+    --ranh: #6FA8E0;
+    --cho: #E0A44A;
+    --loi: #E8776E;
+    --tai: #A88FE0;
+  }
+
+  /* ------------------------------------------------------------------ base */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--nen);
+    color: var(--muc);
+    font-family: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 16.5px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, .hien {
+    font-family: 'Archivo', system-ui, sans-serif;
+    font-variation-settings: 'wdth' 110;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  code, kbd, .mono { font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace; }
+
+  a { color: var(--nhan); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--nhan);
+    outline-offset: 3px;
+    border-radius: var(--r);
+  }
+
+  p code, li code, td code, th code, dd code {
+    font-size: 0.86em;
+    background: var(--nen-chim);
+    border: 1px solid var(--vien);
+    border-radius: var(--r);
+    padding: 0.08em 0.34em;
+    white-space: nowrap;
+  }
+
+  /* ---------------------------------------------------------------- layout */
+  .khung { max-width: var(--w-rong); margin: 0 auto; padding: 0 24px; }
+
+  .than {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  .doc { max-width: var(--w-doc); display: flex; flex-direction: column; gap: 22px; }
+  .doc > * { margin: 0; }
+
+  section { scroll-margin-top: 24px; }
+  section + section { margin-top: 68px; }
+
+  /* ------------------------------------------------------------------ hero */
+  header.dau {
+    border-bottom: 1px solid var(--vien);
+    background: linear-gradient(180deg, var(--nen-chim), var(--nen));
+    padding: 56px 0 44px;
+  }
+
+  .dau-luoi {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+    gap: 52px;
+    align-items: center;
+  }
+
+  .nhan-tren {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--nhan);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3.15rem);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.022em;
+  }
+
+  .phu {
+    font-size: 1.09rem;
+    color: var(--mo);
+    max-width: 46ch;
+    margin: 18px 0 0;
+  }
+
+  /* ------------------------------------------- cây mô phỏng của extension */
+  .cay {
+    background: var(--mat);
+    border: 1px solid var(--vien);
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.2px;
+    line-height: 1.95;
+    overflow-x: auto;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 26px -14px rgb(0 0 0 / 0.22);
+  }
+
+  .cay-dau {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--vien);
+    color: var(--nhat);
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+  }
+
+  .cay-noi { padding: 9px 12px 12px; min-width: 380px; }
+  .cay-dong { display: flex; gap: 8px; white-space: nowrap; }
+  .cay-ten { color: var(--muc); }
+  .cay-mo { color: var(--nhat); }
+  .thut { padding-left: 20px; }
+
+  .cham { font-size: 9px; line-height: 1.95; }
+  .c-chay { color: var(--chay); }
+  .c-ranh { color: var(--ranh); }
+  .c-cho { color: var(--cho); }
+  .c-tai { color: var(--tai); }
+  .c-nhan { color: var(--nhan); }
+  .c-loi { color: var(--loi); }
+
+  /* ----------------------------------------------------------- số liệu */
+  .so-day {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 1px;
+    background: var(--vien);
+    border-block: 1px solid var(--vien);
+    margin-top: 46px;
+  }
+  .so-o { background: var(--nen); padding: 15px 16px; }
+  .so-n {
+    font-family: 'Archivo', sans-serif;
+    font-variation-settings: 'wdth' 100;
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .so-t { font-size: 11.5px; color: var(--mo); line-height: 1.4; margin-top: 2px; }
+
+  /* -------------------------------------------------------------- mục lục */
+  nav.rail {
+    position: sticky;
+    top: 22px;
+    font-size: 13.2px;
+    line-height: 1.5;
+    padding-top: 6px;
+  }
+  nav.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  nav.rail a {
+    display: block;
+    padding: 4px 10px;
+    color: var(--mo);
+    text-decoration: none;
+    border-left: 2px solid var(--vien);
+  }
+  nav.rail a:hover { color: var(--muc); border-left-color: var(--vien-dam); background: var(--nen-chim); }
+  nav.rail .r-tieu {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--nhat);
+    padding: 14px 10px 5px;
+  }
+  nav.rail .r-tieu:first-child { padding-top: 0; }
+
+  /* ------------------------------------------------------------- tiêu đề */
+  h2 {
+    font-size: 1.72rem;
+    font-weight: 700;
+    letter-spacing: -0.017em;
+    line-height: 1.16;
+  }
+  .h2-eo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--nhan);
+    display: block;
+    margin-bottom: 9px;
+  }
+  h3 {
+    font-size: 1.11rem;
+    font-weight: 700;
+    letter-spacing: -0.008em;
+    margin-top: 12px;
+  }
+  h4 {
+    font-size: 0.93rem;
+    font-weight: 700;
+    letter-spacing: 0.005em;
+  }
+
+  .doc ul, .doc ol { margin: 0; padding-left: 1.25em; display: flex; flex-direction: column; gap: 7px; }
+  .doc li { padding-left: 2px; }
+  .doc li::marker { color: var(--nhat); }
+
+  strong { font-weight: 600; }
+
+  /* ---------------------------------------------------------------- panel */
+  .rong { max-width: none; }
+
+  .bang-co-che {
+    border: 1px solid var(--vien);
+    border-radius: 5px;
+    background: var(--mat);
+    overflow: hidden;
+  }
+  .bang-dau {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--vien);
+    background: var(--nen-chim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.8px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--mo);
+  }
+  .bang-than { padding: 20px 16px; overflow-x: auto; }
+
+  /* --------------------------------------------------------- sơ đồ luồng */
+  .luong {
+    display: grid;
+    gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.4px;
+    min-width: 560px;
+  }
+  .lan {
+    display: grid;
+    grid-template-columns: 26px 132px minmax(0, 1fr);
+    gap: 14px;
+    align-items: baseline;
+  }
+  .lan-so {
+    color: var(--nhan);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .lan-ai {
+    color: var(--muc);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .lan-viec { color: var(--mo); line-height: 1.6; }
+  .lan-viec b { color: var(--muc); font-weight: 700; }
+
+  /* ------------------------------------------------------- sơ đồ hai nhánh */
+  .chia {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.3px;
+    min-width: 480px;
+  }
+  .chia-goc {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 11px;
+    border: 1px solid var(--nhan);
+    background: var(--nhan-nen);
+    border-radius: var(--r);
+    color: var(--muc);
+    font-weight: 700;
+  }
+  .chia-mui { grid-column: 1 / -1; text-align: center; color: var(--vien-dam); line-height: 1; }
+  .chia-o {
+    padding: 11px 13px;
+    border: 1px solid var(--vien);
+    border-radius: var(--r);
+    background: var(--nen-chim);
+    line-height: 1.65;
+  }
+  .chia-o b { display: block; color: var(--muc); margin-bottom: 3px; }
+  .chia-o span { color: var(--mo); font-size: 11.4px; }
+
+  /* ---------------------------------------------------------------- cây fs */
+  pre.fs {
+    margin: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.3px;
+    line-height: 1.85;
+    color: var(--mo);
+    overflow-x: auto;
+  }
+  pre.fs b { color: var(--muc); font-weight: 700; }
+  pre.fs i { color: var(--nhan); font-style: normal; }
+
+  /* ---------------------------------------------------------------- bảng */
+  .bang-cuon { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14.4px;
+    min-width: 500px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 14px 9px 0;
+    border-bottom: 1px solid var(--vien);
+    vertical-align: top;
+  }
+  th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--nhat);
+    font-weight: 500;
+    border-bottom-color: var(--vien-dam);
+    padding-bottom: 7px;
+  }
+  td:last-child, th:last-child { padding-right: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  /* --------------------------------------------------------------- viên */
+  .vien-tt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.4px;
+    padding: 2px 8px 2px 6px;
+    border: 1px solid var(--vien-dam);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .vien-tt::before {
+    content: '';
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .tt-day { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* ---------------------------------------------------------------- ghi chú */
+  .luu-y {
+    border-left: 3px solid var(--cho);
+    background: var(--nen-chim);
+    padding: 13px 17px;
+    border-radius: 0 var(--r) var(--r) 0;
+    font-size: 15.3px;
+  }
+  .luu-y.chan { border-left-color: var(--loi); }
+  .luu-y.hay { border-left-color: var(--nhan); }
+  .luu-y > :first-child { margin-top: 0; }
+  .luu-y > :last-child { margin-bottom: 0; }
+  .luu-y-nhan {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cho);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .luu-y.chan .luu-y-nhan { color: var(--loi); }
+  .luu-y.hay .luu-y-nhan { color: var(--nhan); }
+
+  /* ---------------------------------------------------------------- lệnh */
+  pre.lenh {
+    margin: 0;
+    background: var(--muc);
+    color: var(--nen);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.6px;
+    line-height: 1.75;
+    padding: 14px 16px;
+    border-radius: 5px;
+    overflow-x: auto;
+  }
+  pre.lenh .nhac { color: var(--nhat); user-select: none; }
+  pre.lenh .co { color: var(--cho); }
+
+  /* --------------------------------------------------------------- hỏi đáp */
+  details {
+    border-bottom: 1px solid var(--vien);
+    padding: 12px 0;
+  }
+  details[open] summary { margin-bottom: 9px; }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: '+';
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--nhan);
+    font-weight: 700;
+    flex: none;
+  }
+  details[open] summary::before { content: '−'; }
+  details > :not(summary) { padding-left: 22px; }
+  details p { margin: 0 0 9px; }
+  details p:last-child { margin-bottom: 0; }
+
+  /* ---------------------------------------------------------------- chân */
+  footer {
+    margin-top: 84px;
+    border-top: 1px solid var(--vien);
+    padding: 26px 0 60px;
+    font-size: 13.2px;
+    color: var(--mo);
+  }
+
+  /* -------------------------------------------------------------- đáp ứng */
+  @media (max-width: 900px) {
+    .than { grid-template-columns: 1fr; gap: 30px; }
+    nav.rail { position: static; border-bottom: 1px solid var(--vien); padding-bottom: 18px; }
+    nav.rail ol { flex-direction: row; flex-wrap: wrap; gap: 4px 6px; }
+    nav.rail a { border-left: none; border: 1px solid var(--vien); border-radius: 999px; padding: 3px 11px; }
+    nav.rail .r-tieu { display: none; }
+    .dau-luoi { grid-template-columns: 1fr; gap: 34px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+
+<header class="dau">
+  <div class="khung">
+    <div class="dau-luoi">
+      <div>
+        <p class="nhan-tren">Extension VS Code · v0.0.1</p>
+        <h1>AI Workspace<br>Session&nbsp;Manager</h1>
+        <p class="phu">
+          Quản lý các terminal chạy agent như một tập hợp có tên: đóng máy rồi mở lại
+          vẫn về đúng chỗ đang dở. Mỗi agent một worktree riêng, mỗi agent một vai, và
+          một agent có thể điều phối những agent còn lại.
+        </p>
+      </div>
+
+      <div class="cay" role="img" aria-label="Cây AI Workspaces trong thanh Explorer: workspace ytrinh-workspace đang mở với bốn terminal mang các vai lead, impl, reviewer và một shell thường; workspace ai-workspace-saver chưa mở.">
+        <div class="cay-dau"><span>AI WORKSPACES</span><span>+</span></div>
+        <div class="cay-noi">
+          <div class="cay-dong">
+            <span class="c-nhan">▾</span>
+            <span class="cay-ten">ytrinh-workspace</span>
+            <span class="cay-mo">(đang mở · nhận terminal mới) · 4 terminal</span>
+          </div>
+          <div class="cay-dong thut">
+            <span class="cham c-chay">●</span>
+            <span class="cay-ten">lead-claude</span>
+            <span class="cay-mo">AI · lead ★ · đang chạy</span>
+          </div>
+          <div class="cay-dong thut">
+            <span class="cham c-cho">?</span>
+            <span class="cay-ten">fix-login-impl</span>
+            <span class="cay-mo">AI · impl · CHỜ BẠN TRẢ LỜI</span>
+          </div>
+          <div class="cay-dong thut">
+            <span class="cham c-ranh">●</span>
+            <span class="cay-ten">fix-login-reviewer</span>
+            <span class="cay-mo">AI · reviewer · rảnh</span>
+          </div>
+          <div class="cay-dong thut">
+            <span class="cham c-ranh">▪</span>
+            <span class="cay-ten">dev</span>
+            <span class="cay-mo">shell · đang mở</span>
+          </div>
+          <div class="cay-dong">
+            <span class="c-nhan">▸</span>
+            <span class="cay-ten">ai-workspace-saver</span>
+            <span class="cay-mo">2 terminal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="khung">
+    <div class="so-day">
+      <div class="so-o"><div class="so-n">22</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">347</div><div class="so-t">test tự động</div></div>
+      <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
+      <div class="so-o"><div class="so-n">6</div><div class="so-t">tool điều phối</div></div>
+      <div class="so-o"><div class="so-n">0</div><div class="so-t">dependency lúc chạy</div></div>
+      <div class="so-o"><div class="so-n">76 KB</div><div class="so-t">gói vsix</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="khung" style="padding-top:52px">
+  <div class="than">
+
+    <nav class="rail" aria-label="Mục lục">
+      <ol>
+        <li class="r-tieu">Bắt đầu</li>
+        <li><a href="#van-de">Nó giải việc gì</a></li>
+        <li><a href="#khai-niem">Ba khái niệm</a></li>
+        <li><a href="#cai-dat">Cài đặt</a></li>
+        <li class="r-tieu">Dùng hằng ngày</li>
+        <li><a href="#cay">Đọc cái cây</a></li>
+        <li><a href="#worktree">Worktree</a></li>
+        <li><a href="#vai">Vai</a></li>
+        <li><a href="#dieu-phoi">Điều phối</a></li>
+        <li><a href="#lenh">Bảng lệnh</a></li>
+        <li class="r-tieu">Bên trong</li>
+        <li><a href="#luu-tru">Lưu trữ</a></li>
+        <li><a href="#bat-phien">Bắt phiên</a></li>
+        <li><a href="#bus">Bus điều phối</a></li>
+        <li><a href="#an-toan">Chốt an toàn</a></li>
+        <li class="r-tieu">Khi hỏng</li>
+        <li><a href="#gioi-han">Giới hạn</a></li>
+        <li><a href="#su-co">Sự cố</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- ================================================== vấn đề -->
+      <section id="van-de">
+        <div class="doc">
+          <h2><span class="h2-eo">Vì sao có nó</span>Terminal chạy agent là trạng thái, không phải cửa sổ</h2>
+          <p>
+            Khi bạn làm việc với nhiều agent cùng lúc, cái quý không phải là mấy cái tab
+            terminal. Cái quý là <strong>hội thoại</strong> bên trong chúng: agent đang làm dở gì,
+            đã sửa file nào, đang chờ bạn trả lời câu gì. VS Code không giữ thứ đó — reload
+            một cái là mất sạch bối cảnh, và bạn ngồi mở lại từng cái rồi cố nhớ cái nào đang làm gì.
+          </p>
+          <p>
+            Còn một chuyện nữa ít ai để ý cho tới lúc dính: <strong>hai agent trỏ vào cùng
+            một thư mục thì giẫm lên nhau</strong>. Lệnh nối lại phiên gần nhất
+            (<code>claude -c</code>, <code>codex resume --last</code>) chỉ biết thư mục, nên cả hai
+            chui vào cùng một hội thoại. Và chúng sửa file đè lên nhau.
+          </p>
+          <p>
+            Extension này giải cả hai: nhóm terminal thành <strong>workspace có tên</strong> lưu
+            xuống đĩa, và cho mỗi agent một <strong>worktree git riêng</strong> nên không ai giẫm ai.
+            Rồi từ đó mở ra thứ thứ ba: nếu mỗi agent đã có vai và có chỗ đứng riêng, một
+            trong số chúng có thể <strong>điều phối</strong> những cái còn lại.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== khái niệm -->
+      <section id="khai-niem">
+        <div class="doc">
+          <h2><span class="h2-eo">Mô hình</span>Ba khái niệm, hết</h2>
+          <p>Toàn bộ extension chỉ có ba thứ. Hiểu ba cái này là hiểu hết.</p>
+        </div>
+
+        <div class="doc rong" style="margin-top:22px">
+          <div class="bang-cuon">
+            <table>
+              <thead>
+                <tr><th style="width:130px">Khái niệm</th><th>Là gì</th><th style="width:31%">Sống ở đâu</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Workspace</strong></td>
+                  <td>Một tập terminal có tên, ví dụ “ytrinh-workspace”. Nó <em>toàn cục</em>, không gắn với thư mục nào đang mở — bạn mở nó ở bất kỳ cửa sổ VS Code nào.</td>
+                  <td><code>workspaces/&lt;id&gt;.json</code> trong global storage</td>
+                </tr>
+                <tr>
+                  <td><strong>Terminal</strong></td>
+                  <td>Một dòng trong workspace: thư mục làm việc, loại (Claude / Codex / shell thường), id phiên để nối lại, và worktree riêng nếu có.</td>
+                  <td>một phần tử trong file workspace</td>
+                </tr>
+                <tr>
+                  <td><strong>Vai</strong></td>
+                  <td>Agent này chịu trách nhiệm gì. Gồm tên (đi vào tên nhánh git) và một file mô tả bạn tự viết. Loại <code>worker</code> hoặc <code>orchestrator</code>.</td>
+                  <td><code>roles/&lt;ws&gt;/&lt;vai&gt;.md</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
+          <div class="luu-y hay">
+            <span class="luu-y-nhan">Điểm cốt lõi</span>
+            <p>
+              Workspace <strong>không đóng workspace khác</strong>. Bạn mở ba cái cùng lúc trong
+              một cửa sổ là bình thường. Cái mang nhãn <em>“nhận terminal mới”</em> là nơi terminal
+              bạn tự mở tay sẽ rơi vào — và nó đi theo terminal bạn đang focus, không phải cái mở sau cùng.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================== cài đặt -->
+      <section id="cai-dat">
+        <div class="doc">
+          <h2><span class="h2-eo">Bắt đầu</span>Cài và chạy trong năm phút</h2>
+          <p>Cần VS Code <code>≥ 1.93</code> và Node <code>≥ 20</code>. Cài từ file vsix:</p>
+        </div>
+
+        <div class="doc" style="margin-top:16px">
+          <pre class="lenh"><span class="nhac">$</span> code <span class="co">--install-extension</span> ai-workspace-session-manager-0.0.1.vsix <span class="co">--force</span></pre>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
+          <p>Rồi mở Explorer, tìm khung <strong>AI WORKSPACES</strong>, và đi bốn bước:</p>
+          <ol>
+            <li>Bấm <strong>+</strong> trên khung → đặt tên workspace. Nó được kích hoạt ngay.</li>
+            <li>Chuột phải workspace → <strong>Tạo terminal Claude mới</strong>.</li>
+            <li>Chọn thư mục → chọn cách chạy Claude → gõ <strong>tên việc</strong> (ví dụ <code>fix-login</code>).</li>
+            <li>Terminal mở ra trong worktree <code>fix-login-claude</code>, trên nhánh cùng tên.</li>
+          </ol>
+          <p>
+            Từ giờ, đóng VS Code rồi mở lại và kích hoạt workspace đó: terminal quay về, và
+            phiên Claude được <code>--resume</code> vào đúng hội thoại cũ.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== cây -->
+      <section id="cay">
+        <div class="doc">
+          <h2><span class="h2-eo">Hằng ngày</span>Đọc cái cây</h2>
+          <p>
+            Mỗi terminal hiện <code>loại · vai · trạng thái</code>. Vai đứng trước trạng thái vì
+            khi lướt cả cây, câu hỏi đầu tiên là <em>ai làm gì</em>; trạng thái là câu hỏi thứ hai.
+          </p>
+          <div class="tt-day" style="margin-top:4px">
+            <span class="vien-tt c-chay">đang chạy</span>
+            <span class="vien-tt c-ranh">rảnh</span>
+            <span class="vien-tt c-cho">CHỜ BẠN TRẢ LỜI</span>
+            <span class="vien-tt c-tai">đang tải phiên…</span>
+            <span class="vien-tt c-ranh">đang mở</span>
+            <span class="vien-tt" style="color:var(--nhat)">chưa mở</span>
+            <span class="vien-tt c-loi">lỗi</span>
+          </div>
+          <p>
+            Cái đáng chú ý nhất là <strong>CHỜ BẠN TRẢ LỜI</strong>. Registry của Claude chỉ
+            báo <em>busy</em> hoặc <em>idle</em>, mà “idle” gộp hai chuyện rất khác nhau: đã xong
+            việc, và đang dừng giữa chừng chờ bạn bấm. Extension tách chúng ra bằng cách đọc
+            transcript — chi tiết ở <a href="#bat-phien">phần cơ chế</a>. Nhờ vậy bạn liếc một
+            cái là thấy cái nào đang chờ mình.
+          </p>
+          <p>
+            Nhãn <strong>vai đã đổi</strong> xuất hiện khi bạn sửa file mô tả vai của một terminal
+            đang chạy: <code>AGENTS.md</code> đã cập nhật ngay, nhưng system prompt thì đóng băng
+            từ lúc khởi chạy — phải mở lại mới khớp hẳn. Sự lệch đó được hiện ra chứ không bị giấu.
+          </p>
+
+          <h3>Sắp xếp và chuyển terminal</h3>
+          <p>
+            <strong>Kéo thả</strong> trong cây: thả một terminal lên terminal khác để chèn nó vào
+            <em>trước</em> cái đó; thả lên dòng workspace để chuyển sang workspace ấy, xuống cuối
+            danh sách. Chọn nhiều bằng <kbd>Ctrl</kbd>+click rồi kéo cả nhóm cũng được — thứ tự
+            tương đối giữa chúng được giữ nguyên.
+          </p>
+          <p>
+            Hoặc chuột phải terminal → <strong>Chuyển terminal sang workspace khác</strong> nếu
+            bạn thích chọn từ danh sách hơn là kéo.
+          </p>
+          <p>
+            <strong>Terminal đang chạy không bị đóng khi chuyển.</strong> Extension theo dõi
+            terminal bằng id của entry, mà id đó giữ nguyên — nên cái tab đang làm dở đi theo sang
+            workspace mới, không đứt đoạn.
+          </p>
+          <div class="luu-y">
+            <span class="luu-y-nhan">Vai đi theo có điều kiện</span>
+            <p>
+              Vai thuộc về workspace, nên id vai ở hai bên khác nhau — khớp theo <strong>tên</strong>
+              là cách duy nhất có nghĩa. Workspace đích có vai cùng tên thì vai được giữ; không có
+              thì bỏ vai kèm thông báo, chứ không âm thầm nhân bản định nghĩa vai sang đó (nhân bản
+              là tạo ra hai bản mô tả rồi lệch nhau về sau). Và chuyển terminal <em>không</em> lách
+              được ràng buộc một-điều-phối: đích đã có sếp thì vai điều phối bị bỏ.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================== worktree -->
+      <section id="worktree">
+        <div class="doc">
+          <h2><span class="h2-eo">Cách ly</span>Mỗi agent một worktree</h2>
+          <p>
+            Khi tạo terminal agent trong một repo git, extension hỏi <strong>tên việc</strong> —
+            không phải tên worktree. Tên đầy đủ ghép từ việc và vai:
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Ghép tên · phẳng, không phân cấp</div>
+            <div class="bang-than">
+              <pre class="fs">việc <i>fix-login</i> + vai <i>reviewer</i>  →  <b>fix-login-reviewer</b>
+
+git branch
+  <b>fix-login-impl</b>
+  <b>fix-login-reviewer</b>       ← mọi vai của cùng một việc nằm liền nhau
+  <b>fix-login-test</b>
+  hotfix-csv-impl
+
+thư mục  (NGOÀI repo, cạnh nó)
+  D:/Coding/erp/
+  D:/Coding/<b>erp-worktrees</b>/
+    fix-login-impl/
+    fix-login-reviewer/
+    fix-login-test/</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
+          <p>
+            Hai quyết định ở đây có lý do cụ thể. <strong>Phẳng chứ không phải <code>việc/vai</code></strong>:
+            tên phẳng vẫn nhóm theo việc khi <code>git branch</code> sắp xếp chữ cái, nhưng không sinh
+            thư mục lồng và không để lại thư mục cha rỗng sau khi gỡ. <strong>Nằm ngoài repo</strong>:
+            đặt worktree bên trong repo thì <code>git clean -xdf</code> — một lệnh dọn rất thường dùng —
+            xoá sạch nó cùng mọi thay đổi chưa commit.
+          </p>
+          <p>
+            Mở lại <em>cùng việc + cùng vai</em> sẽ <strong>dùng lại</strong> đúng worktree cũ, không
+            đẻ ra bản <code>-2</code>. Để trống ô việc thì làm thẳng trên thư mục đã chọn, không tạo gì.
+          </p>
+
+          <h3>Dọn worktree</h3>
+          <p>
+            Chuột phải workspace → <strong>Dọn worktree</strong>. Lệnh này có bốn lớp chặn, và
+            lớp cuối là quan trọng nhất:
+          </p>
+          <ol>
+            <li>Chỉ đụng đường dẫn nằm trong <code>&lt;repo&gt;-worktrees/</code>. Worktree bạn tự tạo chỗ khác không bao giờ vào danh sách.</li>
+            <li>Cái đang có terminal mở thì không gỡ được — kể cả terminal của workspace khác.</li>
+            <li>Cái còn thay đổi chưa commit hoặc nhánh chưa merge thì chọn được nhưng <strong>không tích sẵn</strong>.</li>
+            <li><code>git worktree remove</code> chạy <strong>không</strong> <code>--force</code>, <code>git branch -d</code> chạy <strong>không</strong> <code>-D</code>.</li>
+          </ol>
+          <div class="luu-y">
+            <span class="luu-y-nhan">Nguyên tắc</span>
+            <p>
+              Git từ chối gỡ là <strong>lưới an toàn đang làm việc</strong>, không phải lỗi cần vượt
+              qua. Lệnh dọn báo lại nguyên văn lý do của git thay vì ép. Không xác định được nhánh
+              mặc định của repo thì mọi nhánh bị coi là chưa merge — đoán bừa ở đây là xoá nhầm việc của bạn.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================== vai -->
+      <section id="vai">
+        <div class="doc">
+          <h2><span class="h2-eo">Vai</span>Một nguồn sự thật, hai bản kết xuất</h2>
+          <p>
+            Chuột phải workspace → <strong>Thêm vai</strong> → đặt tên, chọn loại. File mô tả mở
+            luôn trong editor với nội dung mẫu. Bạn viết vào đó agent mang vai này phải biết gì,
+            được và không được đụng vào đâu.
+          </p>
+          <p>
+            File đó là <strong>nguồn sự thật duy nhất</strong>. Nó tới được agent qua hai đường:
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Đường đi của một vai</div>
+            <div class="bang-than">
+              <div class="chia">
+                <div class="chia-goc">roles/&lt;ws&gt;/&lt;vai&gt;.md &nbsp;— nguồn</div>
+                <div class="chia-mui">▼ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ▼</div>
+                <div class="chia-o">
+                  <b>--append-system-prompt-file</b>
+                  <span>Vào thẳng system prompt lúc khởi chạy. Chỉ Claude. Đóng băng cho tới lần mở lại.</span>
+                </div>
+                <div class="chia-o">
+                  <b>khối trong &lt;worktree&gt;/AGENTS.md</b>
+                  <span>Claude lẫn Codex đều đọc, mọi lượt. Sửa file là ăn ngay.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
+          <h3>Chống lệch giữa hai bản</h3>
+          <p>Khối trong <code>AGENTS.md</code> trông thế này:</p>
+        </div>
+
+        <div class="doc rong" style="margin-top:14px">
+          <div class="bang-co-che">
+            <div class="bang-than">
+              <pre class="fs"># Quy ước repo          <i>← nội dung sẵn có của bạn, không bị đụng một ký tự</i>
+Dùng tab, không dùng space.
+
+<b>&lt;!-- ai-workspace:role reviewer id=bbbb… hash=a3f19c4d — SINH TỰ ĐỘNG --&gt;</b>
+Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
+<b>&lt;!-- /ai-workspace:role id=bbbb… --&gt;</b></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:20px">
+          <p>
+            <code>hash</code> là hash của nội dung <em>lúc sinh</em>. Đọc lại mà thân khối cho hash
+            khác nghĩa là <strong>có người sửa tay bên trong</strong> — lúc đó extension
+            <strong>hỏi</strong> chứ không ghi đè. Nội dung nằm ngoài mốc thì không bao giờ bị chạm tới,
+            nên <code>AGENTS.md</code> sẵn có của repo an toàn. Gỡ vai đi là trả file về đúng hình dạng cũ.
+          </p>
+          <p>
+            Nếu file <code>AGENTS.md</code> do extension tạo mới, nó thêm một dòng vào
+            <code>.git/info/exclude</code> — chỗ riêng của bản sao làm việc — chứ không đụng
+            <code>.gitignore</code>, vì đó là file được theo dõi của bạn.
+          </p>
+          <p>
+            Tên vai đi thẳng vào tên nhánh git nên bị validate ngay ở ô nhập: chỉ chữ không dấu,
+            số, và <code>. _ -</code>.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== điều phối -->
+      <section id="dieu-phoi">
+        <div class="doc">
+          <h2><span class="h2-eo">Điều phối</span>Một agent làm sếp</h2>
+          <p>
+            Gắn cho một terminal Claude vai loại <strong>orchestrator</strong>, đóng và kích hoạt
+            lại workspace. Terminal đó khởi chạy kèm <code>--mcp-config</code> trỏ vào một MCP
+            server do chính extension ship. Gõ <code>/mcp</code> trong terminal đó để xác nhận.
+          </p>
+          <p>
+            Extension ở đây là <strong>đường ống, không phải bộ não</strong>. Mọi phán đoán nằm ở
+            agent — nơi bạn sửa được bằng lời, chứ không phải bằng TypeScript.
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:22px">
+          <div class="bang-cuon">
+            <table>
+              <thead><tr><th style="width:150px">Tool</th><th>Việc</th></tr></thead>
+              <tbody>
+                <tr><td><code>list_agents</code></td><td>Xem mọi terminal: id, tên, vai, trạng thái, thư mục, nhánh. Gọi trước tiên — đừng đoán id.</td></tr>
+                <tr><td><code>read_transcript</code></td><td>Đọc N lượt cuối của một worker: nó gọi tool gì, đụng file nào. Đây là cách <em>kiểm bài</em> thật, thay vì tin lời tự thuật.</td></tr>
+                <tr><td><code>dispatch</code></td><td>Gửi chỉ thị vào phiên đang chạy của một worker.</td></tr>
+                <tr><td><code>wait</code></td><td>Chờ tới khi worker báo xong hoặc dừng tay. Trả kèm kết quả có kiểu.</td></tr>
+                <tr><td><code>report</code></td><td>Ghi vào khung kiểm toán và báo cho bạn.</td></tr>
+                <tr><td><code>report_done</code><br><span style="font-size:11.5px;color:var(--nhat);font-family:'JetBrains Mono',monospace">chỉ worker</span></td><td>Worker khai kết cục: <code>succeeded</code> / <code>failed</code> / <code>blocked</code>, kèm tóm tắt và danh sách file đã sửa.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:26px">
+          <h3>Vì sao worker cần một tool riêng</h3>
+          <p>
+            Vì <code>idle</code> nói dối. Nó không phân biệt được <em>“xong việc được giao”</em> với
+            <em>“đang chờ ai đó bấm”</em> hay <em>“vừa xong một việc khác hẳn”</em>. Nếu chỉ có
+            trạng thái, sếp phải đi đọc transcript rồi tự đoán — đúng loại suy diễn mà một hệ điều
+            phối không nên có.
+          </p>
+          <p>
+            Nên mỗi lần giao việc tự gắn một <code>dispatch_id</code> vào chỉ thị và dặn worker gọi
+            <code>report_done</code> khi xong. Kết quả bị <strong>xoá khi có việc mới</strong> giao
+            cho worker đó — không thì lần <code>wait</code> kế tiếp trả về báo cáo của việc trước và
+            sếp tưởng việc mới đã xong ngay tức khắc.
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:22px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Một vòng giao việc</div>
+            <div class="bang-than">
+              <div class="luong">
+                <div class="lan"><span class="lan-so">1</span><span class="lan-ai">Sếp (agent)</span><span class="lan-viec">gọi <b>dispatch</b>(terminal_id, text)</span></div>
+                <div class="lan"><span class="lan-so">2</span><span class="lan-ai">MCP server</span><span class="lan-viec">ghi <b>orch/&lt;ws&gt;/req/&lt;id&gt;.json</b> rồi ngồi chờ file phản hồi</span></div>
+                <div class="lan"><span class="lan-so">3</span><span class="lan-ai">Extension</span><span class="lan-viec">đọc file, <b>xoá ngay</b>, kiểm bốn lớp an toàn</span></div>
+                <div class="lan"><span class="lan-so">4</span><span class="lan-ai">Extension</span><span class="lan-viec">gộp chỉ thị về một dòng, gắn <b>dispatch_id</b>, gõ vào terminal worker</span></div>
+                <div class="lan"><span class="lan-so">5</span><span class="lan-ai">Extension</span><span class="lan-viec">ghi <b>res/&lt;id&gt;.json</b> + một dòng vào khung kiểm toán</span></div>
+                <div class="lan"><span class="lan-so">6</span><span class="lan-ai">Worker (agent)</span><span class="lan-viec">làm việc, xong thì gọi <b>report_done</b>(outcome, summary, files)</span></div>
+                <div class="lan"><span class="lan-so">7</span><span class="lan-ai">Extension</span><span class="lan-viec">lưu kết quả, ghi vào <b>status.json</b> ngay</span></div>
+                <div class="lan"><span class="lan-so">8</span><span class="lan-ai">Sếp (agent)</span><span class="lan-viec"><b>wait</b> thoát ra, đọc được kết cục có kiểu</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
+          <div class="luu-y hay">
+            <span class="luu-y-nhan">Bạn vẫn đọc được hết</span>
+            <p>
+              Mọi lần giao việc và mọi báo cáo đều được ghi vào Output Channel
+              <strong>AI Workspace — Điều phối</strong>. Bạn đọc được toàn bộ những gì sếp đã nói
+              với lính, và ngắt bất cứ lúc nào bằng cách bỏ vai hoặc đóng terminal.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================== lệnh -->
+      <section id="lenh">
+        <div class="doc">
+          <h2><span class="h2-eo">Tra cứu</span>22 lệnh</h2>
+          <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
+        </div>
+
+        <div class="doc rong" style="margin-top:20px">
+          <div class="bang-cuon">
+            <table>
+              <thead><tr><th style="width:34%">Lệnh</th><th>Việc</th><th style="width:24%">Gọi từ</th></tr></thead>
+              <tbody>
+                <tr><td>Tạo workspace mới</td><td>Tạo và kích hoạt ngay</td><td>nút <strong>+</strong> trên khung</td></tr>
+                <tr><td>Kích hoạt workspace</td><td>Mở lại mọi terminal đã lưu</td><td>click vào item</td></tr>
+                <tr><td>Đóng workspace</td><td>Chỉ đóng cái đó, cái khác nguyên vẹn</td><td>chuột phải workspace</td></tr>
+                <tr><td>Đổi tên / Xóa workspace</td><td>Xoá dọn luôn vai và thư mục điều phối của nó</td><td>chuột phải workspace</td></tr>
+                <tr><td>Xem thông tin workspace</td><td>Id, cửa sổ đang giữ, đường dẫn file lưu, từng terminal</td><td>chuột phải workspace</td></tr>
+                <tr><td>Cài đặt workspace</td><td>Nơi mở terminal riêng cho workspace này</td><td>chuột phải workspace</td></tr>
+                <tr><td>Tạo terminal Claude mới</td><td>Hỏi đường dẫn → vai → cách chạy → việc</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td></tr>
+                <tr><td>Tạo terminal Codex mới</td><td>Như trên, cho Codex</td><td>chuột phải workspace</td></tr>
+                <tr><td>Tạo terminal mới</td><td>Shell thường, không tạo worktree</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td></tr>
+                <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
+                <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
+                <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
+                <tr><td>Chuyển terminal sang workspace khác</td><td>Terminal đang chạy không bị đóng</td><td>chuột phải terminal</td></tr>
+                <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây</td><td>chuột phải terminal</td></tr>
+                <tr><td>Xem đường dẫn terminal</td><td>Kèm nút sao chép và mở thư mục</td><td>chuột phải terminal</td></tr>
+                <tr><td>Đặt lệnh khởi động</td><td>Cho terminal shell thường</td><td>chuột phải terminal</td></tr>
+                <tr><td>Bỏ terminal khỏi workspace</td><td>Hỏi đóng luôn hay chỉ bỏ</td><td>chuột phải terminal</td></tr>
+                <tr><td>Gắn session AI vào terminal</td><td>Lối thoát khi cơ chế bắt tự động chịu thua</td><td>chuột phải terminal</td></tr>
+                <tr><td>Thêm terminal đang mở vào workspace</td><td>Nhận nuôi một tab có sẵn</td><td>chuột phải tab terminal</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:20px">
+          <p>
+            Một setting duy nhất: <code>aiWorkspace.terminalLocation</code> — mở terminal thành tab
+            trong khu editor (mặc định) hay trong panel dưới. Mỗi workspace đè riêng được.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== lưu trữ -->
+      <section id="luu-tru">
+        <div class="doc">
+          <h2><span class="h2-eo">Bên trong</span>Mọi thứ nằm ở đâu</h2>
+          <p>
+            Tất cả trong global storage của extension. Không có file nào rơi vào repo của bạn,
+            trừ khối vai trong <code>AGENTS.md</code> — và khối đó gỡ ra được sạch sẽ.
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-co-che">
+            <div class="bang-dau">globalStorage/bigdatacloud.ai-workspace-session-manager/</div>
+            <div class="bang-than">
+              <pre class="fs"><b>workspaces/</b>
+  &lt;ws-id&gt;.json          <i>mỗi workspace MỘT file — một file hỏng chỉ mất một workspace</i>
+
+<b>roles/</b>
+  &lt;ws-id&gt;/
+    &lt;role-id&gt;.md        <i>mô tả vai — nguồn sự thật</i>
+
+<b>orch/</b>
+  &lt;ws-id&gt;/
+    status.json         <i>extension ghi mỗi nhịp: ai, vai gì, trạng thái, kết quả</i>
+    mcp-&lt;term-id&gt;.json  <i>cấu hình MCP cho đúng một terminal</i>
+    req/&lt;id&gt;.json       <i>MCP server → extension</i>
+    res/&lt;id&gt;.json       <i>extension → MCP server</i></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:24px">
+          <h3>Vì sao mỗi workspace một file</h3>
+          <p>
+            Bản đầu dùng một file <code>workspaces.json</code> chung. Vấn đề: hai cửa sổ VS Code
+            cùng ghi thì cửa sổ sau đè mất thay đổi của cửa sổ trước, và một file hỏng là mất sạch.
+            Tách ra rồi thì mỗi lần lưu chỉ ghi những workspace <em>đã đổi</em>, và một file hỏng
+            chỉ mất một workspace — phần còn lại vẫn đọc được.
+          </p>
+
+          <h3>Bia mộ: vì sao “bỏ terminal” mới thật sự bỏ</h3>
+          <p>
+            Nhiều cửa sổ cùng dùng chung thư mục này, nên trước khi ghi đè, extension phải gộp bản
+            trong RAM với bản trên đĩa. Phép gộp thuần tuý hợp nhất có một lỗ chết người:
+            <strong>nó không phân biệt được “cửa sổ khác vừa thêm terminal này” với “chính ta vừa
+            bỏ nó”</strong> — nên mọi thao tác bỏ đều bị bản trên đĩa dựng dậy ở lần lưu kế tiếp.
+          </p>
+          <p>
+            Cách sửa là ghi <strong>bia mộ</strong>: bỏ terminal thì để lại một dấu <code>{id, thời điểm}</code>.
+            Phép gộp thấy bia thì không hồi sinh terminal đó nữa. Thêm lại cùng id thì bia bị xoá, và
+            bia quá 30 ngày được dọn để file không phình mãi.
+          </p>
+          <p>
+            Ghi file cũng dùng <code>fsync</code> trước khi đổi tên. Thiếu bước đó thì lúc mất điện,
+            nội dung mới còn nằm trong cache của hệ điều hành và cái đổi tên “nguyên tử” chỉ đổi tên
+            một file rỗng thành file thật.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== bắt phiên -->
+      <section id="bat-phien">
+        <div class="doc">
+          <h2><span class="h2-eo">Bên trong</span>Làm sao biết terminal nào đang chạy phiên nào</h2>
+          <p>
+            Đây là phần khó nhất của extension. Để <code>--resume</code> đúng hội thoại sau khi
+            khởi động lại, phải biết chắc terminal nào ứng với phiên nào. Có bốn lớp, xếp theo độ
+            mạnh của bằng chứng:
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Bốn lớp, mạnh trước yếu sau</div>
+            <div class="bang-than">
+              <div class="luong">
+                <div class="lan"><span class="lan-so">1</span><span class="lan-ai">Id mint sẵn</span><span class="lan-viec">Extension tự sinh id <b>trước</b> khi chạy <code>claude --session-id</code>. Chắc chắn 100%, và đây là lý do nên tạo terminal bằng lệnh của extension thay vì tự gõ <code>claude</code>.</span></div>
+                <div class="lan"><span class="lan-so">2</span><span class="lan-ai">Phả hệ PID</span><span class="lan-viec">Mọi <code>claude.exe</code> là con trực tiếp của một shell riêng. Đi ngược tổ tiên một bậc là ra terminal — tất định, và <b>được phép sửa</b> claim sai.</span></div>
+                <div class="lan"><span class="lan-so">3</span><span class="lan-ai">Ghép theo cwd</span><span class="lan-viec">Đối chiếu thư mục làm việc. Yếu hơn, và chính là chỗ hai agent cùng thư mục làm hỏng mọi thứ — nên mới cần worktree riêng.</span></div>
+                <div class="lan"><span class="lan-so">4</span><span class="lan-ai">Bạn chọn tay</span><span class="lan-viec">Lệnh <b>Gắn session AI vào terminal</b>. Lối thoát cuối, không bao giờ bị bỏ.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:24px">
+          <h3>Tách “rảnh” khỏi “đang chờ bạn”</h3>
+          <p>
+            Registry chỉ có <em>busy</em> và <em>idle</em>. Tín hiệu phân biệt nằm trong transcript:
+            khi Claude hỏi bạn, bản ghi cuối là một lượt của assistant chứa lời gọi tool mà
+            <strong>chưa có kết quả tương ứng</strong> — vì kết quả chỉ sinh ra sau khi bạn trả lời.
+            Extension đọc phần đuôi file transcript, có cache theo thời điểm sửa file nên lúc đang
+            chờ thì chỉ đọc đúng một lần.
+          </p>
+
+          <h3>Nối lại terminal hồi sinh</h3>
+          <p>
+            Reload cửa sổ thì pty host sống sót: terminal cũ và tiến trình agent bên trong được hồi
+            sinh, nhưng bảng ánh xạ của extension chỉ nằm trong RAM nên nó đã quên. Không xử lý thì
+            nó mở terminal <em>mới</em> rồi <code>--resume</code> lần hai vào hội thoại đang chạy dở —
+            và hai tiến trình cùng ghi một file phiên, mỗi cái giữ một bản lịch sử khác nhau.
+          </p>
+          <p>
+            Nên khi kích hoạt, extension quét các terminal đang sống và nhận lại chúng
+            <strong>trước</strong> khi mở cái mới. Bằng chứng bền nhất là biến môi trường
+            <code>AI_WORKSPACE_TERMINAL_ID</code> được bơm vào lúc tạo — nó sống qua reload, nên
+            không phải đoán bằng tên hay thư mục.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== bus -->
+      <section id="bus">
+        <div class="doc">
+          <h2><span class="h2-eo">Bên trong</span>Bus điều phối là file, không phải cổng mạng</h2>
+          <p>
+            MCP server chạy như <strong>tiến trình con của agent</strong> — Claude spawn nó theo
+            <code>--mcp-config</code>. Nó không đụng được vào API của VS Code, nên mọi việc chỉ
+            extension làm được đi qua một bus.
+          </p>
+          <p>
+            Bus đó là file trong global storage. Đổi lại việc <code>wait</code> phải poll, ta được:
+            không thương lượng cổng, không giữ tiến trình nào sống, và sống sót qua Reload Window.
+            Đơn vị thời gian ở đây là <em>“agent làm xong một việc”</em>, không phải mili giây — nên
+            nhịp 300 ms là quá đủ mịn.
+          </p>
+
+          <h3>Ba chi tiết nhỏ mà thiếu là hỏng</h3>
+          <ul>
+            <li>
+              <strong>Yêu cầu bị xoá ngay sau khi đọc</strong>, trước cả khi xử lý. Chạy hai lần là
+              gõ chữ hai lần vào một phiên đang sống, mà chữ đã vào rồi thì không rút lại được.
+            </li>
+            <li>
+              <strong>Yêu cầu quá 60 giây bị bỏ.</strong> MCP server bỏ cuộc sau 20 giây nhưng file
+              vẫn nằm lại; thi hành nó ở lần mở workspace sau là bơm chỉ thị của một phiên đã chết
+              vào worker đang làm việc khác.
+            </li>
+            <li>
+              <strong>Chỉ thị nhiều dòng bị gộp về một dòng.</strong> Trong TUI của agent, mỗi xuống
+              dòng là một lần Enter — chỉ thị nhiều dòng sẽ thành nhiều lượt và agent bắt tay làm khi
+              mới đọc nửa câu.
+            </li>
+          </ul>
+
+          <h3>Cấu hình MCP không dựa vào biến môi trường</h3>
+          <p>
+            Cấu hình trỏ vào <code>process.execPath</code> — chính binary Electron của VS Code — cộng
+            <code>ELECTRON_RUN_AS_NODE=1</code>, nên chạy được mà không đòi bạn có <code>node</code>
+            trong PATH. Và <strong>mọi tham số nằm trong <code>args</code></strong>: biến môi trường
+            phải sống sót qua hai tầng tiến trình (terminal → agent → server), tầng nào nuốt thì cả cơ
+            chế chết im lặng và gần như không truy được.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== an toàn -->
+      <section id="an-toan">
+        <div class="doc">
+          <h2><span class="h2-eo">Bên trong</span>Bốn thứ extension từ chối làm</h2>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-cuon">
+            <table>
+              <thead><tr><th style="width:33%">Chặn</th><th>Vì sao</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>Độ sâu điều phối = 1</strong></td>
+                  <td>Chỉ terminal giữ vai điều phối được giao việc. Worker gọi <code>dispatch</code> là bị từ chối — chặn bom đệ quy. Cấp <code>report_done</code> cho worker không nới luật này: nó vẫn không có <code>dispatch</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Không bơm vào shell trần</strong></td>
+                  <td>Gõ chữ vào một shell không chạy agent <em>chính là</em> thực thi lệnh tuỳ ý. Đích phải là terminal agent thật, đang mở.</td>
+                </tr>
+                <tr>
+                  <td><strong>Một sếp mỗi workspace</strong></td>
+                  <td>Hai người cùng giao việc cho một worker là công thức tạo mâu thuẫn không gỡ được.</td>
+                </tr>
+                <tr>
+                  <td><strong>Không cờ ép trong git</strong></td>
+                  <td>Không <code>--force</code>, không <code>-D</code>. Git từ chối là lưới an toàn, không phải trở ngại.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:22px">
+          <p>
+            Ngoài ra còn một cổng tin cậy cho <em>lệnh khởi động</em> tự bắt được: extension chỉ chạy
+            lại chúng sau khi bạn duyệt, và vân tay tin cậy tính trên cả workspace nên thêm bớt
+            terminal không âm thầm mở rộng quyền.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================================================== giới hạn -->
+      <section id="gioi-han">
+        <div class="doc">
+          <h2><span class="h2-eo">Nói thẳng</span>Giới hạn đã biết</h2>
+          <div class="luu-y chan">
+            <span class="luu-y-nhan">Codex không làm sếp được</span>
+            <p>
+              Codex không có cờ nạp system prompt hay cấu hình MCP theo từng lần chạy. Nên terminal
+              Codex chỉ nhận vai qua <code>AGENTS.md</code>, và <strong>không điều phối được</strong>.
+              Extension cảnh báo thẳng lúc bạn gắn vai điều phối cho nó.
+            </p>
+          </div>
+          <ul>
+            <li>
+              <code>read_transcript</code> mới hỗ trợ terminal Claude đã có id phiên. Với Codex nó
+              trả lời rõ “chưa hỗ trợ” thay vì đoán.
+            </li>
+            <li>
+              <strong>Tầng giao diện không có test tự động.</strong> 347 test phủ các hàm thuần,
+              schema, giao thức MCP và luật an toàn — nhưng menu, cây, và hộp thoại thì chỉ có
+              checklist tay trong <code>docs/manual-verification.md</code> làm lưới.
+            </li>
+            <li>
+              Tiến trình agent còn sót từ những lần khôi phục chồng của bản cũ thì phải kill tay —
+              bản hiện tại không sinh thêm, nhưng cũng không dọn hộ.
+            </li>
+            <li>
+              Xoá workspace ở một cửa sổ trong khi cửa sổ khác từng đụng vào nó thì nó có thể sống lại.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ================================================== sự cố -->
+      <section id="su-co">
+        <div class="doc">
+          <h2><span class="h2-eo">Khi hỏng</span>Sự cố thường gặp</h2>
+
+          <div style="margin-top:4px">
+            <details>
+              <summary>Gõ <code>/mcp</code> trong terminal điều phối mà không thấy server nào</summary>
+              <p>
+                Cấu hình MCP chỉ được nạp <strong>lúc khởi chạy</strong>. Gắn vai cho một terminal
+                đang chạy thì chưa ăn — đóng workspace rồi kích hoạt lại.
+              </p>
+              <p>
+                Nếu vẫn không có, extension sẽ đã báo một cảnh báo rằng không ghi được cấu hình.
+                Kiểm tra <code>dist/mcp.js</code> có trong thư mục extension không.
+              </p>
+            </details>
+
+            <details>
+              <summary>Terminal quay về nhưng mở hội thoại trắng</summary>
+              <p>
+                Nghĩa là extension chưa bắt được id phiên của terminal đó, nên không
+                <code>--resume</code> được. Dùng <strong>Gắn session AI vào terminal</strong> để chỉ
+                đúng phiên, hoặc lần sau tạo terminal bằng lệnh của extension — cách đó mint id
+                <em>trước</em> khi chạy nên resume chắc chắn.
+              </p>
+            </details>
+
+            <details>
+              <summary>Sếp giao việc mà worker không nhận được gì</summary>
+              <p>
+                Xem Output Channel <strong>AI Workspace — Điều phối</strong>. Nếu có dòng
+                <em>TỪ CHỐI giao việc</em>, lý do nằm ngay đó: worker đang đóng, đích là shell thường,
+                hoặc lệnh không đến từ terminal điều phối.
+              </p>
+            </details>
+
+            <details>
+              <summary><code>wait</code> chờ mãi không thoát</summary>
+              <p>
+                Worker chưa gọi <code>report_done</code> và cũng chưa dừng tay. Kiểm tra file mô tả
+                vai của worker có phần “Báo cáo khi xong” không — nếu bạn viết đè lên mẫu, có thể đã
+                xoá mất phần dạy nó gọi tool đó.
+              </p>
+            </details>
+
+            <details>
+              <summary>Chuyển terminal sang workspace khác, khởi động lại thì nó quay về chỗ cũ</summary>
+              <p>
+                Không được xảy ra: chuyển đi để lại <strong>bia mộ</strong> ở workspace nguồn nên
+                phép gộp RAM/đĩa không dựng nó dậy. Nếu vẫn gặp, bản đang chạy cũ hơn — mở file lưu
+                của workspace nguồn xem có mảng <code>removedTerminals</code> chứa id đó không.
+              </p>
+            </details>
+
+            <details>
+              <summary>Terminal đã bỏ mà mở lại vẫn thấy</summary>
+              <p>
+                Đây là lỗi của bản cũ, đã sửa bằng cơ chế bia mộ. Nếu còn gặp, nghĩa là bản đang chạy
+                cũ hơn — kiểm tra bằng <strong>Xem thông tin workspace</strong> rồi mở file lưu xem
+                có mảng <code>removedTerminals</code> không.
+              </p>
+            </details>
+
+            <details>
+              <summary>Khối vai trong <code>AGENTS.md</code> không cập nhật</summary>
+              <p>
+                Nếu bạn đã sửa tay bên trong khối, extension <strong>cố ý</strong> không ghi đè —
+                nó hỏi trước. Chọn “Ghi đè” để lấy lại bản từ file vai, hoặc giữ bản sửa tay và chấp
+                nhận nó lệch với system prompt.
+              </p>
+            </details>
+
+            <details>
+              <summary>Dọn worktree báo git từ chối</summary>
+              <p>
+                Đó là lưới an toàn hoạt động đúng. Worktree còn thay đổi chưa commit, hoặc nhánh chưa
+                merge. Vào worktree đó xử lý trước — extension không có cờ ép và sẽ không thêm.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <div class="doc">
+          <p style="margin:0">
+            AI Workspace Session Manager · MIT ·
+            <a href="https://github.com/bigdatacloud/vscode-workspace-saver">bigdatacloud/vscode-workspace-saver</a><br>
+            <span style="color:var(--nhat)">
+              Checklist kiểm tay ở <code>docs/manual-verification.md</code>. Thiết kế và các quyết
+              định kỹ thuật ghi trong <code>docs/superpowers/specs/</code>.
+            </span>
+          </p>
+        </div>
+      </footer>
+
+    </main>
+  </div>
+</div>

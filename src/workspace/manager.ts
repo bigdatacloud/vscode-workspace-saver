@@ -45,6 +45,7 @@ import {
   type YeuCau,
 } from '../orch/bus';
 import { chonWorkspaceNhan } from './receiving';
+import { chuyenViTri, vaiTuongUng } from './sapxep';
 import { docBangTienTrinh } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
 import {
@@ -1912,6 +1913,135 @@ export class WorkspaceManager implements vscode.Disposable {
       }
     }
     return role;
+  }
+
+  // ------------------------------------------- chuyển & sắp xếp terminal
+
+  /**
+   * Đưa một entry sang workspace khác. Trả về ghi chú về VAI để bên gọi báo lại, hoặc null
+   * nếu không có gì đáng nói.
+   *
+   * Terminal thật KHÔNG bị đóng: `TerminalManager` khoá theo id entry, mà id giữ nguyên khi
+   * chuyển — nên cái tab đang chạy dở đi theo sang workspace mới, không đứt đoạn.
+   */
+  private chuyenEntrySangWs(
+    wsNguon: Workspace,
+    wsDich: Workspace,
+    entry: TerminalEntry,
+  ): string | null {
+    const vaiCu = this.vaiCuaEntry(wsNguon, entry);
+    const kq = vaiTuongUng(vaiCu, wsDich.roles ?? [], this.terminalDieuPhoi(wsDich) !== null);
+    const thuMuc = entry.worktree?.path ?? entry.cwd;
+    const idVaiMoi = kq.loai === 'giu' ? kq.role.id : undefined;
+
+    // Gỡ khỏi nguồn TRƯỚC (có bia mộ, nên thao tác bền qua khởi động lại), rồi mới thêm vào
+    // đích — làm ngược lại thì giữa hai bước có một khoảnh khắc entry nằm ở cả hai nơi, và
+    // một lượt lưu chen vào đó ghi xuống đĩa đúng trạng thái sai ấy.
+    removeTerminalEntry(wsNguon, entry.id);
+    const moi: TerminalEntry = { ...entry };
+    if (idVaiMoi === undefined) delete moi.roleId;
+    else moi.roleId = idVaiMoi;
+    upsertTerminal(wsDich, moi);
+
+    if (vaiCu !== undefined && vaiCu.id !== idVaiMoi) {
+      const conLai = this.store.workspaces.flatMap((w) =>
+        w.terminals.map((t) => ({
+          ...(t.roleId === undefined ? {} : { roleId: t.roleId }),
+          thuMuc: t.worktree?.path ?? t.cwd,
+        })),
+      );
+      if (!conCanKhoi(vaiCu.id, thuMuc, conLai)) this.goKhoiVai(thuMuc, vaiCu.id);
+    }
+    if (kq.loai === 'giu') this.ghiKhoiVaiChoEntry(wsDich.id, thuMuc, kq.role);
+    // System prompt đóng băng từ lệnh khởi chạy: vai đổi mà terminal đang chạy thì phải hiện ra.
+    if (vaiCu?.id !== idVaiMoi && this.terminals.has(entry.id)) this.vaiDaDoi.add(entry.id);
+
+    if (kq.loai === 'giu' || vaiCu === undefined) return null;
+    if (kq.lyDo === 'dichDaCoDieuPhoi') {
+      return `Workspace "${wsDich.name}" đã có terminal điều phối nên vai "${vaiCu.name}" bị bỏ.`;
+    }
+    return `Workspace "${wsDich.name}" không có vai tên "${vaiCu.name}" nên terminal này thành không có vai.`;
+  }
+
+  /** Lệnh chuột phải: chuyển terminal sang workspace khác. */
+  async moveTerminal(workspaceId: string, terminalId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    const entry = ws?.terminals.find((t) => t.id === terminalId);
+    if (!ws || entry === undefined) return;
+    const khac = this.store.workspaces.filter((w) => w.id !== workspaceId);
+    if (khac.length === 0) {
+      void vscode.window.showInformationMessage('Chưa có workspace nào khác để chuyển sang.');
+      return;
+    }
+
+    const chon = await vscode.window.showQuickPick(
+      khac.map((w) => ({
+        label: w.name,
+        description: `${w.terminals.length} terminal`,
+        ...(this.laDangMo(w.id) ? { detail: 'đang mở' } : {}),
+        id: w.id,
+      })),
+      { placeHolder: `Chuyển "${entry.name}" sang workspace nào?` },
+    );
+    if (!chon) return;
+
+    // Lấy lại object sau QuickPick rồi mới đụng (xem ghi chú ở activate()).
+    const nguon = findWorkspace(this.store, workspaceId);
+    const dich = findWorkspace(this.store, chon.id);
+    const entryNow = nguon?.terminals.find((t) => t.id === terminalId);
+    if (!nguon || !dich || entryNow === undefined) {
+      void vscode.window.showWarningMessage('Workspace hoặc terminal không còn tồn tại.');
+      return;
+    }
+
+    const ghiChu = this.chuyenEntrySangWs(nguon, dich, entryNow);
+    this.touch(nguon.id);
+    this.touch(dich.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+    void vscode.window.showInformationMessage(
+      `Đã chuyển "${entryNow.name}" sang "${dich.name}".${ghiChu === null ? '' : ` ${ghiChu}`}`,
+    );
+  }
+
+  /**
+   * Kéo thả trong cây: đưa các terminal tới `wsDichId`, chèn TRƯỚC `idDich`.
+   *
+   * Một thao tác này gánh cả hai việc — sắp xếp lại trong cùng workspace, và chuyển sang
+   * workspace khác — vì với người dùng chúng là cùng một cử chỉ.
+   */
+  async thaTerminal(idKeo: readonly string[], wsDichId: string, idDich: string | null): Promise<void> {
+    const dich = findWorkspace(this.store, wsDichId);
+    if (!dich) return;
+
+    const ghiChu: string[] = [];
+    const daChuyen = new Set<string>();
+    for (const id of idKeo) {
+      if (dich.terminals.some((t) => t.id === id)) continue; // đã ở đúng workspace
+      const nguon = this.store.workspaces.find((w) => w.terminals.some((t) => t.id === id));
+      const entry = nguon?.terminals.find((t) => t.id === id);
+      if (!nguon || entry === undefined) continue;
+      const note = this.chuyenEntrySangWs(nguon, dich, entry);
+      if (note !== null) ghiChu.push(note);
+      this.touch(nguon.id);
+      daChuyen.add(id);
+    }
+
+    // Sắp xếp SAU khi mọi thứ đã có mặt trong danh sách đích, nếu không thì chỉ số chèn tính
+    // trên một danh sách chưa đủ phần tử.
+    dich.terminals = chuyenViTri(dich.terminals, [...idKeo], idDich);
+    this.touch(dich.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+
+    if (ghiChu.length > 0) void vscode.window.showWarningMessage(ghiChu.join(' '));
+    else if (daChuyen.size > 0) {
+      void vscode.window.showInformationMessage(
+        `Đã chuyển ${daChuyen.size} terminal sang "${dich.name}".`,
+      );
+    }
   }
 
   // ------------------------------------------------------------ điều phối

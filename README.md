@@ -112,6 +112,13 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Add role | `aiWorkspace.addRole` | Context menu of a workspace. Creates a role and opens its description file for editing. |
 | AI Workspace: Manage roles | `aiWorkspace.manageRoles` | Context menu of a workspace. Edit / rename / delete a role. |
 | AI Workspace: Assign role to terminal | `aiWorkspace.assignRole` | Context menu of a terminal. |
+| AI Workspace: Move terminal to another workspace | `aiWorkspace.moveTerminal` | Context menu of a terminal. The running terminal is not closed — entry ids are stable, so the live tab follows. |
+
+Terminals can also be **dragged** inside the tree: drop one onto another terminal to insert it
+before that one, or onto a workspace row to move it there. Multi-select works. Moving a terminal
+between workspaces leaves a tombstone in the source, so the move survives a restart; a role is
+kept only if the target workspace has a role with the same name, and is otherwise dropped with a
+notice rather than silently duplicating the role definition.
 
 ### Roles and orchestration
 

@@ -5,6 +5,7 @@ const vscodeMock = vi.hoisted(() => ({
     terminals: [] as unknown[],
     activeTerminal: undefined as unknown,
     showWarningMessage: vi.fn(),
+    showInformationMessage: vi.fn(),
   },
   workspace: {
     workspaceFolders: undefined,
@@ -503,5 +504,113 @@ describe('WorkspaceManager — nhiều workspace cùng mở', () => {
     vscodeMock.window.activeTerminal = termMoi;
 
     expect(m.wsNhan()).toBe(B);
+  });
+});
+
+describe('WorkspaceManager — chuyển và sắp xếp terminal', () => {
+  const A = U('a');
+  const B = U('b');
+  const t1 = U('c');
+  const t2 = U('d');
+  const t3 = U('e');
+
+  const term = (id: string, name: string) => ({ id, name, cwd: `D:/${name}`, kind: 'plain' as const });
+
+  function store(): StoreFile {
+    return {
+      version: 2,
+      workspaces: [
+        { id: A, name: 'A', lastActiveAt: null, activeWindowId: null,
+          terminals: [term(t1, 'mot'), term(t2, 'hai'), term(t3, 'ba')] },
+        { id: B, name: 'B', lastActiveAt: null, activeWindowId: null, terminals: [] },
+      ],
+    };
+  }
+
+  interface Chuyen {
+    store: StoreFile;
+    thaTerminal(idKeo: readonly string[], wsDichId: string, idDich: string | null): Promise<void>;
+  }
+
+  function manager(st: StoreFile, term: Map<string, vscode.Terminal>): Chuyen {
+    const m = Object.create(WorkspaceManager.prototype) as Chuyen;
+    Object.assign(m, {
+      store: st,
+      activeIds: [],
+      terminals: { has: (id: string) => term.has(id), get: (id: string) => term.get(id) },
+      vaiDaDoi: new Set(),
+      touch: vi.fn(),
+      scheduleSave: vi.fn(),
+      flush: vi.fn(),
+      onChanged: { fire: vi.fn() },
+    });
+    return m;
+  }
+
+  beforeEach(() => {
+    vscodeMock.window.showInformationMessage.mockReset();
+    vscodeMock.window.showWarningMessage.mockReset();
+  });
+
+  it('chuyển sang workspace khác: entry rời nguồn, sang đích, KHÔNG đóng terminal thật', async () => {
+    const st = store();
+    const tab = fakeTerminal('hai', 'D:/hai', t2);
+    const m = manager(st, new Map([[t2, tab]]));
+
+    await m.thaTerminal([t2], B, null);
+
+    expect(st.workspaces[0]?.terminals.map((t) => t.id)).toEqual([t1, t3]);
+    expect(st.workspaces[1]?.terminals.map((t) => t.id)).toEqual([t2]);
+    // Id entry không đổi nên TerminalManager vẫn theo dõi đúng cái tab đang chạy dở.
+    expect(tab.dispose).not.toHaveBeenCalled();
+  });
+
+  it('workspace nguồn để lại BIA MỘ, nên chuyển đi rồi thì bản trên đĩa không dựng nó dậy', async () => {
+    const st = store();
+    const m = manager(st, new Map());
+
+    await m.thaTerminal([t2], B, null);
+
+    expect(st.workspaces[0]?.removedTerminals?.map((b) => b.id)).toEqual([t2]);
+  });
+
+  it('workspace ĐÍCH không giữ bia mộ của terminal vừa nhận', async () => {
+    // upsert phải xoá bia cũ, nếu không lần gộp sau lại chôn chính cái vừa thêm.
+    const st = store();
+    st.workspaces[1]!.removedTerminals = [{ id: t2, at: 1 }];
+    const m = manager(st, new Map());
+
+    await m.thaTerminal([t2], B, null);
+
+    expect(st.workspaces[1]?.removedTerminals).toBeUndefined();
+  });
+
+  it('sắp xếp trong cùng workspace: chèn TRƯỚC mục đích, không báo chuyển', async () => {
+    const st = store();
+    const m = manager(st, new Map());
+
+    await m.thaTerminal([t3], A, t1);
+
+    expect(st.workspaces[0]?.terminals.map((t) => t.id)).toEqual([t3, t1, t2]);
+    expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it('kéo nhiều terminal sang workspace khác trong một lượt', async () => {
+    const st = store();
+    const m = manager(st, new Map());
+
+    await m.thaTerminal([t1, t3], B, null);
+
+    expect(st.workspaces[0]?.terminals.map((t) => t.id)).toEqual([t2]);
+    expect(st.workspaces[1]?.terminals.map((t) => t.id)).toEqual([t1, t3]);
+  });
+
+  it('thả vào workspace đích không tồn tại thì không làm gì', async () => {
+    const st = store();
+    const m = manager(st, new Map());
+
+    await m.thaTerminal([t1], U('9'), null);
+
+    expect(st.workspaces[0]?.terminals).toHaveLength(3);
   });
 });

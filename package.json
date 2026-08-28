@@ -82,6 +82,10 @@
         "title": "AI Workspace: Gắn vai cho terminal"
       },
       {
+        "command": "aiWorkspace.moveTerminal",
+        "title": "AI Workspace: Chuyển terminal sang workspace khác"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -249,9 +253,14 @@
           "group": "1_edit"
         },
         {
+          "command": "aiWorkspace.moveTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "2_remove@1"
+        },
+        {
           "command": "aiWorkspace.removeTerminal",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
-          "group": "2_remove"
+          "group": "2_remove@2"
         }
       ],
       "terminal/title/context": [
@@ -297,6 +306,10 @@
         },
         {
           "command": "aiWorkspace.assignRole",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.moveTerminal",
           "when": "false"
         }
       ]

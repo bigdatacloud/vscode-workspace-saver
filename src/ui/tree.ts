@@ -144,3 +144,53 @@ export class WorkspaceTreeProvider implements vscode.TreeDataProvider<TreeElemen
     this.changed.dispose();
   }
 }
+
+/**
+ * Kiểu MIME riêng cho payload kéo thả.
+ *
+ * Khai riêng thay vì mượn kiểu mặc định của TreeView: ta cần payload là DANH SÁCH ID terminal
+ * (kéo nhiều cái một lúc), và một kiểu riêng cũng bảo đảm cây này không nhận nhầm thứ kéo từ
+ * cây khác của VS Code.
+ */
+const MIME_TERMINAL = 'application/vnd.aiworkspace.terminal';
+
+export class WorkspaceDragAndDrop implements vscode.TreeDragAndDropController<TreeElement> {
+  readonly dragMimeTypes = [MIME_TERMINAL];
+  readonly dropMimeTypes = [MIME_TERMINAL];
+
+  constructor(private readonly manager: WorkspaceManager) {}
+
+  handleDrag(source: readonly TreeElement[], data: vscode.DataTransfer): void {
+    // Chỉ kéo được TERMINAL. Kéo cả workspace là một thao tác khác hẳn (gộp? đổi thứ tự
+    // workspace?) mà thứ tự workspace đang do lần-active-gần-nhất quyết định, không do tay.
+    const ids = source
+      .filter((x): x is TerminalItem => x instanceof TerminalItem)
+      .map((x) => x.view.id);
+    if (ids.length === 0) return;
+    data.set(MIME_TERMINAL, new vscode.DataTransferItem(JSON.stringify(ids)));
+  }
+
+  async handleDrop(target: TreeElement | undefined, data: vscode.DataTransfer): Promise<void> {
+    const muc = data.get(MIME_TERMINAL);
+    if (muc === undefined) return;
+    let ids: string[];
+    try {
+      const doc: unknown = JSON.parse(await muc.asString());
+      if (!Array.isArray(doc)) return;
+      ids = doc.filter((x): x is string => typeof x === 'string');
+    } catch {
+      return; // payload hỏng — bỏ qua chứ không ném ra giữa thao tác kéo thả
+    }
+    if (ids.length === 0) return;
+
+    if (target instanceof TerminalItem) {
+      await this.manager.thaTerminal(ids, target.view.workspaceId, target.view.id);
+      return;
+    }
+    if (target instanceof WorkspaceItem) {
+      // Thả lên chính dòng workspace = đưa xuống cuối danh sách của nó.
+      await this.manager.thaTerminal(ids, target.view.id, null);
+    }
+    // Thả ra vùng trống ngoài mọi item: không rõ ý muốn gì, nên không làm gì.
+  }
+}

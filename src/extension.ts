@@ -5,7 +5,7 @@ import { CodexAdapter, codexHomeMacDinh, realCodexFs } from './agent/codex';
 import { detectShellKind } from './agent/quote';
 import { TerminalManager } from './terminal/manager';
 import { WorkspaceManager } from './workspace/manager';
-import { WorkspaceTreeProvider } from './ui/tree';
+import { WorkspaceDragAndDrop, WorkspaceTreeProvider } from './ui/tree';
 import { registerCommands } from './ui/commands';
 
 let manager: WorkspaceManager | null = null;
@@ -18,7 +18,13 @@ export function activate(context: vscode.ExtensionContext): void {
   manager = new WorkspaceManager(context, terminals, agent, codex);
 
   const tree = new WorkspaceTreeProvider(manager);
-  const view = vscode.window.createTreeView('aiWorkspace.workspaces', { treeDataProvider: tree });
+  const view = vscode.window.createTreeView('aiWorkspace.workspaces', {
+    treeDataProvider: tree,
+    dragAndDropController: new WorkspaceDragAndDrop(manager),
+    // Cho chọn nhiều để kéo cả nhóm terminal một lượt. Các lệnh chuột phải chỉ đọc tham số
+    // đầu nên vẫn chạy đúng như trước khi có multi-select.
+    canSelectMany: true,
+  });
   view.onDidChangeVisibility((e) => (e.visible ? tree.startPolling() : tree.stopPolling()));
   if (view.visible) tree.startPolling();
 

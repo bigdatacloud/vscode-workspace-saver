@@ -105,6 +105,13 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Thêm vai | `aiWorkspace.addRole` | Context menu workspace — nhập tên + chọn loại (worker / orchestrator), file mô tả mở luôn trong editor |
 | AI Workspace: Quản lý vai | `aiWorkspace.manageRoles` | Context menu workspace — sửa mô tả / đổi tên / xoá vai |
 | AI Workspace: Gắn vai cho terminal | `aiWorkspace.assignRole` | Context menu terminal item |
+| AI Workspace: Chuyển terminal sang workspace khác | `aiWorkspace.moveTerminal` | Context menu terminal item — terminal đang chạy KHÔNG bị đóng, vì id entry giữ nguyên nên cái tab đi theo |
+
+Trong cây còn **kéo thả** được: thả một terminal lên terminal khác để chèn nó vào TRƯỚC cái đó,
+hoặc thả lên dòng workspace để chuyển sang workspace ấy. Chọn nhiều rồi kéo cả nhóm cũng được.
+Chuyển giữa hai workspace để lại bia mộ ở workspace nguồn nên thao tác bền qua khởi động lại;
+vai chỉ được giữ khi workspace đích có vai TRÙNG TÊN, còn lại thì bỏ vai kèm thông báo chứ
+không âm thầm nhân bản định nghĩa vai sang đó.
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — hỏi đường dẫn, rồi tên worktree (để trống thì làm thẳng trên đường dẫn đó; worktree được tạo CẠNH repo ở `<repo>-worktrees/<tên>`, không nằm trong repo), rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
 | AI Workspace: Tạo terminal Codex mới | `aiWorkspace.newCodexTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn rồi chọn cách chạy (`codex`, `codex resume --last`, `codex resume`, kèm các biến thể `--yolo`); id phiên được dò từ `~/.codex/sessions`, lần mở lại cho chọn đúng id / phiên cuối / bộ chọn / phiên mới |
 | AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | **Nút "+" ngay trên dòng workspace** (hiện khi rê chuột) / palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |

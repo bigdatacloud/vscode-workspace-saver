@@ -429,6 +429,28 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Đổi tên `dist/mcp.js` rồi gắn vai điều phối → hiện cảnh báo rằng terminal sẽ không có
       bộ tool (không im lặng)
 
+## Chuyển terminal & sắp xếp bằng kéo thả
+- [ ] Chuột phải terminal → `Chuyển terminal sang workspace khác` → chọn workspace → entry
+      biến khỏi cây workspace cũ, xuất hiện ở cây workspace mới
+- [ ] Terminal thật KHÔNG bị đóng khi chuyển; nội dung đang chạy dở còn nguyên
+- [ ] Chuyển xong, **khởi động lại VS Code** → terminal vẫn ở workspace mới, KHÔNG quay về
+      workspace cũ (đây là chỗ bia mộ phải làm việc)
+- [ ] Chỉ có một workspace → lệnh báo "chưa có workspace nào khác", không mở hộp chọn rỗng
+- [ ] Terminal có vai `reviewer`, workspace đích CŨNG có vai tên `reviewer` → vai được giữ,
+      trỏ sang vai của đích; khối trong AGENTS.md được ghi lại
+- [ ] Workspace đích KHÔNG có vai cùng tên → vai bị bỏ, có thông báo nói rõ, và khối vai
+      biến khỏi AGENTS.md
+- [ ] Chuyển terminal mang vai điều phối sang workspace ĐÃ CÓ người điều phối → vai bị bỏ
+      kèm lý do (không được lách ràng buộc một-điều-phối bằng đường này)
+- [ ] Kéo một terminal thả lên terminal khác **trong cùng workspace** → nó chèn vào TRƯỚC
+      mục được thả lên
+- [ ] Kéo xuống dưới cũng chèn trước mục đích (không lệch một ô)
+- [ ] Thả lên chính nó → không đổi gì
+- [ ] Chọn nhiều terminal (Ctrl+click) rồi kéo → cả nhóm di chuyển, giữ nguyên thứ tự tương đối
+- [ ] Kéo terminal thả lên **dòng workspace khác** → chuyển sang workspace đó, xuống cuối danh sách
+- [ ] Thứ tự sau khi sắp xếp BỀN qua khởi động lại
+- [ ] Kéo một dòng *workspace* (không phải terminal) → không có gì xảy ra
+
 ## Dọn dẹp khi xoá
 - [ ] Bỏ một terminal CÓ VAI khỏi workspace → khối vai biến khỏi `AGENTS.md` của worktree đó,
       phần còn lại của file nguyên vẹn

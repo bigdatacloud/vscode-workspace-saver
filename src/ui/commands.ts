@@ -74,6 +74,9 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
     vscode.commands.registerCommand('aiWorkspace.assignRole', (item: TerminalItem) =>
       manager.assignRole(item.view.workspaceId, item.view.id),
     ),
+    vscode.commands.registerCommand('aiWorkspace.moveTerminal', (item: TerminalItem) =>
+      manager.moveTerminal(item.view.workspaceId, item.view.id),
+    ),
     vscode.commands.registerCommand('aiWorkspace.cleanWorktrees', async (item?: WorkspaceItem) => {
       const id = await wsArg(item);
       if (id) await manager.cleanWorktrees(id);
