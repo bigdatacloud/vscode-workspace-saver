@@ -585,6 +585,7 @@
         <li><a href="#worktree">Worktree</a></li>
         <li><a href="#vai">Vai</a></li>
         <li><a href="#dieu-phoi">Điều phối</a></li>
+        <li><a href="#dung-to">Dựng tổ đầu tiên</a></li>
         <li><a href="#lenh">Bảng lệnh</a></li>
         <li class="r-tieu">Bên trong</li>
         <li><a href="#luu-tru">Lưu trữ</a></li>
@@ -994,6 +995,136 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             Muốn xem sâu hơn nữa thì có <code>read_transcript</code>: nó đọc thẳng bản ghi hội thoại
             của worker, tức <em>bằng chứng</em>, chứ không phải lời worker tự thuật. Chính người điều
             phối cũng được dặn dùng nó trước khi kết luận ai làm sai.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================== dựng tổ -->
+      <section id="dung-to">
+        <div class="doc">
+          <h2><span class="h2-eo">Nhập môn</span>Dựng tổ điều phối đầu tiên</h2>
+          <p>
+            Phần này là đường đi cụ thể, làm theo được ngay. Giả sử bạn có một repo và muốn ba
+            agent: một <strong>sếp</strong>, một người <strong>viết code</strong>, một người
+            <strong>rà soát</strong>.
+          </p>
+          <div class="luu-y hay">
+            <span class="luu-y-nhan">Thứ tự quan trọng</span>
+            <p>
+              <strong>Định nghĩa vai TRƯỚC khi tạo terminal.</strong> Vai quyết định cả đuôi tên
+              worktree lẫn cấu hình MCP, mà cấu hình MCP nằm ngay trong <em>lệnh khởi chạy</em>.
+              Chọn vai lúc tạo thì agent có tool ngay; gắn vai cho một terminal đang chạy thì
+              phải đóng workspace và kích hoạt lại mới ăn.
+            </p>
+          </div>
+        </div>
+
+        <div class="doc rong" style="margin-top:22px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Sáu bước</div>
+            <div class="bang-than">
+              <div class="luong">
+                <div class="lan"><span class="lan-so">1</span><span class="lan-ai">Workspace</span><span class="lan-viec">Bấm <b>+</b> trên khung AI WORKSPACES, đặt tên — ví dụ <b>dang-nhap</b></span></div>
+                <div class="lan"><span class="lan-so">2</span><span class="lan-ai">Ba vai</span><span class="lan-viec">Chuột phải workspace → <b>Thêm vai</b> ba lần: <b>lead</b> (Orchestrator), <b>impl</b> (Worker), <b>reviewer</b> (Worker). Mỗi lần file mở ra thì viết nội dung rồi Lưu.</span></div>
+                <div class="lan"><span class="lan-so">3</span><span class="lan-ai">Ba terminal</span><span class="lan-viec">Chuột phải workspace → <b>Tạo terminal Claude mới</b> ba lần. Mỗi lần: chọn thư mục repo, chọn vai, chọn “Phiên mới”, gõ việc <b>dang-nhap</b>.</span></div>
+                <div class="lan"><span class="lan-so">4</span><span class="lan-ai">Kiểm tra</span><span class="lan-viec">Trong terminal <b>lead</b> gõ <b>/mcp</b> — phải thấy <code>ai-workspace</code> với 5 tool. Trong terminal worker: đúng 1 tool.</span></div>
+                <div class="lan"><span class="lan-so">5</span><span class="lan-ai">Giao việc</span><span class="lan-viec">Nói với lead bằng tiếng người: <em>“Dùng list_agents xem có ai. Giao cho impl việc thêm rate limit cho hàm đăng nhập. Xong thì đọc transcript kiểm tra rồi cho reviewer soi.”</em></span></div>
+                <div class="lan"><span class="lan-so">6</span><span class="lan-ai">Theo dõi</span><span class="lan-viec">Nhìn trạng thái trên cây; chuột phải workspace → <b>Xem log điều phối</b> để đọc lại mọi thứ đã trao đổi.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:26px">
+          <p>
+            Sau bước 3 bạn có ba nhánh nằm liền nhau — <code>dang-nhap-lead</code>,
+            <code>dang-nhap-impl</code>, <code>dang-nhap-reviewer</code> — mỗi cái một thư mục
+            riêng trong <code>&lt;repo&gt;-worktrees/</code>. Không ai giẫm lên ai.
+          </p>
+
+          <h3>Viết gì vào file vai</h3>
+          <p>
+            Mẫu có sẵn đã dạy agent cách dùng tool. Phần bạn phải viết là <em>tiêu chuẩn</em> và
+            <em>trách nhiệm</em>. Ba mẫu dưới đây dùng được ngay.
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:18px">
+          <div class="bang-co-che">
+            <div class="bang-dau">lead — thêm vào mục “Tiêu chuẩn của bạn”</div>
+            <div class="bang-than">
+              <pre class="fs">- Mỗi lần giao đúng MỘT việc, đủ nhỏ để kiểm được trong một lượt đọc transcript.
+- Nêu rõ tiêu chí xong: test nào phải xanh, file nào được đụng, cái gì tuyệt đối không.
+- Worker báo succeeded KHÔNG có nghĩa là đạt. Đọc transcript rồi mới kết luận.
+- Chưa đạt thì phản hồi CỤ THỂ: sai ở đâu, sửa thế nào. Không nói chung chung.
+- reviewer chỉ nêu vấn đề, không tự sửa. Sửa là việc của impl.
+- Có rủi ro về dữ liệu, bảo mật, hay quyết định kiến trúc thì <b>report</b> cho người dùng,
+  đừng tự quyết.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc rong" style="margin-top:14px">
+          <div class="bang-co-che">
+            <div class="bang-dau">impl — mục “Trách nhiệm” và “Không được làm”</div>
+            <div class="bang-than">
+              <pre class="fs">## Trách nhiệm
+- Viết code và test cho đúng việc được giao, không hơn.
+- Chạy test trước khi báo xong. Test đỏ thì báo <b>failed</b>, đừng báo succeeded.
+- Commit nhỏ, message nói VÌ SAO chứ không mô tả lại diff.
+
+## Không được làm
+- Không đụng file ngoài phạm vi việc được giao.
+- Không sửa test cho vừa với code. Test sai thì báo <b>blocked</b> và nói rõ.
+- Không tự mở rộng phạm vi. Thấy việc khác đáng làm thì nêu trong summary.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc rong" style="margin-top:14px">
+          <div class="bang-co-che">
+            <div class="bang-dau">reviewer — mục “Trách nhiệm”</div>
+            <div class="bang-than">
+              <pre class="fs">## Trách nhiệm
+- Bạn ở worktree RIÊNG nhưng dùng chung kho object với các nhánh khác. Xem việc của
+  impl bằng:  git diff main...dang-nhap-impl
+- Nêu vấn đề theo mức: chặn merge / nên sửa / góp ý. Nói rõ mức của từng cái.
+- Mỗi vấn đề phải có kịch bản hỏng cụ thể: đầu vào nào cho ra kết quả sai nào.
+  Không có kịch bản thì đó là ý kiến — ghi vào mục góp ý.
+- KHÔNG tự sửa code. Sửa là việc của impl.
+- report_done với outcome <b>succeeded</b> kể cả khi tìm ra lỗi: bạn đã làm xong việc rà
+  soát. <b>failed</b> chỉ dùng khi bạn không rà được.</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:26px">
+          <div class="luu-y hay">
+            <span class="luu-y-nhan">Chi tiết làm cả hệ chạy được</span>
+            <p>
+              Các worktree <strong>dùng chung kho object của repo</strong>. Nên reviewer đứng ở
+              worktree của nó vẫn <code>git diff main...dang-nhap-impl</code> được — không phải
+              copy file, không phải chờ push. Đó là lý do tách worktree không làm các agent mù về
+              việc của nhau.
+            </p>
+          </div>
+
+          <h3>Sáu chỗ người mới hay vấp</h3>
+          <ol>
+            <li><strong>Tạo terminal trước rồi mới gắn vai.</strong> Cấu hình MCP nằm trong lệnh khởi chạy, nên phải đóng workspace và kích hoạt lại. Chọn vai lúc tạo thì không cần.</li>
+            <li><strong>Xoá mục “Báo cáo khi xong” trong file vai worker.</strong> Đó là chỗ duy nhất dạy nó gọi <code>report_done</code>; xoá đi thì <code>wait</code> của sếp chờ mãi.</li>
+            <li><strong>Cho Codex làm sếp.</strong> Nó không nhận được cấu hình MCP theo từng lần chạy. Sếp phải là Claude.</li>
+            <li><strong>Định nghĩa hai vai điều phối.</strong> Được, nhưng chỉ một <em>terminal</em> mang vai điều phối tại một thời điểm.</li>
+            <li><strong>Bảo sếp “mở thêm một agent nữa”.</strong> Nó không tạo được terminal — độ sâu điều phối là 1. Nó sẽ <code>report</code> để bạn tự mở.</li>
+            <li><strong>Viết chỉ thị nhiều đoạn cho sếp gửi đi.</strong> Chỉ thị bị gộp về một dòng trước khi gõ vào worker; viết một đoạn liền mạch thì đọc dễ hơn.</li>
+          </ol>
+
+          <h3>Khi nào KHÔNG nên dùng điều phối</h3>
+          <p>
+            Việc nhỏ thì một mình làm nhanh hơn. Điều phối có chi phí thật: bạn phải viết ba file
+            vai, mở ba terminal, và mỗi vòng giao-việc–kiểm-bài tốn lượt của cả hai agent. Nó đáng
+            khi công việc <em>thật sự</em> tách được thành các phần độc lập, và khi bạn muốn có một
+            lớp kiểm tra không phải chính mình.
           </p>
         </div>
       </section>
