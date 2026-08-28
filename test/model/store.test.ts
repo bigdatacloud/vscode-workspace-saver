@@ -299,3 +299,38 @@ describe('worktree của entry đi qua đĩa', () => {
     expect((r.workspaces[0]?.terminals[0] as Record<string, unknown>).truongLaCuaBanMoiHon).toBe(42);
   });
 });
+
+describe('vai đi qua đĩa', () => {
+  const SEP = String.fromCharCode(92);
+  const DIR = `C:${SEP}store${SEP}workspaces`;
+  const uuidC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const role = { id: uuidC, name: 'reviewer', kind: 'worker' as const };
+  const ws = (over: Partial<Workspace> = {}): Workspace => ({
+    id: uuidA, name: 'W', lastActiveAt: null, activeWindowId: null, terminals: [], ...over,
+  });
+
+  it('lưu rồi đọc lại giữ nguyên danh sách vai và roleId của terminal', () => {
+    const { fs } = memFs();
+    const t = { id: uuidB, name: 't', cwd: 'D:/a', kind: 'plain' as const, roleId: uuidC };
+    saveShard(fs, DIR, ws({ roles: [role], terminals: [t] }), SEP);
+    const r = loadShards(fs, DIR, () => 1, SEP);
+    expect(r.workspaces[0]?.roles).toEqual([role]);
+    expect(r.workspaces[0]?.terminals[0]?.roleId).toBe(uuidC);
+  });
+
+  it('gộp RAM/đĩa giữ vai của bản RAM', () => {
+    const disk = ws({ roles: [{ ...role, name: 'cu' }] });
+    const ram = ws({ roles: [role] });
+    expect(gopShard(disk, ram).roles).toEqual([role]);
+  });
+
+  it('vai TREO (roleId trỏ vào vai đã xoá) vẫn đọc được, không làm hỏng cả shard', () => {
+    // Ép toàn vẹn tham chiếu ở cửa đọc là đánh đổi một vai treo lấy nguyên workspace.
+    const { fs } = memFs();
+    const t = { id: uuidB, name: 't', cwd: 'D:/a', kind: 'plain' as const, roleId: uuidC };
+    saveShard(fs, DIR, ws({ terminals: [t] }), SEP);
+    const r = loadShards(fs, DIR, () => 1, SEP);
+    expect(r.workspaces).toHaveLength(1);
+    expect(r.workspaces[0]?.terminals[0]?.roleId).toBe(uuidC);
+  });
+});
