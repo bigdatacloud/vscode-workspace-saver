@@ -86,3 +86,64 @@ export function duongDanTranscript(
   const thuMuc = cwd.replace(/[:\\/]/g, '-');
   return [home, 'projects', thuMuc, `${sessionId}.jsonl`].join(sep);
 }
+
+/** Cắt chuỗi dài, giữ đầu — phần đầu của một lượt gần như luôn là phần mang thông tin. */
+function catNgan(s: string, toiDa: number): string {
+  const sach = s.replace(/\s+/g, ' ').trim();
+  return sach.length <= toiDa ? sach : `${sach.slice(0, toiDa)}…`;
+}
+
+/** Đường dẫn/lệnh đáng nêu trong input của một tool, theo tên khoá quen thuộc. */
+function doiTuongCuaTool(input: unknown): string {
+  if (typeof input !== 'object' || input === null) return '';
+  const o = input as Record<string, unknown>;
+  for (const khoa of ['file_path', 'path', 'notebook_path', 'command', 'pattern', 'url']) {
+    const v = o[khoa];
+    if (typeof v === 'string' && v !== '') return catNgan(v, 120);
+  }
+  return '';
+}
+
+/**
+ * Tóm tắt N lượt cuối của một transcript thành văn bản đọc được.
+ *
+ * Đây là thứ người điều phối dùng để KIỂM TRA BÀI LÀM, nên phải nêu rõ tool nào đã chạy và
+ * đụng vào file nào — chỉ đọc lời agent tự thuật là đúng cái bẫy mà việc kiểm tra sinh ra để
+ * tránh. Cắt ngắn từng lượt vì transcript đầy đủ sẽ nuốt hết cửa sổ ngữ cảnh của người
+ * điều phối, mà nó còn phải theo dõi nhiều worker cùng lúc.
+ */
+export function tomTatTranscript(duoiFile: string, soLuot: number): string {
+  const dong: string[] = [];
+  for (const dongTho of duoiFile.split('\n')) {
+    const sach = dongTho.trim();
+    if (!sach.startsWith('{')) continue;
+    let o: BanGhi;
+    try {
+      o = JSON.parse(sach) as BanGhi;
+    } catch {
+      continue; // dòng cụt hoặc rác
+    }
+    const msg = o.message;
+    if (!msg || typeof msg !== 'object') continue;
+    const vai = msg.role === 'user' ? 'user' : msg.role === 'assistant' ? 'assistant' : null;
+    if (vai === null) continue;
+    const khoi: Khoi[] = Array.isArray(msg.content) ? (msg.content as Khoi[]) : [];
+    const phan: string[] = [];
+    const chuoi = typeof msg.content === 'string' ? msg.content : '';
+    if (chuoi !== '') phan.push(catNgan(chuoi, 300));
+    for (const b of khoi) {
+      if (b?.type === 'text') {
+        const t = (b as { text?: unknown }).text;
+        if (typeof t === 'string' && t.trim() !== '') phan.push(catNgan(t, 300));
+      } else if (b?.type === 'tool_use') {
+        const doiTuong = doiTuongCuaTool((b as { input?: unknown }).input);
+        phan.push(`⟨${b.name ?? 'tool'}${doiTuong === '' ? '' : ` ${doiTuong}`}⟩`);
+      } else if (b?.type === 'tool_result') {
+        phan.push('⟨kết quả tool⟩');
+      }
+    }
+    if (phan.length === 0) continue;
+    dong.push(`[${vai}] ${catNgan(phan.join(' '), 400)}`);
+  }
+  return dong.slice(-Math.max(1, soLuot)).join('\n');
+}

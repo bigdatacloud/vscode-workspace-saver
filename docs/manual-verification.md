@@ -372,6 +372,47 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Gỡ một worktree có nhánh chưa merge → worktree gỡ được nhưng `git branch -d` từ chối,
       báo cáo nêu rõ nhánh nào còn lại
 
+## Vai (roles)
+- [ ] Chuột phải workspace → `Thêm vai` → nhập `reviewer` → chọn Worker → file mô tả MỞ RA
+      trong editor với nội dung mẫu
+- [ ] Tên vai có dấu hoặc khoảng trắng (`người rà soát`) → bị chặn ngay ở ô nhập (tên đi vào
+      tên nhánh git)
+- [ ] Tạo vai trùng tên (khác hoa thường) → bị chặn
+- [ ] `Tạo terminal Claude mới` trong workspace ĐÃ CÓ vai → hỏi vai TRƯỚC khi chọn lệnh; chọn
+      `reviewer`, gõ việc `fix-login` → worktree/nhánh là `fix-login-reviewer`
+- [ ] Lệnh chạy trong terminal đó có `--append-system-prompt-file` trỏ đúng file vai
+- [ ] `AGENTS.md` trong worktree đó có khối `<!-- ai-workspace:role reviewer id=… hash=… -->`
+- [ ] Repo ĐÃ CÓ sẵn `AGENTS.md` → nội dung cũ còn NGUYÊN VẸN, khối vai chỉ được nối thêm
+- [ ] `AGENTS.md` do extension tạo mới → `.git/info/exclude` có dòng `AGENTS.md`; repo đã theo
+      dõi AGENTS.md từ trước → KHÔNG bị thêm dòng nào
+- [ ] Sửa file mô tả vai rồi Lưu → `AGENTS.md` cập nhật NGAY, và item trên cây hiện thêm
+      `vai đã đổi`
+- [ ] Sửa TAY nội dung bên trong khối trong AGENTS.md rồi gắn lại vai → hiện hộp hỏi
+      "ghi đè?", chọn Hủy → nội dung sửa tay còn nguyên
+- [ ] Đóng terminal đó → nhãn `vai đã đổi` biến mất
+- [ ] Chuột phải terminal → `Gắn vai` → `Bỏ vai` → khối vai bị gỡ khỏi AGENTS.md, phần còn lại
+      của file nguyên vẹn
+- [ ] Gắn vai điều phối cho terminal thứ hai khi đã có một cái giữ → bị từ chối, báo rõ tên
+      terminal đang giữ
+- [ ] Gắn vai điều phối cho terminal CODEX → cảnh báo rằng nó không nhận được bộ tool
+- [ ] `Quản lý vai` → `Xoá vai` → hộp xác nhận nói đúng số terminal bị ảnh hưởng; xoá xong thì
+      khối trong AGENTS.md biến mất và file mô tả bị xoá
+
+## Điều phối (orchestration)
+- [ ] Tạo vai `lead` loại Orchestrator, viết mô tả, gắn cho một terminal Claude
+- [ ] Đóng workspace rồi kích hoạt lại → lệnh khởi chạy terminal đó có `--mcp-config`
+- [ ] Trong terminal điều phối, gõ `/mcp` → thấy server `ai-workspace` với 5 tool
+- [ ] Bảo nó `dùng list_agents xem có ai` → liệt kê đúng các terminal, đúng vai, đúng nhánh
+- [ ] Bảo nó giao việc cho một worker → chữ XUẤT HIỆN trong terminal của worker, và
+      Output Channel `AI Workspace — Điều phối` có dòng `GIAO VIỆC → "<tên>"`
+- [ ] Bảo nó `đọc transcript của worker đó` → thấy tool worker đã gọi và file đã đụng
+- [ ] Bảo nó `report` một câu → hiện thông báo cho bạn kèm nút mở khung kiểm toán
+- [ ] **CHẶN ĐỘ SÂU**: trong terminal WORKER (không phải điều phối), thử làm nó gọi dispatch →
+      bị từ chối với lý do "chỉ terminal giữ vai điều phối"
+- [ ] **CHẶN SHELL TRẦN**: bảo điều phối gửi vào terminal shell thường → bị từ chối
+- [ ] Bảo điều phối gửi cho CHÍNH NÓ → bị từ chối
+- [ ] Đóng workspace trong lúc điều phối đang chờ → tool báo hết hạn chứ không treo mãi
+
 ## Trạng thái "đang tải phiên" (spinner)
 - [ ] Kích hoạt workspace có terminal Claude → NGAY khi terminal mở, item trong cây hiện
       icon xoay + "đang tải phiên…"; khi claude boot xong và registry thấy session (vài

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dangChoNguoiDung, duongDanTranscript } from '../../src/claude/transcript';
+import { dangChoNguoiDung, duongDanTranscript, tomTatTranscript } from '../../src/claude/transcript';
 
 const dong = (o: unknown) => JSON.stringify(o);
 const assistant = (...blocks: unknown[]) =>
@@ -62,5 +62,52 @@ describe('duongDanTranscript', () => {
     expect(duongDanTranscript('/h/.claude', '/a/b', 's1', '/')).toBe(
       '/h/.claude/projects/-a-b/s1.jsonl',
     );
+  });
+});
+
+describe('tomTatTranscript', () => {
+  const dong = (o: unknown) => JSON.stringify(o);
+  const user = (text: string) => dong({ message: { role: 'user', content: [{ type: 'text', text }] } });
+  const assistant = (khoi: unknown[]) => dong({ message: { role: 'assistant', content: khoi } });
+
+  it('tóm tắt lượt user và assistant theo đúng thứ tự', () => {
+    const file = [user('sửa login đi'), assistant([{ type: 'text', text: 'ok làm ngay' }])].join('\n');
+    const r = tomTatTranscript(file, 10);
+    expect(r).toContain('sửa login đi');
+    expect(r).toContain('ok làm ngay');
+    expect(r.indexOf('sửa login đi')).toBeLessThan(r.indexOf('ok làm ngay'));
+  });
+
+  it('nêu tool đã gọi kèm file bị đụng — đây là thứ người kiểm tra cần nhất', () => {
+    const file = assistant([
+      { type: 'tool_use', name: 'Edit', input: { file_path: 'src/auth.ts' } },
+      { type: 'tool_use', name: 'Bash', input: { command: 'npm test' } },
+    ]);
+    const r = tomTatTranscript(file, 10);
+    expect(r).toContain('Edit');
+    expect(r).toContain('src/auth.ts');
+    expect(r).toContain('Bash');
+    expect(r).toContain('npm test');
+  });
+
+  it('chỉ giữ số lượt cuối được yêu cầu', () => {
+    const file = [user('một'), user('hai'), user('ba')].join('\n');
+    const r = tomTatTranscript(file, 1);
+    expect(r).toContain('ba');
+    expect(r).not.toContain('một');
+  });
+
+  it('dòng cụt hoặc rác bị bỏ qua, không ném', () => {
+    expect(() => tomTatTranscript('{cut giua chung\nrac\n' + user('ok'), 5)).not.toThrow();
+    expect(tomTatTranscript('{cut\n' + user('ok'), 5)).toContain('ok');
+  });
+
+  it('văn bản rất dài bị cắt để không nuốt hết cửa sổ ngữ cảnh của người điều phối', () => {
+    const r = tomTatTranscript(user('x'.repeat(5000)), 5);
+    expect(r.length).toBeLessThan(1200);
+  });
+
+  it('transcript rỗng trả chuỗi rỗng', () => {
+    expect(tomTatTranscript('', 10)).toBe('');
   });
 });

@@ -1,10 +1,12 @@
 import * as esbuild from 'esbuild';
 
 const watch = process.argv.includes('--watch');
+// Hai entry: extension chạy trong Extension Host, mcp chạy như tiến trình CON của agent
+// điều phối. Tách bundle vì cái thứ hai không được phép chạm tới API vscode.
 const ctx = await esbuild.context({
-  entryPoints: ['src/extension.ts'],
+  entryPoints: { extension: 'src/extension.ts', mcp: 'src/orch/mcp.ts' },
   bundle: true,
-  outfile: 'dist/extension.js',
+  outdir: 'dist',
   external: ['vscode'],
   format: 'cjs',
   platform: 'node',

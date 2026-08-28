@@ -30,6 +30,18 @@ import {
 } from '../git/worktree';
 import { chenKhoiRole, goKhoiRole, type KetQuaChen } from '../role/agentsmd';
 import { duongDanRole, mauNoiDungRole } from '../role/paths';
+import {
+  docYeuCau,
+  dungCauHinhMcp,
+  gopVeMotDong,
+  tenFilePhanHoi,
+  tenFileTrangThai,
+  thuMucYeuCau,
+  xetDispatch,
+  type AgentTrangThai,
+  type AnhChupTrangThai,
+  type YeuCau,
+} from '../orch/bus';
 import { chonWorkspaceNhan } from './receiving';
 import { docBangTienTrinh } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
@@ -125,6 +137,11 @@ const KHOA_LICH_SU_CWD = 'aiWorkspace.duongDanGanDay';
 const LICH_SU_CWD_TOI_DA = 20;
 /** Cùng nhịp với poll của tree; hai timer chạy song song vô hại nhờ guard refreshPromise. */
 const ACTIVE_POLL_MS = 3000;
+/**
+ * Nhịp vòng điều phối. Nhanh hơn poll trạng thái vì đây là đường một agent CHỜ trên đó —
+ * mỗi nhịp chậm là mỗi nhịp người điều phối ngồi không.
+ */
+const ORCH_POLL_MS = 500;
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
 const LOADING_TIMEOUT_MS = 90_000;
 /** Đọc chừng này byte cuối transcript để biết phiên có đang chờ người dùng không. */
@@ -207,6 +224,11 @@ export class WorkspaceManager implements vscode.Disposable {
    * khởi chạy nên chỉ mở lại mới ăn — đánh dấu để cây HIỆN sự lệch đó thay vì giấu nó đi.
    */
   private readonly vaiDaDoi = new Set<string>();
+  /** Đường dẫn thư mục extension — cần để trỏ vào `dist/mcp.js` trong cấu hình MCP. */
+  private readonly duongDanExtension: string;
+  private timerOrch: NodeJS.Timeout | null = null;
+  private dangXuLyOrch = false;
+  private kenhKiemToan: vscode.OutputChannel | null = null;
   private readonly boNhoChung: vscode.Memento;
   private store: StoreFile;
   /**
@@ -327,6 +349,7 @@ export class WorkspaceManager implements vscode.Disposable {
     this.filePath = path.join(dir, STORE_FILE);
     this.thuMucShard = path.join(dir, THU_MUC_SHARD);
     this.thuMucGoc = dir;
+    this.duongDanExtension = context.extensionPath;
     try {
       nodeFs.mkdirSync(dir, { recursive: true });
     } catch (error) {
@@ -847,6 +870,7 @@ export class WorkspaceManager implements vscode.Disposable {
       wsGhi.activeWindowId = vscode.env.sessionId;
       this.touch(wsGhi.id);
       this.startActivePoll();
+      this.capNhatVongOrch();
       this.scheduleSave();
       this.flush();
       this.onChanged.fire();
@@ -1392,17 +1416,24 @@ export class WorkspaceManager implements vscode.Disposable {
     return ws.terminals.find((t) => t.roleId !== undefined && idDieuPhoi.has(t.roleId)) ?? null;
   }
 
-  private coThemChoRole(wsId: string, role: Role): CoTheThem | undefined {
+  private coThemChoRole(wsId: string, role: Role, terminalId?: string): CoTheThem | undefined {
     const fileVai = this.duongDanFileRole(wsId, role.id);
     // File vai mất thì ĐỪNG truyền cờ: `claude` từ chối khởi chạy hẳn khi file không tồn tại
     // ("Append system prompt file not found") — mất vai còn hơn mất cả terminal.
     if (!nodeFs.existsSync(fileVai)) return undefined;
-    return { fileVai };
+    const ra: CoTheThem = { fileVai };
+    // CHỈ terminal điều phối mới được cấp tool. Worker không cần, và cấp cho nó là mở đường
+    // cho worker giao việc tiếp — đúng cái giới hạn độ sâu 1 sinh ra để chặn.
+    if (role.kind === 'orchestrator' && terminalId !== undefined) {
+      const cauHinhMcp = this.ghiCauHinhMcp(wsId, terminalId);
+      if (cauHinhMcp !== null) ra.cauHinhMcp = cauHinhMcp;
+    }
+    return ra;
   }
 
   private coThemCuaEntry(ws: Workspace, entry: TerminalEntry): CoTheThem | undefined {
     const role = this.vaiCuaEntry(ws, entry);
-    return role === undefined ? undefined : this.coThemChoRole(ws.id, role);
+    return role === undefined ? undefined : this.coThemChoRole(ws.id, role, entry.id);
   }
 
   /** Ghi khối vai cho một entry vừa tạo; im lặng khi không có vai hoặc file vai đã mất. */
@@ -1761,6 +1792,13 @@ export class WorkspaceManager implements vscode.Disposable {
       const role = (wsNow.roles ?? []).find((r) => r.id === chon.id);
       if (role === undefined) return;
       if (role.kind === 'orchestrator') {
+        // Codex không có cờ nạp cấu hình MCP theo từng lần chạy, nên nó KHÔNG nhận được bộ
+        // tool điều phối. Nói thẳng thay vì để người dùng ngồi đợi một agent không có tay.
+        if (this.agentCuaEntry(entryNow) !== 'claude') {
+          void vscode.window.showWarningMessage(
+            `Terminal "${entryNow.name}" không phải Claude nên KHÔNG nhận được bộ tool điều phối (Codex không có cờ nạp cấu hình MCP theo từng lần chạy). Vai vẫn được gắn và AGENTS.md vẫn có, nhưng nó sẽ không giao việc được cho ai.`,
+          );
+        }
         const dangGiu = this.terminalDieuPhoi(wsNow);
         // Hai ông sếp cùng giao việc cho một worker là công thức tạo mâu thuẫn không gỡ được.
         if (dangGiu !== null && dangGiu.id !== terminalId) {
@@ -1835,6 +1873,210 @@ export class WorkspaceManager implements vscode.Disposable {
     return role;
   }
 
+  // ------------------------------------------------------------ điều phối
+
+  private thuMucOrch(wsId: string): string {
+    return path.join(this.thuMucGoc, 'orch', wsId);
+  }
+
+  private ghiKiemToan(dong: string): void {
+    this.kenhKiemToan ??= vscode.window.createOutputChannel('AI Workspace — Điều phối');
+    this.kenhKiemToan.appendLine(`[${new Date().toLocaleTimeString('vi-VN')}] ${dong}`);
+  }
+
+  /**
+   * Ghi cấu hình MCP cho terminal điều phối. Trả đường dẫn để nối vào `--mcp-config`.
+   *
+   * `process.execPath` + `ELECTRON_RUN_AS_NODE=1` chạy được node mà KHÔNG đòi `node` có trong
+   * PATH của người dùng. Mọi tham số nằm trong `args` chứ không phải biến môi trường: env phải
+   * sống sót qua hai tầng tiến trình (terminal → agent → server), tầng nào nuốt thì cả cơ chế
+   * chết im lặng và rất khó truy.
+   */
+  private ghiCauHinhMcp(wsId: string, terminalId: string): string | null {
+    const mcpJs = path.join(this.duongDanExtension, 'dist', 'mcp.js');
+    if (!nodeFs.existsSync(mcpJs)) return null;
+    const orchDir = this.thuMucOrch(wsId);
+    const duongDan = path.join(orchDir, `mcp-${terminalId}.json`);
+    const cauHinh = dungCauHinhMcp(process.execPath, mcpJs, orchDir, terminalId);
+    try {
+      nodeFs.mkdirSync(orchDir, { recursive: true });
+      nodeFs.writeFileSync(duongDan, JSON.stringify(cauHinh, null, 2), 'utf8');
+    } catch {
+      return null;
+    }
+    return duongDan;
+  }
+
+  private dsAgentTrangThai(ws: Workspace): AgentTrangThai[] {
+    return ws.terminals.map((entry) => {
+      const role = this.vaiCuaEntry(ws, entry);
+      const agent = this.agentCuaEntry(entry);
+      return {
+        id: entry.id,
+        name: entry.name,
+        state: this.terminalState(entry),
+        agent: agent ?? null,
+        ...(role === undefined ? {} : { roleName: role.name, roleKind: role.kind }),
+        cwd: entry.cwd,
+        ...(entry.worktree === undefined ? {} : { branch: entry.worktree.branch }),
+        ...(entry.claudeSessionId === undefined ? {} : { sessionId: entry.claudeSessionId }),
+      };
+    });
+  }
+
+  private ghiTrangThaiOrch(ws: Workspace): void {
+    const anh: AnhChupTrangThai = {
+      at: Date.now(),
+      workspaceId: ws.id,
+      idDieuPhoi: this.terminalDieuPhoi(ws)?.id ?? null,
+      agents: this.dsAgentTrangThai(ws),
+    };
+    try {
+      const dir = this.thuMucOrch(ws.id);
+      nodeFs.mkdirSync(dir, { recursive: true });
+      const p = tenFileTrangThai(dir, path.sep);
+      // Ghi nguyên tử: MCP server đọc file này liên tục, không được thấy bản ghi dở.
+      const tam = `${p}.tmp-${randomUUID().slice(0, 8)}`;
+      nodeFs.writeFileSync(tam, JSON.stringify(anh), 'utf8');
+      nodeFs.renameSync(tam, p);
+    } catch {
+      /* lần nhịp sau ghi lại */
+    }
+  }
+
+  private traLoiYeuCau(wsId: string, id: string, ok: boolean, message: string): void {
+    try {
+      const p = tenFilePhanHoi(this.thuMucOrch(wsId), id, path.sep);
+      nodeFs.mkdirSync(path.dirname(p), { recursive: true });
+      const tam = `${p}.tmp-${randomUUID().slice(0, 8)}`;
+      nodeFs.writeFileSync(tam, JSON.stringify({ id, ok, message }), 'utf8');
+      nodeFs.renameSync(tam, p);
+    } catch {
+      /* MCP server sẽ hết hạn chờ và báo cho agent — thà im còn hơn ném ở vòng nền */
+    }
+  }
+
+  private async xuLyYeuCauOrch(ws: Workspace): Promise<void> {
+    const dir = thuMucYeuCau(this.thuMucOrch(ws.id), path.sep);
+    let ten: string[];
+    try {
+      ten = nodeFs.readdirSync(dir).filter((t) => t.endsWith('.json') && !t.includes('.tmp-'));
+    } catch {
+      return; // chưa có thư mục — chưa ai gửi gì
+    }
+    for (const t of ten.sort()) {
+      const duongDan = path.join(dir, t);
+      let raw: string;
+      try {
+        raw = nodeFs.readFileSync(duongDan, 'utf8');
+      } catch {
+        continue;
+      }
+      // Xoá NGAY sau khi đọc, trước cả khi xử lý: một yêu cầu chạy hai lần là bơm chữ hai lần
+      // vào worker, mà chữ đó đã đi vào một phiên đang sống thì không rút lại được.
+      try {
+        nodeFs.unlinkSync(duongDan);
+      } catch {
+        /* đã bị dọn bởi lượt khác */
+      }
+      const yc = docYeuCau(raw);
+      if (yc === null) {
+        this.ghiKiemToan(`Yêu cầu hỏng, bỏ qua: ${t}`);
+        continue;
+      }
+      await this.thucHienYeuCau(ws.id, yc);
+    }
+  }
+
+  private async thucHienYeuCau(wsId: string, yc: YeuCau): Promise<void> {
+    const ws = findWorkspace(this.store, wsId);
+    if (!ws) {
+      this.traLoiYeuCau(wsId, yc.id, false, 'Workspace không còn tồn tại.');
+      return;
+    }
+
+    if (yc.type === 'report') {
+      this.ghiKiemToan(`BÁO CÁO: ${yc.text}`);
+      this.traLoiYeuCau(wsId, yc.id, true, 'Đã ghi vào khung kiểm toán và báo cho người dùng.');
+      const rutGon = yc.text.length > 120 ? `${yc.text.slice(0, 120)}…` : yc.text;
+      void vscode.window
+        .showInformationMessage(`Điều phối: ${rutGon}`, 'Xem khung kiểm toán')
+        .then((tra) => {
+          if (tra === 'Xem khung kiểm toán') this.kenhKiemToan?.show(true);
+        });
+      return;
+    }
+
+    const quyet = xetDispatch(
+      yc.from,
+      yc.terminalId,
+      this.terminalDieuPhoi(ws)?.id ?? null,
+      this.dsAgentTrangThai(ws),
+    );
+    if (!quyet.cho) {
+      this.ghiKiemToan(`TỪ CHỐI giao việc → ${yc.terminalId}: ${quyet.lyDo}`);
+      this.traLoiYeuCau(wsId, yc.id, false, quyet.lyDo);
+      return;
+    }
+    const terminal = this.terminals.get(yc.terminalId);
+    if (terminal === undefined) {
+      this.traLoiYeuCau(wsId, yc.id, false, 'Terminal không còn được theo dõi.');
+      return;
+    }
+    const dich = ws.terminals.find((t) => t.id === yc.terminalId);
+    // GỘP VỀ MỘT DÒNG. `sendText` gõ thẳng vào pty, và trong TUI của agent mỗi xuống dòng là
+    // một lần Enter — chỉ thị nhiều dòng sẽ thành nhiều lượt, agent bắt tay làm khi mới đọc
+    // nửa câu. Mất ngắt dòng là cái giá rẻ hơn nhiều so với một chỉ thị bị cắt đôi.
+    const motDong = gopVeMotDong(yc.text);
+    if (motDong === '') {
+      this.traLoiYeuCau(wsId, yc.id, false, 'Chỉ thị rỗng sau khi gộp dòng.');
+      return;
+    }
+    terminal.sendText(motDong, true);
+    this.ghiKiemToan(`GIAO VIỆC → "${dich?.name ?? yc.terminalId}": ${motDong}`);
+    this.traLoiYeuCau(wsId, yc.id, true, `Đã gửi vào terminal "${dich?.name ?? yc.terminalId}".`);
+  }
+
+  /** Workspace đang mở nào có terminal điều phối ĐANG CHẠY — chỉ khi đó mới cần vòng nền. */
+  private wsCanDieuPhoi(): Workspace[] {
+    const ra: Workspace[] = [];
+    for (const id of this.activeIds) {
+      const ws = findWorkspace(this.store, id);
+      if (!ws) continue;
+      const dp = this.terminalDieuPhoi(ws);
+      if (dp !== null && this.terminals.has(dp.id)) ra.push(ws);
+    }
+    return ra;
+  }
+
+  /** Bật/tắt vòng nền theo việc có terminal điều phối hay không — không có thì không tốn gì. */
+  private capNhatVongOrch(): void {
+    const can = this.wsCanDieuPhoi().length > 0;
+    if (can && this.timerOrch === null) {
+      this.timerOrch = setInterval(() => {
+        void this.nhipOrch();
+      }, ORCH_POLL_MS);
+    } else if (!can && this.timerOrch !== null) {
+      clearInterval(this.timerOrch);
+      this.timerOrch = null;
+    }
+  }
+
+  private async nhipOrch(): Promise<void> {
+    // Không chồng nhịp: một lượt xử lý có thể dài hơn nhịp poll, và xử lý chồng nghĩa là đọc
+    // trùng một file yêu cầu ở hai luồng.
+    if (this.dangXuLyOrch) return;
+    this.dangXuLyOrch = true;
+    try {
+      for (const ws of this.wsCanDieuPhoi()) {
+        this.ghiTrangThaiOrch(ws);
+        await this.xuLyYeuCauOrch(ws);
+      }
+    } finally {
+      this.dangXuLyOrch = false;
+    }
+  }
+
   // ------------------------------------------------------------- terminal
 
   /**
@@ -1851,7 +2093,10 @@ export class WorkspaceManager implements vscode.Disposable {
     // tên worktree, nên mọi bước sau đều phụ thuộc nó.
     const vai = await this.hoiVai(workspaceId);
     if (vai === 'huy') return;
-    const coThem = vai === undefined ? undefined : this.coThemChoRole(workspaceId, vai);
+    // Id entry phải có TRƯỚC khi dựng lệnh: cấu hình MCP nhét id đó vào `--self`, mà cờ
+    // --mcp-config lại nằm ngay trong lệnh khởi chạy. Sinh id ở bước tạo entry là muộn.
+    const entryId = randomUUID();
+    const coThem = vai === undefined ? undefined : this.coThemChoRole(workspaceId, vai, entryId);
 
     const luaChon = await vscode.window.showQuickPick(
       this.agent.buildLaunchOptions(path.basename(duongDan) || 'claude', coThem),
@@ -1882,7 +2127,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const entry: TerminalEntry =
       luaChon.sessionId !== undefined
         ? {
-            id: randomUUID(),
+            id: entryId,
             name: ten,
             cwd,
             kind: 'claude',
@@ -1891,7 +2136,7 @@ export class WorkspaceManager implements vscode.Disposable {
             ...wt,
             ...(vai === undefined ? {} : { roleId: vai.id }),
           }
-        : { id: randomUUID(), name: ten, cwd, kind: 'plain', ...wt, ...(vai === undefined ? {} : { roleId: vai.id }) };
+        : { id: entryId, name: ten, cwd, kind: 'plain', ...wt, ...(vai === undefined ? {} : { roleId: vai.id }) };
     // Khối vai vào AGENTS.md TRƯỚC khi lệnh chạy — agent đọc file lúc khởi động.
     this.ghiKhoiVaiChoEntry(wsNow.id, cwd, vai);
     upsertTerminal(wsNow, entry);
@@ -3180,6 +3425,9 @@ export class WorkspaceManager implements vscode.Disposable {
     }
     const bySession = new Map(running.map((r) => [r.sessionId, r]));
 
+    // Bật/tắt vòng điều phối theo hiện trạng — rẻ, và chạy ở đây thì mọi đường đổi trạng thái
+    // (mở, đóng, gắn vai, terminal chết) đều được phủ trong vòng một nhịp poll.
+    this.capNhatVongOrch();
     let changed = this.syncTerminalNames();
     if (this.syncStatuses(bySession)) changed = true;
     if (await this.matchActiveWorkspace(running)) changed = true;
@@ -3742,6 +3990,11 @@ export class WorkspaceManager implements vscode.Disposable {
     if (this.disposed) return;
     this.disposed = true;
     this.stopActivePoll();
+    if (this.timerOrch !== null) {
+      clearInterval(this.timerOrch);
+      this.timerOrch = null;
+    }
+    this.kenhKiemToan?.dispose();
     this.ketThucLoading();
     // Gỡ khóa V5 khi đóng cửa sổ bình thường. saveStore hoàn toàn đồng bộ (writeFileSync +
     // renameSync) nên việc này chạy trọn vẹn trong deactivate; chỉ khi VS Code chết đột ngột

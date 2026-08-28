@@ -109,6 +109,27 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Activate workspace | `aiWorkspace.activateWorkspace` | Click item / context menu of an inactive workspace |
 | AI Workspace: Close workspace | `aiWorkspace.closeWorkspace` | Palette / context menu of an open workspace (bottom group, with confirmation modal). Only that workspace closes — the others stay open. |
 | AI Workspace: Clean worktrees | `aiWorkspace.cleanWorktrees` | Context menu of a workspace. Lists worktrees under `<repo>-worktrees/` with their state; never uses `--force` or `-D`. |
+| AI Workspace: Add role | `aiWorkspace.addRole` | Context menu of a workspace. Creates a role and opens its description file for editing. |
+| AI Workspace: Manage roles | `aiWorkspace.manageRoles` | Context menu of a workspace. Edit / rename / delete a role. |
+| AI Workspace: Assign role to terminal | `aiWorkspace.assignRole` | Context menu of a terminal. |
+
+### Roles and orchestration
+
+A role is `{ name, kind: worker | orchestrator }` plus a description stored as a Markdown file
+in global storage. That file is the single source of truth and it reaches the agent through two
+renderings: `claude --append-system-prompt-file` at launch, and a marker-delimited block inside
+`AGENTS.md` in the terminal's worktree. The block carries a content hash, so a hand edit inside
+it is detected and never silently overwritten. Content outside the markers is never touched.
+
+**Limitation:** Codex has no per-invocation flag for a system prompt or an MCP config, so a
+Codex terminal receives its role only through `AGENTS.md`, and cannot act as an orchestrator.
+
+The terminal holding an orchestrator role is launched with `--mcp-config` pointing at a server
+this extension ships. That gives the agent five tools — `list_agents`, `read_transcript`,
+`dispatch`, `wait`, `report` — so it can see the other agents, read what they actually did,
+send them instructions, and wait for them. At most one orchestrator terminal per workspace.
+Dispatch depth is fixed at 1: workers cannot dispatch. Every dispatch and report is written to
+the `AI Workspace — Orchestration` output channel for auditing.
 | AI Workspace: Show workspace info | `aiWorkspace.showWorkspaceInfo` | Workspace context menu — id, last activation, owning window, terminal location, store file path and every terminal with its cwd/start command/session; "Copy info" / "Open store file" |
 | AI Workspace: Workspace settings | `aiWorkspace.workspaceSettings` | Workspace context menu — per-workspace terminal location (follow global / editor area / bottom panel) |
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
