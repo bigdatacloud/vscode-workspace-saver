@@ -412,6 +412,18 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] **CHẶN SHELL TRẦN**: bảo điều phối gửi vào terminal shell thường → bị từ chối
 - [ ] Bảo điều phối gửi cho CHÍNH NÓ → bị từ chối
 - [ ] Đóng workspace trong lúc điều phối đang chờ → tool báo hết hạn chứ không treo mãi
+- [ ] **YÊU CẦU CŨ KHÔNG SỐNG LẠI**: để điều phối gửi một chỉ thị rồi đóng workspace ngay
+      (tool sẽ báo hết hạn sau ~20s) → mở lại workspace sau vài phút: chỉ thị đó KHÔNG được
+      gõ vào worker; khung kiểm toán ghi "Bỏ qua yêu cầu quá hạn"
+- [ ] Đổi tên `dist/mcp.js` rồi gắn vai điều phối → hiện cảnh báo rằng terminal sẽ không có
+      bộ tool (không im lặng)
+
+## Dọn dẹp khi xoá
+- [ ] Bỏ một terminal CÓ VAI khỏi workspace → khối vai biến khỏi `AGENTS.md` của worktree đó,
+      phần còn lại của file nguyên vẹn
+- [ ] Hai terminal cùng vai cùng worktree, bỏ MỘT cái → khối vai vẫn còn (cái kia vẫn cần)
+- [ ] Xoá workspace có vai → thư mục `<globalStorage>/roles/<wsId>/` và
+      `<globalStorage>/orch/<wsId>/` biến mất, không để lại file mồ côi
 
 ## Trạng thái "đang tải phiên" (spinner)
 - [ ] Kích hoạt workspace có terminal Claude → NGAY khi terminal mở, item trong cây hiện

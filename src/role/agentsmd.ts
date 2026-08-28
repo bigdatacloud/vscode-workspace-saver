@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { chuanHoaDuongDan } from '../git/worktree';
 
 /**
  * Kết xuất mô tả vai thành một khối có mốc trong `AGENTS.md` của worktree.
@@ -90,4 +91,22 @@ export function goKhoiRole(agentsMd: string, roleId: string): string {
   const con = agentsMd.slice(i + cu.toanBo.length).replace(/^\r?\n/, '');
   const ra = `${truoc}${con}`;
   return ra.trim() === '' ? '' : ra;
+}
+
+/**
+ * Còn entry nào KHÁC vẫn cần khối vai này trong cùng thư mục không.
+ *
+ * Hai terminal chia nhau một worktree với cùng một vai là chuyện có thật (một cái chạy, một
+ * cái để đọc). Gỡ khối chỉ vì một trong hai bị bỏ đi là rút vai khỏi cái còn lại — bên gọi
+ * phải hỏi câu này trước khi gỡ.
+ *
+ * @param conLai Các entry CÒN LẠI sau khi đã bỏ cái đang xét.
+ */
+export function conCanKhoi(
+  roleId: string,
+  thuMuc: string,
+  conLai: readonly { roleId?: string; thuMuc: string }[],
+): boolean {
+  const dich = chuanHoaDuongDan(thuMuc);
+  return conLai.some((e) => e.roleId === roleId && chuanHoaDuongDan(e.thuMuc) === dich);
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bamNoiDung,
   chenKhoiRole,
+  conCanKhoi,
   dungKhoiRole,
   goKhoiRole,
 } from '../../src/role/agentsmd';
@@ -113,5 +114,29 @@ describe('goKhoiRole', () => {
     const con = goKhoiRole(b2, ID_A);
     expect(con).not.toContain('Vai A');
     expect(con).toContain('Vai B');
+  });
+});
+
+describe('conCanKhoi', () => {
+  const wt = 'D:/repo-worktrees/fix-login-reviewer';
+
+  it('không còn entry nào dùng vai đó ở thư mục đó → gỡ được', () => {
+    expect(conCanKhoi(ID_A, wt, [])).toBe(false);
+    expect(conCanKhoi(ID_A, wt, [{ roleId: ID_B, thuMuc: wt }])).toBe(false);
+    expect(conCanKhoi(ID_A, wt, [{ roleId: ID_A, thuMuc: 'D:/khac' }])).toBe(false);
+  });
+
+  it('còn entry KHÁC cùng vai cùng thư mục → KHÔNG gỡ', () => {
+    // Hai terminal chia nhau một worktree với cùng vai là chuyện có thật; gỡ khối vì một cái
+    // bị bỏ đi là rút vai khỏi cái còn lại.
+    expect(conCanKhoi(ID_A, wt, [{ roleId: ID_A, thuMuc: wt }])).toBe(true);
+  });
+
+  it('so thư mục không phân biệt hoa thường và dấu phân cách', () => {
+    expect(conCanKhoi(ID_A, wt, [{ roleId: ID_A, thuMuc: 'd:/REPO-worktrees/fix-login-reviewer/' }])).toBe(true);
+  });
+
+  it('entry không có vai thì không tính', () => {
+    expect(conCanKhoi(ID_A, wt, [{ thuMuc: wt }])).toBe(false);
   });
 });

@@ -28,8 +28,8 @@ import {
   type LoaiWorktree,
   type WorktreeInfo,
 } from '../git/worktree';
-import { chenKhoiRole, goKhoiRole, type KetQuaChen } from '../role/agentsmd';
-import { duongDanRole, mauNoiDungRole } from '../role/paths';
+import { chenKhoiRole, conCanKhoi, goKhoiRole, type KetQuaChen } from '../role/agentsmd';
+import { duongDanRole, duongDanThuMucRole, mauNoiDungRole } from '../role/paths';
 import {
   docYeuCau,
   dungCauHinhMcp,
@@ -38,6 +38,7 @@ import {
   tenFileTrangThai,
   thuMucYeuCau,
   xetDispatch,
+  yeuCauConHan,
   type AgentTrangThai,
   type AnhChupTrangThai,
   type YeuCau,
@@ -1381,12 +1382,34 @@ export class WorkspaceManager implements vscode.Disposable {
       this.quenTerminal(entry.id);
     }
     this.store.workspaces = this.store.workspaces.filter((w) => w.id !== wsNow.id);
+    // Dọn file mô tả vai và thư mục điều phối của workspace này. Không dọn thì mỗi workspace
+    // bị xoá để lại một đống file mồ côi trong globalStorage vĩnh viễn — không ai thấy, không
+    // ai dọn, và lớn dần theo thời gian.
+    this.xoaThuMucCuaWorkspace(wsNow.id);
     this.scheduleSave();
     this.flush();
     this.onChanged.fire();
   }
 
   // ------------------------------------------------------------------ vai
+
+  /**
+   * Dọn `roles/<wsId>/` và `orch/<wsId>/` khi workspace bị xoá.
+   *
+   * Cả hai đường dẫn đều được dựng TỪ id workspace bên trong globalStorage, không nhận đầu
+   * vào nào của người dùng — nên `recursive` ở đây không thể trỏ ra ngoài. Kiểm lại tiền tố
+   * một lần nữa cho chắc: một lệnh xoá đệ quy sai chỗ là hỏng không cứu được.
+   */
+  private xoaThuMucCuaWorkspace(wsId: string): void {
+    for (const thuMuc of [duongDanThuMucRole(this.thuMucGoc, wsId, path.sep), this.thuMucOrch(wsId)]) {
+      if (!trongThuMuc(thuMuc, this.thuMucGoc)) continue;
+      try {
+        nodeFs.rmSync(thuMuc, { recursive: true, force: true });
+      } catch {
+        /* không dọn được thì để lại rác, KHÔNG chặn việc xoá workspace */
+      }
+    }
+  }
 
   private duongDanFileRole(wsId: string, roleId: string): string {
     return duongDanRole(this.thuMucGoc, wsId, roleId, path.sep);
@@ -1427,6 +1450,13 @@ export class WorkspaceManager implements vscode.Disposable {
     if (role.kind === 'orchestrator' && terminalId !== undefined) {
       const cauHinhMcp = this.ghiCauHinhMcp(wsId, terminalId);
       if (cauHinhMcp !== null) ra.cauHinhMcp = cauHinhMcp;
+      else {
+        // KHÔNG im lặng: agent vẫn mở ra và vẫn mang vai điều phối, nhưng không có tool nào.
+        // Người dùng sẽ ngồi bảo nó giao việc và không hiểu vì sao nó bảo không làm được.
+        void vscode.window.showWarningMessage(
+          'Không ghi được cấu hình MCP điều phối, nên terminal này sẽ KHÔNG có bộ tool (list_agents, dispatch…). Kiểm tra xem dist/mcp.js có trong thư mục extension và globalStorage có ghi được không.',
+        );
+      }
     }
     return ra;
   }
@@ -1982,6 +2012,12 @@ export class WorkspaceManager implements vscode.Disposable {
       const yc = docYeuCau(raw);
       if (yc === null) {
         this.ghiKiemToan(`Yêu cầu hỏng, bỏ qua: ${t}`);
+        continue;
+      }
+      // Quá hạn thì KHÔNG thi hành: MCP server đã bỏ cuộc từ lâu, không ai còn chờ kết quả,
+      // và bơm chỉ thị của một phiên đã chết vào worker đang làm việc khác là phá hoại.
+      if (!yeuCauConHan(yc, Date.now())) {
+        this.ghiKiemToan(`Bỏ qua yêu cầu quá hạn (${yc.type}) gửi lúc ${new Date(yc.at).toLocaleString('vi-VN')}.`);
         continue;
       }
       await this.thucHienYeuCau(ws.id, yc);
@@ -3039,7 +3075,21 @@ export class WorkspaceManager implements vscode.Disposable {
     }
     this.terminals.release(terminalId);
     this.quenTerminal(terminalId);
+    const vaiCu = entryNow.roleId;
+    const thuMucCu = entryNow.worktree?.path ?? entryNow.cwd;
     removeTerminalEntry(wsNow, terminalId);
+    // Gỡ khối vai khỏi AGENTS.md sau khi entry đã biến mất — nhưng CHỈ khi không còn entry
+    // nào khác cùng vai cùng thư mục. Hai terminal chia nhau một worktree là chuyện có thật,
+    // và gỡ khối vì một cái bị bỏ là rút vai khỏi cái còn lại.
+    if (vaiCu !== undefined) {
+      const conLai = this.store.workspaces.flatMap((w) =>
+        w.terminals.map((t) => ({
+          ...(t.roleId === undefined ? {} : { roleId: t.roleId }),
+          thuMuc: t.worktree?.path ?? t.cwd,
+        })),
+      );
+      if (!conCanKhoi(vaiCu, thuMucCu, conLai)) this.goKhoiVai(thuMucCu, vaiCu);
+    }
     this.touch(wsNow.id);
     this.scheduleSave();
     this.onChanged.fire();

@@ -96,11 +96,15 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 |---|---|---|
 | AI Workspace: Tạo workspace mới | `aiWorkspace.createWorkspace` | Palette / nút "+" trên view |
 | AI Workspace: Kích hoạt workspace | `aiWorkspace.activateWorkspace` | Click item / context menu workspace chưa active |
-| AI Workspace: Đóng workspace đang active | `aiWorkspace.closeActiveWorkspace` | Palette / context menu workspace active (nhóm cuối menu, có modal xác nhận) |
+| AI Workspace: Đóng workspace | `aiWorkspace.closeWorkspace` | Palette / context menu workspace đang mở (nhóm cuối menu, có modal xác nhận). Chỉ workspace đó đóng — các workspace đang mở khác không bị đụng. |
 | AI Workspace: Xem thông tin workspace | `aiWorkspace.showWorkspaceInfo` | Context menu workspace — id, lần active gần nhất, cửa sổ đang giữ, vị trí mở terminal, đường dẫn file lưu và từng terminal kèm cwd/lệnh khởi động/session; có nút "Sao chép thông tin" / "Mở file lưu" |
 | AI Workspace: Cài đặt workspace | `aiWorkspace.workspaceSettings` | Context menu workspace — vị trí mở terminal riêng từng workspace (theo setting chung / editor area / panel dưới) |
 | AI Workspace: Đổi tên workspace | `aiWorkspace.renameWorkspace` | Context menu workspace |
-| AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận) |
+| AI Workspace: Xóa workspace | `aiWorkspace.deleteWorkspace` | Context menu workspace (có modal xác nhận). Dọn luôn file mô tả vai và thư mục điều phối của nó. |
+| AI Workspace: Dọn worktree | `aiWorkspace.cleanWorktrees` | Context menu workspace — liệt kê worktree trong `<repo>-worktrees/` kèm trạng thái (sạch / còn thay đổi chưa commit / chưa merge / đang có terminal mở); chỉ cái sạch được tích sẵn, và **không bao giờ** dùng `--force` hay `-D` |
+| AI Workspace: Thêm vai | `aiWorkspace.addRole` | Context menu workspace — nhập tên + chọn loại (worker / orchestrator), file mô tả mở luôn trong editor |
+| AI Workspace: Quản lý vai | `aiWorkspace.manageRoles` | Context menu workspace — sửa mô tả / đổi tên / xoá vai |
+| AI Workspace: Gắn vai cho terminal | `aiWorkspace.assignRole` | Context menu terminal item |
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — hỏi đường dẫn, rồi tên worktree (để trống thì làm thẳng trên đường dẫn đó; worktree được tạo CẠNH repo ở `<repo>-worktrees/<tên>`, không nằm trong repo), rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
 | AI Workspace: Tạo terminal Codex mới | `aiWorkspace.newCodexTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn rồi chọn cách chạy (`codex`, `codex resume --last`, `codex resume`, kèm các biến thể `--yolo`); id phiên được dò từ `~/.codex/sessions`, lần mở lại cho chọn đúng id / phiên cuối / bộ chọn / phiên mới |
 | AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | **Nút "+" ngay trên dòng workspace** (hiện khi rê chuột) / palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
@@ -208,3 +212,34 @@ Nhấn <kbd>F5</kbd> trong VS Code (dùng cấu hình "Chạy Extension" có s�
 debug — dùng cửa sổ đó để chạy checklist kiểm thử tay ở `docs/manual-verification.md`, vì
 phần lớn các luồng có hộp thoại (modal, toast, QuickPick) không thể kiểm thử tự động trong
 Extension Host chạy headless.
+
+
+## Vai và điều phối đa agent
+
+Một **vai** gồm `{ tên, loại: worker | orchestrator }` cộng phần mô tả nằm ở file Markdown
+trong global storage. File đó là **nguồn sự thật duy nhất**, và nó tới được agent qua hai
+đường: `claude --append-system-prompt-file` lúc khởi chạy, và một khối có mốc trong
+`AGENTS.md` của worktree. Khối mang hash nội dung, nên sửa tay bên trong khối sẽ bị phát hiện
+và **không bao giờ bị âm thầm ghi đè**. Phần nằm ngoài mốc không bị đụng một ký tự.
+
+Tên vai trở thành đuôi của tên worktree/nhánh: `<việc>-<vai>`, ví dụ `fix-login-reviewer`.
+Nhờ ghép phẳng, mọi vai cùng làm một việc nằm liền nhau khi `git branch` sắp xếp.
+
+**Giới hạn:** Codex không có cờ nạp system prompt hay cấu hình MCP theo từng lần chạy, nên
+terminal Codex chỉ nhận vai qua `AGENTS.md` và **không làm orchestrator được**.
+
+Terminal giữ vai orchestrator được khởi chạy kèm `--mcp-config` trỏ vào một MCP server do
+chính extension này ship. Agent đó có năm tool:
+
+| Tool | Việc |
+|---|---|
+| `list_agents` | xem mọi terminal trong workspace: id, tên, vai, trạng thái, thư mục, nhánh |
+| `read_transcript` | đọc N lượt cuối của một worker — nó gọi tool gì, đụng file nào |
+| `dispatch` | gửi chỉ thị vào phiên đang chạy của một worker |
+| `wait` | chờ tới khi các worker dừng tay |
+| `report` | ghi vào khung kiểm toán và báo cho người dùng |
+
+Mỗi workspace tối đa **một** terminal điều phối. Độ sâu điều phối cố định là **1**: worker
+không giao việc tiếp cho ai. Chỉ bơm chữ được vào terminal đang chạy agent thật — bơm vào một
+shell trần chính là thực thi lệnh tuỳ ý, nên bị chặn. Mọi lần giao việc và báo cáo đều được
+ghi vào Output Channel `AI Workspace — Điều phối` để bạn kiểm lại.

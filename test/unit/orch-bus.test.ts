@@ -3,8 +3,10 @@ import {
   docYeuCau,
   dungCauHinhMcp,
   gopVeMotDong,
+  HAN_YEU_CAU_MS,
   tenFileYeuCau,
   xetDispatch,
+  yeuCauConHan,
   type AgentTrangThai,
 } from '../../src/orch/bus';
 
@@ -144,5 +146,28 @@ describe('gopVeMotDong', () => {
 
   it('một dòng thì giữ nguyên nội dung', () => {
     expect(gopVeMotDong('làm đi')).toBe('làm đi');
+  });
+});
+
+describe('yeuCauConHan', () => {
+  const yc = { id: '1', from: 'sep', at: 1_000_000, type: 'report' as const, text: 'x' };
+
+  it('yêu cầu vừa gửi thì còn hạn', () => {
+    expect(yeuCauConHan(yc, 1_000_000 + 5_000)).toBe(true);
+  });
+
+  it('yêu cầu QUÁ CŨ thì hết hạn', () => {
+    // MCP server bỏ cuộc sau 20s. File req còn nằm lại; lần sau mở workspace mà vẫn thi hành
+    // là bơm chỉ thị của một phiên đã chết vào worker đang làm việc khác.
+    expect(yeuCauConHan(yc, 1_000_000 + 120_000)).toBe(false);
+  });
+
+  it('đồng hồ lùi (chỉnh giờ hệ thống) không làm yêu cầu bị coi là hết hạn', () => {
+    expect(yeuCauConHan(yc, 1_000_000 - 5_000)).toBe(true);
+  });
+
+  it('ranh giới đúng bằng HAN_YEU_CAU_MS vẫn còn hạn, quá một mili là hết', () => {
+    expect(yeuCauConHan(yc, yc.at + HAN_YEU_CAU_MS)).toBe(true);
+    expect(yeuCauConHan(yc, yc.at + HAN_YEU_CAU_MS + 1)).toBe(false);
   });
 });

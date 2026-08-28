@@ -191,6 +191,20 @@ export function docPhanHoi(raw: string): PhanHoi | null {
   }
 }
 
+/**
+ * Yêu cầu quá hạn này thì không ai còn chờ nó nữa — MCP server bỏ cuộc sau 20 giây.
+ *
+ * Rộng hơn hạn chờ của server để tránh đua vô nghĩa, nhưng phải HỮU HẠN: file `req` còn nằm
+ * lại sau khi server bỏ cuộc, và thi hành nó ở lần mở workspace sau là bơm chỉ thị của một
+ * phiên đã chết vào một worker đang làm việc khác.
+ */
+export const HAN_YEU_CAU_MS = 60_000;
+
+export function yeuCauConHan(yc: YeuCau, now: number, hanMs = HAN_YEU_CAU_MS): boolean {
+  // Đồng hồ lùi (người dùng chỉnh giờ hệ thống) cho hiệu số âm — đó không phải "quá cũ".
+  return now - yc.at <= hanMs;
+}
+
 export interface CauHinhMcp {
   mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
 }
