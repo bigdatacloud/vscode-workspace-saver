@@ -97,7 +97,10 @@ export class TerminalItem extends vscode.TreeItem {
     this.tooltip = dong.join('\n');
     const icon = STATE_ICONS[view.state];
     this.iconPath = new vscode.ThemeIcon(icon.id, new vscode.ThemeColor(icon.color));
-    this.contextValue = view.kind === 'claude' ? 'aiTerminalClaude' : 'aiTerminalPlain';
+    // Hậu tố `DieuPhoi` để menu lập tổ chỉ hiện đúng chỗ. Vẫn khớp /aiTerminal(Claude|Plain)/
+    // của các menu khác vì chúng dùng `=~` (khớp mẫu) chứ không phải so bằng.
+    const goc = view.kind === 'claude' ? 'aiTerminalClaude' : 'aiTerminalPlain';
+    this.contextValue = view.laDieuPhoi === true ? `${goc}DieuPhoi` : goc;
     this.command = { command: 'aiWorkspace.focusTerminal', title: 'Mở terminal', arguments: [this] };
   }
 }

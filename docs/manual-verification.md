@@ -424,6 +424,35 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Bảo điều phối gửi cho CHÍNH NÓ → bị từ chối
 - [ ] Đóng workspace trong lúc điều phối đang chờ → tool báo hết hạn chứ không treo mãi
 
+## Lập tổ
+- [ ] Chuột phải terminal KHÔNG mang vai điều phối → **không** thấy mục `Lập tổ`
+- [ ] Chuột phải terminal điều phối → thấy `Lập tổ` ở nhóm trên cùng
+- [ ] Terminal điều phối đang đóng → lệnh báo phải kích hoạt workspace trước
+- [ ] Terminal điều phối không nằm trong repo git → lệnh từ chối, nói rõ vì sao
+- [ ] Bấm `Lập tổ`, gõ mô tả việc → một câu xuất hiện trong phiên của agent điều phối, và có
+      thông báo nói rõ CHƯA có gì được tạo
+- [ ] Agent gọi `propose_team` → hiện **bảng duyệt** liệt kê từng thành viên kèm tên nhánh sẽ
+      tạo và mô tả vai
+- [ ] Bấm vào một thành viên → `Sửa mô tả vai` → ô nhập điền sẵn mô tả cũ; sửa xong quay lại
+      bảng thấy mô tả mới
+- [ ] Bấm vào một thành viên → `Chọn mô hình` → chọn `opus` → bảng hiện `opus` ở cột phải
+- [ ] Chọn `Nhập tên mô hình…` rồi gõ tên có ký tự lạ → bị chặn ngay ở ô nhập
+- [ ] Bấm vào một thành viên → `Bỏ thành viên này khỏi tổ` → nó biến khỏi bảng, số đếm giảm
+- [ ] Bỏ hết thành viên → lệnh dừng, không tạo gì
+- [ ] Bấm dòng `Quyền` → đổi qua lại giữa hỏi-bình-thường và bỏ-hỏi-quyền
+- [ ] Esc ở bảng duyệt → **không có gì được tạo**, và agent nhận phản hồi là người dùng đã huỷ
+- [ ] Bấm `Tạo tổ` → mỗi thành viên có: một terminal mới, một thư mục trong
+      `<repo>-worktrees/`, một nhánh git cùng tên, và tên terminal TRÙNG tên worktree
+- [ ] Mô hình đã chọn xuất hiện trong lệnh khởi chạy của đúng terminal đó (`--model`)
+- [ ] Mô tả đã sửa nằm trong file vai, và trong khối `AGENTS.md` của worktree tương ứng
+- [ ] File vai sinh ra LUÔN có mục "Báo cáo khi xong" dạy `report_done`
+- [ ] Đề xuất có vai TRÙNG TÊN với vai sẵn có → bảng ghi "dùng lại vai sẵn có", và file vai cũ
+      KHÔNG bị ghi đè
+- [ ] Agent đề xuất 7 thành viên → bị từ chối ngay trong phiên của nó, kèm lý do
+- [ ] Agent đề xuất tên việc có dấu → bị từ chối kèm lý do
+- [ ] Terminal WORKER thử gọi `propose_team` → không có tool đó
+- [ ] Khung kiểm toán ghi đủ: `LẬP TỔ: đã nhờ…`, mỗi dòng `LẬP TỔ: đã tạo…` kèm mô hình
+
 ## Log kiểm toán điều phối
 - [ ] Chuột phải workspace → `Xem log điều phối` → khung Output mở ra, kể cả khi CHƯA có hoạt
       động điều phối nào (kênh phải tồn tại sẵn, không được vắng mặt trong danh sách Output)

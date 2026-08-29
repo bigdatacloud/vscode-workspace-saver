@@ -107,6 +107,23 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | AI Workspace: Gắn vai cho terminal | `aiWorkspace.assignRole` | Context menu terminal item |
 | AI Workspace: Chuyển terminal sang workspace khác | `aiWorkspace.moveTerminal` | Context menu terminal item — terminal đang chạy KHÔNG bị đóng, vì id entry giữ nguyên nên cái tab đi theo |
 | AI Workspace: Xem log điều phối | `aiWorkspace.showAuditLog` | Context menu workspace / palette — mở Output Channel, và mời mở file `orch/<wsId>/audit.log` nếu có |
+| AI Workspace: Lập tổ | `aiWorkspace.createTeam` | Context menu terminal ĐIỀU PHỐI — nhờ chính nó đề xuất tổ, bạn duyệt rồi extension mới tạo |
+
+### Lập tổ
+
+Chuột phải terminal điều phối → **Lập tổ**. Extension nhắn vào phiên của nó; nó nghĩ xem cần
+bao nhiêu người, vai gì, rồi gọi tool `propose_team`. Sau đó **bảng duyệt** mở ra: bạn xem
+từng thành viên kèm tên nhánh sẽ tạo, **sửa lại mô tả vai**, **chọn mô hình riêng cho từng
+người** (`opus` / `sonnet` / `haiku` hoặc tên đầy đủ), bỏ bớt ai không cần, và chọn có bỏ hỏi
+quyền hay không. Chỉ khi bạn bấm *Tạo tổ* thì mới có gì được tạo.
+
+Mỗi thành viên nhận: một vai (file mô tả sinh từ đề xuất, **luôn kèm hợp đồng `report_done`**),
+một worktree git riêng, một nhánh cùng tên, và một terminal Claude tên trùng tên worktree.
+
+Trần cứng **6 thành viên**. Đó không phải con số tuỳ tiện: mỗi thành viên là một thư mục và một
+nhánh git thật trên máy bạn, và một đề xuất hai chục người gần như luôn là dấu hiệu mô hình
+hiểu sai việc. Tổ chỉ gồm `worker` — tổ do một người điều phối lập mà lại sinh thêm người điều
+phối là đúng cái vòng đệ quy mà độ sâu 1 sinh ra để chặn.
 
 Trong cây còn **kéo thả** được: thả một terminal lên terminal khác để chèn nó vào TRƯỚC cái đó,
 hoặc thả lên dòng workspace để chuyển sang workspace ấy. Chọn nhiều rồi kéo cả nhóm cũng được.

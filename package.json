@@ -90,6 +90,10 @@
         "title": "AI Workspace: Xem log điều phối"
       },
       {
+        "command": "aiWorkspace.createTeam",
+        "title": "AI Workspace: Lập tổ"
+      },
+      {
         "command": "aiWorkspace.setStartCommand",
         "title": "AI Workspace: Đặt lệnh khởi động cho terminal"
       },
@@ -242,6 +246,11 @@
           "group": "1_edit"
         },
         {
+          "command": "aiWorkspace.createTeam",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminalClaudeDieuPhoi/",
+          "group": "0_team"
+        },
+        {
           "command": "aiWorkspace.setStartCommand",
           "when": "view == aiWorkspace.workspaces && viewItem == aiTerminalPlain",
           "group": "1_edit"
@@ -319,6 +328,10 @@
         },
         {
           "command": "aiWorkspace.moveTerminal",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.createTeam",
           "when": "false"
         }
       ]

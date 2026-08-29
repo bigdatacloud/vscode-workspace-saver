@@ -48,6 +48,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     const ra: string[] = [];
     if (coThem.fileVai !== undefined) ra.push('--append-system-prompt-file', q(coThem.fileVai));
     if (coThem.cauHinhMcp !== undefined) ra.push('--mcp-config', q(coThem.cauHinhMcp));
+    if (coThem.boHoiQuyen === true) ra.push('--dangerously-skip-permissions');
+    if (coThem.model !== undefined) ra.push('--model', q(coThem.model));
     return ra;
   }
 

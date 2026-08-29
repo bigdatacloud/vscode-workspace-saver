@@ -17,6 +17,8 @@ import {
   docPhanHoi,
   docTrangThai,
   KET_CUC,
+  kiemTraTeam,
+  TOI_DA_THANH_VIEN,
   tenFilePhanHoi,
   tenFileTrangThai,
   tenFileYeuCau,
@@ -24,6 +26,7 @@ import {
   thuMucYeuCau,
   type AgentTrangThai,
   type AnhChupTrangThai,
+  type ThanhVienTeam,
 } from './bus';
 import { taoBoXuLyRpc, type KetQuaTool, type ToolDef } from './rpc';
 
@@ -170,6 +173,7 @@ const TOOL_REPORT_DONE: ToolDef = {
   },
 };
 
+/** Sáu tool của người điều phối; worker chỉ có `report_done`. */
 const TOOLS_DIEU_PHOI: ToolDef[] = [
   {
     name: 'list_agents',
@@ -227,6 +231,39 @@ const TOOLS_DIEU_PHOI: ToolDef[] = [
       type: 'object',
       properties: { text: { type: 'string' } },
       required: ['text'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'propose_team',
+    description:
+      `Đề xuất một tổ cho việc đang làm. Extension sẽ HỎI người dùng duyệt danh sách, rồi mới tạo: mỗi thành viên thành một terminal Claude, một worktree git riêng và một nhánh cùng tên. Chỉ gọi khi người dùng yêu cầu lập tổ. Tối đa ${TOI_DA_THANH_VIEN} thành viên — đề xuất đông hơn thường là dấu hiệu chia việc chưa đúng.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        viec: {
+          type: 'string',
+          description: 'tên việc, chữ không dấu — thành tiền tố của nhánh git, ví dụ fix-login',
+        },
+        members: {
+          type: 'array',
+          minItems: 1,
+          maxItems: TOI_DA_THANH_VIEN,
+          items: {
+            type: 'object',
+            properties: {
+              role: { type: 'string', description: 'tên vai, chữ không dấu, ví dụ impl / reviewer / test' },
+              description: {
+                type: 'string',
+                description: 'vai này chịu trách nhiệm gì, và KHÔNG được làm gì — đi thẳng vào system prompt của agent đó',
+              },
+            },
+            required: ['role', 'description'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['viec', 'members'],
       additionalProperties: false,
     },
   },
@@ -303,6 +340,27 @@ async function goiTool(ts: ThamSo, ten: string, args: Record<string, unknown>): 
     const text = chuoi(args.text);
     if (text === '') return { text: 'report cần text.', loi: true };
     return goiYeuCau(ts, { type: 'report', text });
+  }
+
+  if (ten === 'propose_team') {
+    const viec = chuoi(args.viec);
+    const tho = Array.isArray(args.members) ? args.members : [];
+    const thanhVien: ThanhVienTeam[] = [];
+    for (const raw of tho) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const m = raw as Record<string, unknown>;
+      thanhVien.push({ role: chuoi(m.role), kind: 'worker', description: chuoi(m.description) });
+    }
+    // Kiểm NGAY tại đây thay vì chỉ ở phía extension: agent nhận lỗi trong cùng lượt và sửa
+    // được luôn, thay vì phải chờ một vòng bus rồi mới biết mình gõ sai tên vai.
+    const loi = kiemTraTeam({ viec, thanhVien });
+    if (loi !== null) return { text: `Đề xuất không hợp lệ: ${loi}.`, loi: true };
+    return goiYeuCau(ts, {
+      type: 'team',
+      viec,
+      thanhVien,
+      text: `lập tổ ${thanhVien.length} người cho ${viec}`,
+    });
   }
 
   if (ten === 'wait') {

@@ -18,6 +18,44 @@ export function duongDanRole(goc: string, wsId: string, roleId: string, sep = '/
   return [duongDanThuMucRole(goc, wsId, sep), `${roleId}.md`].join(sep);
 }
 
+/**
+ * Hợp đồng báo cáo, dùng chung cho MỌI file vai worker — kể cả vai do orchestrator sinh ra.
+ *
+ * Tách ra thành một hằng vì đây là mảnh KHÔNG được thiếu: không có nó thì worker chẳng bao giờ
+ * gọi `report_done`, và `wait` của người điều phối treo vô hạn. Ghép mô tả của orchestrator
+ * vào rồi quên phần này là cách hỏng âm thầm nhất của cả cơ chế.
+ */
+const PHAN_BAO_CAO = `## Báo cáo khi xong
+
+Bạn có một tool duy nhất: \`report_done\`. Khi làm xong việc mà người điều phối giao (chỉ thị
+của họ có kèm \`dispatch_id\`), gọi nó với:
+
+- \`outcome\`: \`succeeded\` (xong và đạt) / \`failed\` (đã thử và hỏng) / \`blocked\` (kẹt, cần quyết)
+- \`summary\`: đã làm gì, kết quả ra sao
+- \`dispatch_id\`: id nêu trong chỉ thị
+- \`files\`: các file đã sửa
+
+Không gọi thì người điều phối chỉ thấy bạn "rảnh" — mà "rảnh" không phân biệt được "xong việc"
+với "đang chờ ai đó bấm", nên nó sẽ phải đi đọc transcript của bạn và tự đoán.
+`;
+
+/**
+ * Nội dung file vai sinh từ mô tả do orchestrator viết khi lập tổ.
+ *
+ * Không dùng thẳng mô tả của nó: hợp đồng báo cáo luôn phải có mặt. Và nói rõ file này do máy
+ * sinh ra để người dùng biết mình sửa được — nó là file của họ kể từ lúc này.
+ */
+export function dungNoiDungVaiTuMoTa(ten: string, moTa: string): string {
+  return `# Vai: ${ten}
+
+_Vai này do agent điều phối đề xuất khi lập tổ. Bạn sửa file này thoải mái — sửa xong lưu lại
+là \`AGENTS.md\` của worktree cập nhật ngay._
+
+${moTa.trim()}
+
+${PHAN_BAO_CAO}`;
+}
+
 const MAU_WORKER = (ten: string): string => `# Vai: ${ten}
 
 Viết vào đây những gì agent mang vai này phải biết: nó chịu trách nhiệm gì, làm việc theo
@@ -35,19 +73,7 @@ vào khối vai trong \`AGENTS.md\` của worktree (Claude lẫn Codex đều đ
 
 -
 
-## Báo cáo khi xong
-
-Bạn có một tool duy nhất: \`report_done\`. Khi làm xong việc mà người điều phối giao (chỉ thị
-của họ có kèm \`dispatch_id\`), gọi nó với:
-
-- \`outcome\`: \`succeeded\` (xong và đạt) / \`failed\` (đã thử và hỏng) / \`blocked\` (kẹt, cần quyết)
-- \`summary\`: đã làm gì, kết quả ra sao
-- \`dispatch_id\`: id nêu trong chỉ thị
-- \`files\`: các file đã sửa
-
-Không gọi thì người điều phối chỉ thấy bạn "rảnh" — mà "rảnh" không phân biệt được "xong việc"
-với "đang chờ ai đó bấm", nên nó sẽ phải đi đọc transcript của bạn và tự đoán.
-`;
+${PHAN_BAO_CAO}`;
 
 const MAU_ORCHESTRATOR = (ten: string): string => `# Vai: ${ten} (điều phối)
 

@@ -84,7 +84,64 @@ export interface YeuCauDone {
   files?: string[];
 }
 
-export type YeuCau = YeuCauDispatch | YeuCauReport | YeuCauDone;
+/**
+ * Trần cứng số thành viên một tổ.
+ *
+ * Không phải con số tuỳ tiện: mỗi thành viên là MỘT terminal, MỘT thư mục worktree và MỘT
+ * nhánh git thật trên máy người dùng. Một đề xuất hai chục người gần như luôn là dấu hiệu mô
+ * hình hiểu sai việc, và cái giá của việc tin nó thì người dùng gánh.
+ */
+export const TOI_DA_THANH_VIEN = 6;
+
+/** Tên đi vào nhánh git và một đoạn đường dẫn — cùng bộ ký tự với ô nhập của người dùng. */
+const TEN_GIT_HOP_LE = /^[\w.][\w.-]*$/;
+
+export interface ThanhVienTeam {
+  role: string;
+  kind: 'worker';
+  description: string;
+}
+
+/**
+ * Orchestrator đề xuất lập tổ. Extension KHÔNG tạo gì cho tới khi người dùng duyệt danh sách.
+ *
+ * Cố ý chỉ cho `worker`: tổ do một người điều phối lập ra mà lại sinh thêm người điều phối là
+ * đúng cái vòng đệ quy mà độ sâu 1 sinh ra để chặn.
+ */
+export interface YeuCauTeam {
+  id: string;
+  from: string;
+  at: number;
+  type: 'team';
+  text: string;
+  viec: string;
+  thanhVien: ThanhVienTeam[];
+}
+
+export type YeuCau = YeuCauDispatch | YeuCauReport | YeuCauDone | YeuCauTeam;
+
+/** Lý do từ chối một đề xuất tổ; `null` nghĩa là hợp lệ. Trả CHUỖI để nói thẳng cho agent sửa. */
+export function kiemTraTeam(team: Pick<YeuCauTeam, 'viec' | 'thanhVien'>): string | null {
+  const viec = team.viec.trim();
+  if (viec === '' || !TEN_GIT_HOP_LE.test(viec) || viec.includes('..')) {
+    return 'tên việc phải hợp lệ cho nhánh git: chữ không dấu, số, . _ - và không bắt đầu bằng dấu gạch';
+  }
+  if (team.thanhVien.length === 0) return 'tổ phải có ít nhất một thành viên';
+  if (team.thanhVien.length > TOI_DA_THANH_VIEN) {
+    return `tổ tối đa ${TOI_DA_THANH_VIEN} thành viên; đề xuất ${team.thanhVien.length} là quá nhiều`;
+  }
+  const daCo = new Set<string>();
+  for (const m of team.thanhVien) {
+    const ten = m.role.trim();
+    if (ten === '' || !TEN_GIT_HOP_LE.test(ten) || ten.includes('..')) {
+      return `tên vai "${m.role}" không hợp lệ cho nhánh git: chữ không dấu, số, . _ - và không bắt đầu bằng dấu gạch`;
+    }
+    if (daCo.has(ten.toLowerCase())) return `tên vai trùng nhau: "${ten}"`;
+    daCo.add(ten.toLowerCase());
+    if (m.description.trim() === '') return `vai "${ten}" thiếu mô tả — một vai không mô tả là vai vô dụng`;
+  }
+  return null;
+}
 
 /** Kết quả gần nhất một worker đã báo — đi kèm trạng thái trong `status.json`. */
 export interface KetQuaWorker {
@@ -195,6 +252,20 @@ export function docYeuCau(raw: string): YeuCau | null {
   }
   if (o.type === 'dispatch' && laChuoi(o.terminalId)) {
     return { id: o.id, from: o.from, at: o.at, type: 'dispatch', terminalId: o.terminalId, text: o.text };
+  }
+  if (o.type === 'team') {
+    if (!laChuoi(o.viec) || !Array.isArray(o.thanhVien)) return null;
+    const tv: ThanhVienTeam[] = [];
+    for (const raw of o.thanhVien) {
+      if (typeof raw !== 'object' || raw === null) return null;
+      const m = raw as Record<string, unknown>;
+      // Phần tử rác làm hỏng CẢ đề xuất, không lọc bỏ im lặng: khác `files` của report_done
+      // (mất một đường dẫn là chuyện nhỏ), ở đây mỗi phần tử là một terminal và một nhánh git
+      // sắp được tạo — lọc im lặng nghĩa là tạo sai số lượng so với cái người dùng đã duyệt.
+      if (!laChuoi(m.role) || !laChuoi(m.description)) return null;
+      tv.push({ role: m.role, kind: 'worker', description: m.description });
+    }
+    return { id: o.id, from: o.from, at: o.at, type: 'team', text: o.text, viec: o.viec, thanhVien: tv };
   }
   if (o.type === 'done') {
     // Đây mới là chỗ "schema-validated" thật: nhận bừa `outcome` thì kết quả có kiểu trở nên

@@ -561,10 +561,10 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">23</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">24</div><div class="so-t">lệnh</div></div>
       <div class="so-o"><div class="so-n">347</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
-      <div class="so-o"><div class="so-n">6</div><div class="so-t">tool điều phối</div></div>
+      <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
       <div class="so-o"><div class="so-n">0</div><div class="so-t">dependency lúc chạy</div></div>
       <div class="so-o"><div class="so-n">76 KB</div><div class="so-t">gói vsix</div></div>
     </div>
@@ -586,6 +586,7 @@
         <li><a href="#vai">Vai</a></li>
         <li><a href="#dieu-phoi">Điều phối</a></li>
         <li><a href="#dung-to">Dựng tổ đầu tiên</a></li>
+        <li><a href="#lap-to">Lập tổ tự động</a></li>
         <li><a href="#lenh">Bảng lệnh</a></li>
         <li class="r-tieu">Bên trong</li>
         <li><a href="#luu-tru">Lưu trữ</a></li>
@@ -919,6 +920,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td><code>dispatch</code></td><td>Gửi chỉ thị vào phiên đang chạy của một worker.</td></tr>
                 <tr><td><code>wait</code></td><td>Chờ tới khi worker báo xong hoặc dừng tay. Trả kèm kết quả có kiểu.</td></tr>
                 <tr><td><code>report</code></td><td>Ghi vào khung kiểm toán và báo cho bạn.</td></tr>
+                <tr><td><code>propose_team</code></td><td>Đề xuất một tổ. Extension hỏi bạn duyệt và sửa trước khi tạo terminal, worktree và nhánh git.</td></tr>
                 <tr><td><code>report_done</code><br><span style="font-size:11.5px;color:var(--nhat);font-family:'JetBrains Mono',monospace">chỉ worker</span></td><td>Worker khai kết cục: <code>succeeded</code> / <code>failed</code> / <code>blocked</code>, kèm tóm tắt và danh sách file đã sửa.</td></tr>
               </tbody>
             </table>
@@ -1129,10 +1131,78 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
         </div>
       </section>
 
+      <!-- ============================================== lập tổ -->
+      <section id="lap-to">
+        <div class="doc">
+          <h2><span class="h2-eo">Tự động</span>Để agent điều phối tự lập tổ</h2>
+          <p>
+            Dựng tay ba vai rồi ba terminal như phần trên là cách hiểu rõ cơ chế. Khi đã quen,
+            có đường ngắn: <strong>chuột phải terminal điều phối → Lập tổ</strong>. Nó tự nghĩ
+            cần bao nhiêu người, mỗi người vai gì, và mô tả từng vai.
+          </p>
+          <p>
+            Nhưng đề xuất của agent là <em>điểm khởi đầu</em>, không phải quyết định cuối. Nên ở
+            giữa có một <strong>bảng duyệt</strong> mà bạn sửa được mọi thứ trước khi có bất kỳ
+            thư mục hay nhánh git nào ra đời.
+          </p>
+        </div>
+
+        <div class="doc rong" style="margin-top:22px">
+          <div class="bang-co-che">
+            <div class="bang-dau">Đường đi của một lần lập tổ</div>
+            <div class="bang-than">
+              <div class="luong">
+                <div class="lan"><span class="lan-so">1</span><span class="lan-ai">Bạn</span><span class="lan-viec">Chuột phải terminal điều phối → <b>Lập tổ</b> → gõ việc cần làm (bỏ trống nếu đã trao đổi rồi)</span></div>
+                <div class="lan"><span class="lan-so">2</span><span class="lan-ai">Extension</span><span class="lan-viec">Nhắn một câu vào phiên của agent điều phối. <b>Chưa tạo gì cả.</b></span></div>
+                <div class="lan"><span class="lan-so">3</span><span class="lan-ai">Sếp (agent)</span><span class="lan-viec">Nghĩ, rồi gọi <b>propose_team</b>(viec, members[]). Server kiểm ngay tại chỗ — sai tên vai là nó biết trong cùng lượt.</span></div>
+                <div class="lan"><span class="lan-so">4</span><span class="lan-ai">Bạn duyệt</span><span class="lan-viec">Bảng mở ra: <b>sửa mô tả</b> từng vai, <b>chọn mô hình</b> riêng cho từng người, bỏ bớt ai không cần, bật/tắt bỏ-hỏi-quyền</span></div>
+                <div class="lan"><span class="lan-so">5</span><span class="lan-ai">Extension</span><span class="lan-viec">Bấm <b>Tạo tổ</b> → mỗi thành viên: một vai, một worktree, một nhánh, một terminal Claude tên trùng worktree</span></div>
+                <div class="lan"><span class="lan-so">6</span><span class="lan-ai">Sếp (agent)</span><span class="lan-viec">Nhận về danh sách id vừa tạo, rồi <b>dispatch</b> việc cho từng người như bình thường</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="doc" style="margin-top:24px">
+          <h3>Bảng duyệt sửa được những gì</h3>
+          <ul>
+            <li><strong>Mô tả vai</strong> — bấm vào một thành viên → Sửa mô tả. Ô nhập điền sẵn đề xuất của agent; bạn viết đè hoặc bổ sung. Sau khi tạo vẫn sửa tiếp được trong file vai, ở đó có markdown và xuống dòng.</li>
+            <li><strong>Mô hình cho từng người</strong> — <code>opus</code> cho vai cần suy luận sâu, <code>haiku</code> cho vai máy móc, hoặc gõ tên đầy đủ. Bỏ trống thì theo cấu hình sẵn có của bạn.</li>
+            <li><strong>Bỏ bớt thành viên</strong> — agent đề xuất bốn người mà bạn chỉ cần hai thì bỏ hai.</li>
+            <li><strong>Bỏ hỏi quyền</strong> — áp cho cả tổ, và mặc định là <em>không</em>. Cho agent chạy không hỏi là quyết định về máy của bạn; agent không được tự quyết hộ.</li>
+          </ul>
+          <div class="luu-y">
+            <span class="luu-y-nhan">Esc là an toàn</span>
+            <p>
+              Thoát bảng duyệt bằng Esc thì <strong>không có gì được tạo</strong>, và agent nhận
+              phản hồi rằng bạn đã huỷ — nó không ngồi chờ vô ích.
+            </p>
+          </div>
+
+          <h3>Bốn giới hạn cứng</h3>
+          <ol>
+            <li><strong>Tối đa 6 thành viên.</strong> Mỗi thành viên là một thư mục và một nhánh git thật trên máy bạn; một đề xuất hai chục người gần như luôn là dấu hiệu chia việc chưa đúng.</li>
+            <li><strong>Chỉ tạo được worker.</strong> Tổ do một người điều phối lập mà lại sinh thêm người điều phối là đúng cái vòng đệ quy mà độ sâu 1 sinh ra để chặn.</li>
+            <li><strong>Chỉ terminal điều phối gọi được.</strong> Menu chỉ hiện ở đó, và extension kiểm lại lần nữa khi đề xuất tới.</li>
+            <li><strong>Phải nằm trong repo git.</strong> Không có repo thì không có worktree riêng, mà cách ly chính là lý do tồn tại của cả tính năng — lệnh từ chối thay vì lập một tổ giẫm chân nhau.</li>
+          </ol>
+
+          <div class="luu-y hay">
+            <span class="luu-y-nhan">Chi tiết dễ mất mà không được mất</span>
+            <p>
+              File vai sinh từ đề xuất của agent <strong>luôn được ghép thêm mục “Báo cáo khi
+              xong”</strong> dạy <code>report_done</code>. Nếu chỉ dùng thẳng mô tả agent viết,
+              worker sẽ không bao giờ báo xong và <code>wait</code> của sếp treo vô hạn — hỏng
+              âm thầm, khó truy.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>23 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>24 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -1155,6 +1225,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
                 <tr><td>Chuyển terminal sang workspace khác</td><td>Terminal đang chạy không bị đóng</td><td>chuột phải terminal</td></tr>
                 <tr><td>Xem log điều phối</td><td>Mở khung kiểm toán, kèm lối mở file log bền</td><td>chuột phải workspace</td></tr>
+                <tr><td>Lập tổ</td><td>Nhờ agent điều phối đề xuất tổ; bạn duyệt và sửa trước khi tạo</td><td>chuột phải terminal điều phối</td></tr>
                 <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây</td><td>chuột phải terminal</td></tr>
                 <tr><td>Xem đường dẫn terminal</td><td>Kèm nút sao chép và mở thư mục</td><td>chuột phải terminal</td></tr>
                 <tr><td>Đặt lệnh khởi động</td><td>Cho terminal shell thường</td><td>chuột phải terminal</td></tr>

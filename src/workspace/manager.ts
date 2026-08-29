@@ -29,11 +29,12 @@ import {
   type WorktreeInfo,
 } from '../git/worktree';
 import { chenKhoiRole, conCanKhoi, goKhoiRole, type KetQuaChen } from '../role/agentsmd';
-import { duongDanRole, duongDanThuMucRole, mauNoiDungRole } from '../role/paths';
+import { dungNoiDungVaiTuMoTa, duongDanRole, duongDanThuMucRole, mauNoiDungRole } from '../role/paths';
 import {
   docYeuCau,
   dungCauHinhMcp,
   gopVeMotDong,
+  kiemTraTeam,
   tenFilePhanHoi,
   tenFileTrangThai,
   thuMucYeuCau,
@@ -42,7 +43,9 @@ import {
   type KetQuaWorker,
   type AgentTrangThai,
   type AnhChupTrangThai,
+  type ThanhVienTeam,
   type YeuCau,
+  type YeuCauTeam,
 } from '../orch/bus';
 import { chonWorkspaceNhan } from './receiving';
 import { chuyenViTri, vaiTuongUng } from './sapxep';
@@ -79,6 +82,18 @@ import { gopGoiYDuongDan } from './paths';
 import { decideTerminalRemoval, type RemoveTerminalDecision } from './remove';
 
 export type TerminalState = 'busy' | 'idle' | 'blocked' | 'loading' | 'open' | 'closed' | 'error';
+
+/**
+ * Một thành viên tổ SAU khi người dùng đã duyệt: mô tả có thể đã sửa, mô hình do họ chọn.
+ *
+ * Khác `ThanhVienTeam` (thứ agent đề xuất trên bus) — tách hai kiểu để không bao giờ nhầm
+ * "agent đề xuất gì" với "người dùng quyết gì".
+ */
+interface ThanhVienDaChon {
+  role: string;
+  description: string;
+  model?: string;
+}
 
 /** Kết quả hỏi worktree: thư mục làm việc, kèm worktree khi thật sự có một cái. */
 interface KetQuaWorktree {
@@ -2047,6 +2062,363 @@ export class WorkspaceManager implements vscode.Disposable {
     }
   }
 
+  // ------------------------------------------------------------- lập tổ
+
+  /**
+   * Lệnh chuột phải trên terminal điều phối: nhờ chính nó đề xuất một tổ.
+   *
+   * Không hỏi model ở một lời gọi riêng rồi tự dựng: người điều phối đã có sẵn bối cảnh cuộc
+   * trao đổi với bạn, còn một lời gọi mới thì không. Nên extension chỉ NHẮN vào phiên của nó
+   * và đợi nó gọi `propose_team`; việc tạo thật chỉ diễn ra sau khi bạn duyệt danh sách.
+   */
+  async taoTeam(workspaceId: string, terminalId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    const entry = ws?.terminals.find((t) => t.id === terminalId);
+    if (!ws || entry === undefined) return;
+
+    const dieuPhoi = this.terminalDieuPhoi(ws);
+    if (dieuPhoi === null || dieuPhoi.id !== terminalId) {
+      void vscode.window.showWarningMessage(
+        'Chỉ terminal mang vai điều phối mới lập tổ được. Gắn vai loại Orchestrator cho nó trước đã.',
+      );
+      return;
+    }
+    if (!this.terminals.has(terminalId)) {
+      void vscode.window.showWarningMessage(
+        `Terminal "${entry.name}" đang đóng. Kích hoạt workspace để mở nó trước đã.`,
+      );
+      return;
+    }
+    // Không có repo thì không có worktree riêng cho từng thành viên, mà cách ly chính là lý do
+    // tồn tại của cả tính năng này — nói thẳng thay vì lập một tổ giẫm chân nhau.
+    const goc = await this.git.repoRoot(entry.cwd);
+    if (goc === null) {
+      void vscode.window.showWarningMessage(
+        `Terminal điều phối đang ở "${entry.cwd}" — không phải repo git, nên không tạo được worktree riêng cho từng thành viên.`,
+      );
+      return;
+    }
+
+    const brief = await vscode.window.showInputBox({
+      title: 'Lập tổ',
+      prompt: 'Việc cần làm (để TRỐNG nếu bạn đã trao đổi với agent điều phối rồi)',
+      placeHolder: 'ví dụ: thêm rate limit cho luồng đăng nhập',
+    });
+    if (brief === undefined) return;
+
+    const terminal = this.terminals.get(terminalId);
+    if (terminal === undefined) return;
+    const phanViec = brief.trim() === '' ? 'việc chúng ta đang trao đổi' : gopVeMotDong(brief);
+    terminal.sendText(
+      `Người dùng muốn lập tổ cho ${phanViec}. Hãy nghĩ xem cần bao nhiêu người và mỗi người vai gì, rồi gọi tool propose_team. Tên việc và tên vai phải là chữ không dấu để dùng làm tên nhánh git. Mô tả mỗi vai đủ rõ để người mang vai đó biết phải làm gì và không được làm gì.`,
+      true,
+    );
+    this.ghiKiemToan(`LẬP TỔ: đã nhờ "${entry.name}" đề xuất tổ cho ${phanViec}.`, ws.id);
+    void vscode.window.showInformationMessage(
+      'Đã nhờ agent điều phối đề xuất tổ. Chưa có gì được tạo — bạn sẽ được xem và duyệt danh sách trước.',
+    );
+  }
+
+  /**
+   * Bảng duyệt tổ: người dùng xem, SỬA mô tả từng vai, chọn mô hình cho từng người, bỏ bớt
+   * thành viên, rồi mới bấm tạo.
+   *
+   * Là một QuickPick lặp chứ không phải modal chỉ-đọc: đề xuất của agent là điểm khởi đầu chứ
+   * không phải quyết định cuối, và một hộp thoại chỉ có Tạo/Huỷ thì người dùng không sửa được
+   * gì ngoài việc bỏ hết làm lại.
+   *
+   * Trả `null` nghĩa là huỷ. Chính mục "Tạo tổ" trong bảng LÀ bước xác nhận — nó chỉ được bấm
+   * sau khi đã thấy đủ tên nhánh và mô tả của từng người.
+   */
+  private async duyetTeam(
+    ban: ThanhVienDaChon[],
+    viec: string,
+    tenRepo: string,
+    daCoVai: ReadonlySet<string>,
+  ): Promise<{ thanhVien: ThanhVienDaChon[]; boHoiQuyen: boolean } | null> {
+    const XONG = '__xong__';
+    const HUY = '__huy__';
+    const QUYEN = '__quyen__';
+    let boHoiQuyen = false;
+    const nhanMoHinh = (m: ThanhVienDaChon): string => m.model ?? 'mô hình mặc định';
+
+    for (;;) {
+      if (ban.length === 0) {
+        void vscode.window.showInformationMessage('Đã bỏ hết thành viên nên không lập tổ nữa.');
+        return null;
+      }
+      const muc: (vscode.QuickPickItem & { id: string })[] = [
+        {
+          label: '$(rocket) Tạo tổ',
+          description: `${ban.length} thành viên`,
+          detail: `Tạo ${ban.length} terminal, ${ban.length} thư mục trong ${tenRepo}${HAU_TO_WORKTREE}/, và ${ban.length} nhánh git.`,
+          id: XONG,
+        },
+        {
+          label: `$(shield) Quyền: ${boHoiQuyen ? 'BỎ hỏi quyền' : 'hỏi như bình thường'}`,
+          description: 'bấm để đổi',
+          id: QUYEN,
+        },
+        { label: 'Thành viên — bấm để sửa', kind: vscode.QuickPickItemKind.Separator, id: '' },
+        ...ban.map((m, i) => ({
+          label: `$(person) ${ghepTenWorktree(viec, m.role)}`,
+          description: nhanMoHinh(m),
+          detail: m.description,
+          id: String(i),
+        })),
+        { label: '', kind: vscode.QuickPickItemKind.Separator, id: '' },
+        { label: '$(circle-slash) Huỷ, không tạo gì', id: HUY },
+      ];
+
+      const chon = await vscode.window.showQuickPick(muc, {
+        placeHolder: `Duyệt tổ cho "${viec}" — bấm vào một thành viên để sửa mô tả hoặc đổi mô hình`,
+        ignoreFocusOut: true,
+        matchOnDetail: true,
+      });
+      if (!chon || chon.id === HUY) return null;
+      if (chon.id === XONG) return { thanhVien: ban, boHoiQuyen };
+      if (chon.id === QUYEN) {
+        boHoiQuyen = !boHoiQuyen;
+        continue;
+      }
+
+      const i = Number(chon.id);
+      const tv = ban[i];
+      if (tv === undefined) continue;
+      await this.suaThanhVien(ban, i, tv, viec, daCoVai);
+    }
+  }
+
+  /** Menu con cho một thành viên: sửa mô tả, đổi mô hình, hoặc bỏ khỏi tổ. */
+  private async suaThanhVien(
+    ban: ThanhVienDaChon[],
+    i: number,
+    tv: ThanhVienDaChon,
+    viec: string,
+    daCoVai: ReadonlySet<string>,
+  ): Promise<void> {
+    const dungLai = daCoVai.has(tv.role.toLowerCase());
+    const viec2 = await vscode.window.showQuickPick(
+      [
+        { label: '$(edit) Sửa mô tả vai', description: dungLai ? 'vai này đã có sẵn — sửa ở đây KHÔNG ghi đè file cũ' : '', id: 'mota' },
+        { label: '$(server) Chọn mô hình', description: tv.model ?? 'mặc định', id: 'model' },
+        { label: '$(trash) Bỏ thành viên này khỏi tổ', id: 'bo' },
+        { label: '$(arrow-left) Quay lại', id: 'lui' },
+      ],
+      { placeHolder: ghepTenWorktree(viec, tv.role), ignoreFocusOut: true },
+    );
+    if (!viec2 || viec2.id === 'lui') return;
+
+    if (viec2.id === 'bo') {
+      ban.splice(i, 1);
+      return;
+    }
+
+    if (viec2.id === 'mota') {
+      // InputBox chỉ một dòng, nên gộp mô tả nhiều dòng lại trước khi cho sửa. Bản đầy đủ vẫn
+      // sửa được sau khi tạo: file vai mở trong editor thật, có xuống dòng và markdown.
+      const moi = await vscode.window.showInputBox({
+        title: `Mô tả vai "${tv.role}"`,
+        prompt: 'Vai này chịu trách nhiệm gì, và KHÔNG được làm gì. Sửa xong vẫn chỉnh tiếp được trong file vai.',
+        value: gopVeMotDong(tv.description),
+        ignoreFocusOut: true,
+        validateInput: (v) => (v.trim() === '' ? 'Mô tả không được để trống' : undefined),
+      });
+      if (moi !== undefined && moi.trim() !== '') tv.description = moi.trim();
+      return;
+    }
+
+    const NHAP = '__nhap__';
+    const MAC_DINH = '__macdinh__';
+    const chonModel = await vscode.window.showQuickPick(
+      [
+        { label: 'Mặc định', description: 'theo cấu hình sẵn có của bạn', id: MAC_DINH },
+        { label: 'opus', description: 'mạnh nhất — hợp việc cần suy luận sâu', id: 'opus' },
+        { label: 'sonnet', description: 'cân bằng — hợp phần lớn việc code', id: 'sonnet' },
+        { label: 'haiku', description: 'nhanh và rẻ — hợp việc máy móc', id: 'haiku' },
+        { label: '$(edit) Nhập tên mô hình…', description: 'ví dụ claude-fable-5', id: NHAP },
+      ],
+      { placeHolder: `Mô hình cho "${tv.role}"`, ignoreFocusOut: true },
+    );
+    if (!chonModel) return;
+    if (chonModel.id === MAC_DINH) {
+      delete tv.model;
+      return;
+    }
+    if (chonModel.id !== NHAP) {
+      tv.model = chonModel.id;
+      return;
+    }
+    const tuNhap = await vscode.window.showInputBox({
+      title: `Mô hình cho "${tv.role}"`,
+      prompt: 'Bí danh (opus / sonnet / haiku / fable) hoặc tên đầy đủ',
+      value: tv.model ?? '',
+      ignoreFocusOut: true,
+      // Tên này đi thẳng vào lệnh shell; adapter có bọc nháy, nhưng chặn ở cửa nhập vẫn rẻ hơn.
+      validateInput: (v) =>
+        v.trim() === '' || /^[A-Za-z0-9][\w.:-]*$/.test(v.trim())
+          ? undefined
+          : 'Chỉ dùng chữ, số, và . _ - :',
+    });
+    if (tuNhap === undefined) return;
+    if (tuNhap.trim() === '') delete tv.model;
+    else tv.model = tuNhap.trim();
+  }
+
+  /** Tạo MỘT thành viên tổ: vai (nếu chưa có), worktree riêng, terminal, và khối AGENTS.md. */
+  private async taoThanhVienTeam(
+    workspaceId: string,
+    goc: string,
+    viec: string,
+    tv: ThanhVienDaChon,
+    boHoiQuyen: boolean,
+  ): Promise<{ ten: string; id: string } | { loi: string }> {
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) return { loi: 'workspace không còn tồn tại' };
+
+    const tenVai = tv.role.trim();
+    // Vai trùng tên đã có thì DÙNG LẠI, không ghi đè file: người dùng có thể đã sửa nó, và
+    // schema cũng cấm hai vai trùng tên trong một workspace.
+    let role = (wsNow.roles ?? []).find((r) => r.name.toLowerCase() === tenVai.toLowerCase());
+    if (role === undefined) {
+      role = { id: randomUUID(), name: tenVai, kind: 'worker' };
+      try {
+        const duongDanVai = this.duongDanFileRole(workspaceId, role.id);
+        nodeFs.mkdirSync(path.dirname(duongDanVai), { recursive: true });
+        nodeFs.writeFileSync(duongDanVai, dungNoiDungVaiTuMoTa(tenVai, tv.description), 'utf8');
+      } catch (e) {
+        return { loi: `không tạo được file vai "${tenVai}": ${e instanceof Error ? e.message : String(e)}` };
+      }
+      wsNow.roles = [...(wsNow.roles ?? []), role];
+    }
+
+    const tenWt = ghepTenWorktree(viec, tenVai);
+    const duongDanWt = path.join(path.dirname(goc), `${path.basename(goc)}${HAU_TO_WORKTREE}`, tenWt);
+    let worktree: WorktreeRef | undefined;
+    if (nodeFs.existsSync(duongDanWt)) {
+      if ((await this.git.repoRoot(duongDanWt)) === null) {
+        return { loi: `"${duongDanWt}" đã tồn tại nhưng không phải worktree git hợp lệ` };
+      }
+      worktree = (await this.nhanhCuaWorktree(duongDanWt)).worktree;
+    } else {
+      try {
+        await this.git.addWorktree(goc, duongDanWt, tenWt);
+        worktree = { path: duongDanWt, branch: tenWt };
+      } catch (e) {
+        return { loi: `không tạo được worktree "${tenWt}": ${e instanceof Error ? e.message : String(e)}` };
+      }
+    }
+
+    // Lấy lại object sau các await ở trên rồi mới ghi (xem ghi chú ở activate()).
+    const wsGhi = findWorkspace(this.store, workspaceId);
+    const roleGhi = (wsGhi?.roles ?? []).find((r) => r.id === role.id);
+    if (!wsGhi || roleGhi === undefined) return { loi: 'workspace không còn tồn tại' };
+
+    const entryId = randomUUID();
+    const coThem: CoTheThem = { ...(this.coThemChoRole(workspaceId, roleGhi, entryId) ?? {}) };
+    if (boHoiQuyen) coThem.boHoiQuyen = true;
+    if (tv.model !== undefined) coThem.model = tv.model;
+    const sessionId = this.agent.newSessionId();
+    // Tên terminal = tên worktree. Người dùng đổi sau là việc của họ.
+    const entry: TerminalEntry = {
+      id: entryId,
+      name: tenWt,
+      cwd: duongDanWt,
+      kind: 'claude',
+      claudeSessionId: sessionId,
+      claudeName: tenWt,
+      roleId: roleGhi.id,
+      ...(worktree === undefined ? {} : { worktree }),
+    };
+    this.ghiKhoiVaiChoEntry(wsGhi.id, duongDanWt, roleGhi);
+    upsertTerminal(wsGhi, entry);
+    this.touch(wsGhi.id);
+    this.scheduleSave();
+    // Id mint phải xuống đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại).
+    this.flush();
+
+    const handle = this.terminals.create(entry.id, {
+      name: entry.name,
+      cwd: duongDanWt,
+      location: wsGhi.terminalLocation,
+    });
+    this.ghiNhanShellPid(entry.id);
+    handle.sendText(
+      this.agent.buildLaunchCommand({ name: tenWt, mode: { kind: 'new', sessionId }, coThem }),
+    );
+    this.batDauLoading([entry.id]);
+    return { ten: tenWt, id: entryId };
+  }
+
+  /** Đề xuất tổ vừa tới từ agent điều phối: kiểm, hỏi người dùng, rồi mới tạo. */
+  private async xuLyDeXuatTeam(wsId: string, yc: YeuCauTeam): Promise<void> {
+    const ws = findWorkspace(this.store, wsId);
+    if (!ws) {
+      this.traLoiYeuCau(wsId, yc.id, false, 'Workspace không còn tồn tại.');
+      return;
+    }
+    const dieuPhoi = this.terminalDieuPhoi(ws);
+    if (dieuPhoi === null || dieuPhoi.id !== yc.from) {
+      const lyDo = 'Chỉ terminal giữ vai điều phối mới lập tổ được.';
+      this.ghiKiemToan(`TỪ CHỐI lập tổ từ ${yc.from}: ${lyDo}`, wsId);
+      this.traLoiYeuCau(wsId, yc.id, false, lyDo);
+      return;
+    }
+    const loi = kiemTraTeam(yc);
+    if (loi !== null) {
+      this.ghiKiemToan(`TỪ CHỐI lập tổ: ${loi}`, wsId);
+      this.traLoiYeuCau(wsId, yc.id, false, `Đề xuất không hợp lệ: ${loi}. Sửa rồi gọi lại.`);
+      return;
+    }
+    const goc = await this.git.repoRoot(dieuPhoi.cwd);
+    if (goc === null) {
+      this.traLoiYeuCau(wsId, yc.id, false, 'Terminal điều phối không nằm trong repo git.');
+      return;
+    }
+
+    const daCoVai = new Set((ws.roles ?? []).map((r) => r.name.toLowerCase()));
+    const duyet = await this.duyetTeam(
+      yc.thanhVien.map((m) => ({ role: m.role.trim(), description: m.description.trim() })),
+      yc.viec.trim(),
+      path.basename(goc),
+      daCoVai,
+    );
+    if (duyet === null) {
+      this.ghiKiemToan('Người dùng huỷ đề xuất lập tổ.', wsId);
+      this.traLoiYeuCau(wsId, yc.id, false, 'Người dùng đã huỷ đề xuất này.');
+      return;
+    }
+
+    const taoDuoc: string[] = [];
+    const hong: string[] = [];
+    for (const m of duyet.thanhVien) {
+      const kq = await this.taoThanhVienTeam(wsId, goc, yc.viec.trim(), m, duyet.boHoiQuyen);
+      if ('loi' in kq) hong.push(`${m.role}: ${kq.loi}`);
+      else {
+        taoDuoc.push(`${kq.ten} (id ${kq.id})`);
+        this.ghiKiemToan(
+          `LẬP TỔ: đã tạo "${kq.ten}" mang vai ${m.role}${m.model === undefined ? '' : ` (mô hình ${m.model})`}.`,
+          wsId,
+        );
+      }
+    }
+    this.onChanged.fire();
+
+    if (hong.length > 0) {
+      void vscode.window.showWarningMessage(
+        `Lập tổ xong nhưng ${hong.length} thành viên hỏng: ${hong.join(' · ')}`,
+      );
+    }
+    this.traLoiYeuCau(
+      wsId,
+      yc.id,
+      taoDuoc.length > 0,
+      taoDuoc.length === 0
+        ? `Không tạo được thành viên nào. ${hong.join(' · ')}`
+        : `Đã tạo ${taoDuoc.length} thành viên: ${taoDuoc.join(', ')}. Gọi list_agents để lấy trạng thái rồi dispatch việc cho từng người.${hong.length === 0 ? '' : ` Hỏng: ${hong.join(' · ')}`}`,
+    );
+  }
+
   // ------------------------------------------------------------ điều phối
 
   private thuMucOrch(wsId: string): string {
@@ -2248,6 +2620,11 @@ export class WorkspaceManager implements vscode.Disposable {
       this.ghiTrangThaiOrch(ws);
       this.traLoiYeuCau(wsId, yc.id, true, 'Đã ghi nhận kết quả; người điều phối sẽ thấy nó ở lần wait/list_agents kế tiếp.');
       this.onChanged.fire();
+      return;
+    }
+
+    if (yc.type === 'team') {
+      await this.xuLyDeXuatTeam(wsId, yc);
       return;
     }
 

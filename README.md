@@ -114,6 +114,15 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | AI Workspace: Assign role to terminal | `aiWorkspace.assignRole` | Context menu of a terminal. |
 | AI Workspace: Move terminal to another workspace | `aiWorkspace.moveTerminal` | Context menu of a terminal. The running terminal is not closed — entry ids are stable, so the live tab follows. |
 | AI Workspace: Show orchestration log | `aiWorkspace.showAuditLog` | Context menu of a workspace, or the palette. Opens the output channel and offers the durable `orch/<wsId>/audit.log`. |
+| AI Workspace: Create team | `aiWorkspace.createTeam` | Context menu of the **orchestrator** terminal. Asks it to propose a team; you review and edit before anything is created. |
+
+**Creating a team.** The orchestrator proposes via a `propose_team` tool; the extension then
+opens a review picker where you edit each role description, pick a model per member
+(`opus` / `sonnet` / `haiku` or a full name), drop members you do not want, and choose whether
+to skip permission prompts. Nothing is created until you press *Create team*. Each member gets a
+role (its file always carries the `report_done` contract), its own git worktree and branch, and a
+Claude terminal named after the worktree. Capped at 6 members, workers only — a team that spawns
+more orchestrators is the recursion depth-1 exists to prevent.
 
 Terminals can also be **dragged** inside the tree: drop one onto another terminal to insert it
 before that one, or onto a workspace row to move it there. Multi-select works. Moving a terminal

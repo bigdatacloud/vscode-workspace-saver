@@ -28,8 +28,15 @@ export type LaunchMode =
 export interface CoTheThem {
   /** File mô tả vai — Claude nhận qua `--append-system-prompt-file`. */
   fileVai?: string;
-  /** Cấu hình MCP điều phối — chỉ terminal mang vai orchestrator mới có. */
+  /** Cấu hình MCP — bộ tool khác nhau theo vai (điều phối đủ năm, worker chỉ report_done). */
   cauHinhMcp?: string;
+  /**
+   * Bỏ hỏi quyền. CỐ Ý là một cờ riêng do người dùng bật, không phải mặc định của luồng lập
+   * tổ: cho agent chạy không hỏi là quyết định về máy của họ, agent không được tự quyết hộ.
+   */
+  boHoiQuyen?: boolean;
+  /** Mô hình cho phiên này — bí danh (`opus`) hoặc tên đầy đủ. Vắng mặt = theo cấu hình sẵn có. */
+  model?: string;
 }
 
 export interface LaunchSpec {

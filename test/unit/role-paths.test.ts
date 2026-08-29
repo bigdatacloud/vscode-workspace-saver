@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { duongDanRole, duongDanThuMucRole, mauNoiDungRole } from '../../src/role/paths';
+import {
+  dungNoiDungVaiTuMoTa,
+  duongDanRole,
+  duongDanThuMucRole,
+  mauNoiDungRole,
+} from '../../src/role/paths';
 
 const WS = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const R = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -38,5 +43,25 @@ describe('mauNoiDungRole', () => {
 
   it('vai orchestrator: nói rõ giới hạn độ sâu để agent không thử rồi thất bại', () => {
     expect(mauNoiDungRole('lead', 'orchestrator')).toMatch(/không.*(tự tạo|sinh thêm)|độ sâu/i);
+  });
+});
+
+describe('dungNoiDungVaiTuMoTa', () => {
+  const noi = dungNoiDungVaiTuMoTa('impl', 'Viết code và test cho việc được giao.');
+
+  it('giữ nguyên mô tả do orchestrator viết', () => {
+    expect(noi).toContain('Viết code và test cho việc được giao.');
+    expect(noi).toContain('impl');
+  });
+
+  it('LUÔN kèm hợp đồng report_done', () => {
+    // Đây là lý do không dùng thẳng mô tả của orchestrator: thiếu phần này thì worker không
+    // bao giờ báo xong, và `wait` của người điều phối treo vô hạn.
+    expect(noi).toContain('report_done');
+    for (const kc of ['succeeded', 'failed', 'blocked']) expect(noi).toContain(kc);
+  });
+
+  it('nói rõ file do orchestrator sinh, để người dùng biết sửa được', () => {
+    expect(noi).toMatch(/điều phối|sinh/i);
   });
 });

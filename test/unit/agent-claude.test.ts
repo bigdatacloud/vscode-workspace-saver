@@ -166,3 +166,45 @@ describe('cờ thêm cho vai và điều phối', () => {
     for (const o of ds) expect(o.command).toContain('--append-system-prompt-file');
   });
 });
+
+describe('cờ bỏ hỏi quyền', () => {
+  const adapter = new ClaudeCodeAdapter('powershell', { run: async () => ({ stdout: '', code: 0 }) }, () => '11111111-1111-4111-8111-111111111111');
+
+  it('boHoiQuyen thêm --dangerously-skip-permissions', () => {
+    const cmd = adapter.buildLaunchCommand({
+      name: 'x',
+      mode: { kind: 'new', sessionId: '11111111-1111-4111-8111-111111111111' },
+      coThem: { boHoiQuyen: true },
+    });
+    expect(cmd).toContain('--dangerously-skip-permissions');
+  });
+
+  it('không bật thì KHÔNG có cờ đó — quyết định này là của người dùng, không phải mặc định', () => {
+    const cmd = adapter.buildLaunchCommand({
+      name: 'x',
+      mode: { kind: 'new', sessionId: '11111111-1111-4111-8111-111111111111' },
+      coThem: { fileVai: 'C:/r.md' },
+    });
+    expect(cmd).not.toContain('--dangerously-skip-permissions');
+  });
+});
+
+describe('cờ chọn mô hình', () => {
+  const adapter = new ClaudeCodeAdapter('powershell', { run: async () => ({ stdout: '', code: 0 }) }, () => '11111111-1111-4111-8111-111111111111');
+  const lenh = (coThem: Record<string, unknown>) =>
+    adapter.buildLaunchCommand({ name: 'x', mode: { kind: 'new', sessionId: '11111111-1111-4111-8111-111111111111' }, coThem });
+
+  it('model được truyền qua --model', () => {
+    // Giá trị được BỌC NHÁY: tên mô hình có thể do người dùng tự gõ, nên nó là dữ liệu chứ
+    // không phải cờ tin cậy được.
+    expect(lenh({ model: 'opus' })).toContain("--model 'opus'");
+  });
+
+  it('tên mô hình có ký tự lạ vẫn được bọc nháy', () => {
+    expect(lenh({ model: "a'b" })).toContain("'a''b'");
+  });
+
+  it('không chọn mô hình thì KHÔNG có cờ --model', () => {
+    expect(lenh({ fileVai: 'C:/r.md' })).not.toContain('--model');
+  });
+});
