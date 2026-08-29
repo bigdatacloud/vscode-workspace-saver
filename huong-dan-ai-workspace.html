@@ -561,7 +561,7 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">24</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">25</div><div class="so-t">lệnh</div></div>
       <div class="so-o"><div class="so-n">347</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
@@ -694,6 +694,11 @@
           <p>
             Từ giờ, đóng VS Code rồi mở lại và kích hoạt workspace đó: terminal quay về, và
             phiên Claude được <code>--resume</code> vào đúng hội thoại cũ.
+          </p>
+          <p>
+            Và không phải mở lại cả loạt mới dùng được một cái: <strong>bấm thẳng vào một
+            terminal trong cây thì chỉ mình nó bật lên</strong>, những cái còn lại nằm yên.
+            Kích hoạt cả workspace là khi bạn muốn tất cả cùng quay lại.
           </p>
         </div>
       </section>
@@ -900,8 +905,8 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
         <div class="doc">
           <h2><span class="h2-eo">Điều phối</span>Một agent làm sếp</h2>
           <p>
-            Gắn cho một terminal Claude vai loại <strong>orchestrator</strong>, đóng và kích hoạt
-            lại workspace. Terminal đó khởi chạy kèm <code>--mcp-config</code> trỏ vào một MCP
+            Gắn cho một terminal Claude vai loại <strong>orchestrator</strong>, đóng terminal đó
+            rồi bấm bật lại riêng nó. Terminal đó khởi chạy kèm <code>--mcp-config</code> trỏ vào một MCP
             server do chính extension ship. Gõ <code>/mcp</code> trong terminal đó để xác nhận.
           </p>
           <p>
@@ -1016,7 +1021,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <strong>Định nghĩa vai TRƯỚC khi tạo terminal.</strong> Vai quyết định cả đuôi tên
               worktree lẫn cấu hình MCP, mà cấu hình MCP nằm ngay trong <em>lệnh khởi chạy</em>.
               Chọn vai lúc tạo thì agent có tool ngay; gắn vai cho một terminal đang chạy thì
-              phải đóng workspace và kích hoạt lại mới ăn.
+              phải đóng terminal đó rồi bật lại riêng nó mới ăn.
             </p>
           </div>
         </div>
@@ -1113,7 +1118,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
 
           <h3>Sáu chỗ người mới hay vấp</h3>
           <ol>
-            <li><strong>Tạo terminal trước rồi mới gắn vai.</strong> Cấu hình MCP nằm trong lệnh khởi chạy, nên phải đóng workspace và kích hoạt lại. Chọn vai lúc tạo thì không cần.</li>
+            <li><strong>Tạo terminal trước rồi mới gắn vai.</strong> Cấu hình MCP nằm trong lệnh khởi chạy, nên phải đóng terminal đó rồi bật lại riêng nó. Chọn vai lúc tạo thì không cần.</li>
             <li><strong>Xoá mục “Báo cáo khi xong” trong file vai worker.</strong> Đó là chỗ duy nhất dạy nó gọi <code>report_done</code>; xoá đi thì <code>wait</code> của sếp chờ mãi.</li>
             <li><strong>Cho Codex làm sếp.</strong> Nó không nhận được cấu hình MCP theo từng lần chạy. Sếp phải là Claude.</li>
             <li><strong>Định nghĩa hai vai điều phối.</strong> Được, nhưng chỉ một <em>terminal</em> mang vai điều phối tại một thời điểm.</li>
@@ -1202,7 +1207,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>24 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>25 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -1212,7 +1217,8 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <thead><tr><th style="width:34%">Lệnh</th><th>Việc</th><th style="width:24%">Gọi từ</th></tr></thead>
               <tbody>
                 <tr><td>Tạo workspace mới</td><td>Tạo và kích hoạt ngay</td><td>nút <strong>+</strong> trên khung</td></tr>
-                <tr><td>Kích hoạt workspace</td><td>Mở lại mọi terminal đã lưu</td><td>click vào item</td></tr>
+                <tr><td>Kích hoạt workspace</td><td>Mở lại <strong>mọi</strong> terminal chưa mở — kể cả khi workspace đang mở dở</td><td>click vào item / chuột phải</td></tr>
+                <tr><td>Kích hoạt riêng terminal này</td><td>Bật đúng MỘT phiên; các terminal khác vẫn nằm im</td><td>click vào terminal / chuột phải</td></tr>
                 <tr><td>Đóng workspace</td><td>Chỉ đóng cái đó, cái khác nguyên vẹn</td><td>chuột phải workspace</td></tr>
                 <tr><td>Đổi tên / Xóa workspace</td><td>Xoá dọn luôn vai và thư mục điều phối của nó</td><td>chuột phải workspace</td></tr>
                 <tr><td>Xem thông tin workspace</td><td>Id, cửa sổ đang giữ, đường dẫn file lưu, từng terminal</td><td>chuột phải workspace</td></tr>
@@ -1485,7 +1491,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <summary>Gõ <code>/mcp</code> trong terminal điều phối mà không thấy server nào</summary>
               <p>
                 Cấu hình MCP chỉ được nạp <strong>lúc khởi chạy</strong>. Gắn vai cho một terminal
-                đang chạy thì chưa ăn — đóng workspace rồi kích hoạt lại.
+                đang chạy thì chưa ăn — đóng terminal đó rồi bấm bật lại riêng nó.
               </p>
               <p>
                 Nếu vẫn không có, extension sẽ đã báo một cảnh báo rằng không ghi được cấu hình.

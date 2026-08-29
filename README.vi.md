@@ -95,7 +95,8 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
 | Lệnh | Command ID | Ngữ cảnh |
 |---|---|---|
 | AI Workspace: Tạo workspace mới | `aiWorkspace.createWorkspace` | Palette / nút "+" trên view |
-| AI Workspace: Kích hoạt workspace | `aiWorkspace.activateWorkspace` | Click item / context menu workspace chưa active |
+| AI Workspace: Kích hoạt workspace (mở mọi terminal) | `aiWorkspace.activateWorkspace` | Click item workspace chưa active / context menu workspace. Mở **mọi** terminal chưa mở — dùng cả khi workspace đang mở dở để bật nốt phần còn lại. |
+| AI Workspace: Kích hoạt riêng terminal này | `aiWorkspace.activateTerminal` | Context menu terminal item — bật đúng MỘT terminal, không đụng các terminal khác. Workspace vẫn được ghi là đang mở (nó đang giữ terminal thật). |
 | AI Workspace: Đóng workspace | `aiWorkspace.closeWorkspace` | Palette / context menu workspace đang mở (nhóm cuối menu, có modal xác nhận). Chỉ workspace đó đóng — các workspace đang mở khác không bị đụng. |
 | AI Workspace: Xem thông tin workspace | `aiWorkspace.showWorkspaceInfo` | Context menu workspace — id, lần active gần nhất, cửa sổ đang giữ, vị trí mở terminal, đường dẫn file lưu và từng terminal kèm cwd/lệnh khởi động/session; có nút "Sao chép thông tin" / "Mở file lưu" |
 | AI Workspace: Cài đặt workspace | `aiWorkspace.workspaceSettings` | Context menu workspace — vị trí mở terminal riêng từng workspace (theo setting chung / editor area / panel dưới) |
@@ -137,7 +138,7 @@ không âm thầm nhân bản định nghĩa vai sang đó.
 | AI Workspace: Xem đường dẫn terminal | `aiWorkspace.showTerminalPath` | Context menu terminal item — hiện đầy đủ cwd kèm nút "Sao chép đường dẫn" / "Mở thư mục" (hover vào item cũng thấy đường dẫn) |
 | AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
 | AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal — terminal còn mở thì hỏi đóng luôn / chỉ bỏ / hủy |
-| AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây |
+| AI Workspace: Mở terminal | `aiWorkspace.focusTerminal` | Click terminal item trong cây — đang mở thì nhảy tới, chưa mở thì bật riêng nó lên (kể cả khi workspace chưa kích hoạt) |
 | AI Workspace: Thêm terminal đang mở vào workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Menu chuột phải tab terminal / palette |
 | AI Workspace: Gắn session AI vào terminal | `aiWorkspace.assignClaudeSession` | Context menu terminal item trong cây — terminal Claude thì chọn trong các session đang chạy, terminal Codex thì chọn trong các phiên gần đây đọc từ `~/.codex/sessions` (phiên cùng thư mục xếp trước) |
 

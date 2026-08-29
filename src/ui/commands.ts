@@ -76,6 +76,9 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.manageRoles(id);
     }),
+    vscode.commands.registerCommand('aiWorkspace.activateTerminal', (item: TerminalItem) =>
+      manager.activate(item.view.workspaceId, item.view.id),
+    ),
     vscode.commands.registerCommand('aiWorkspace.assignRole', (item: TerminalItem) =>
       manager.assignRole(item.view.workspaceId, item.view.id),
     ),

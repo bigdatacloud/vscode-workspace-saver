@@ -31,6 +31,26 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Đóng cửa sổ Extension Host, mở lại → cây vẫn hiện đúng danh sách workspace đã tạo (đọc
       lại từ `workspaces.json` trong global storage), KHÔNG có workspace nào tự động active
 
+## Kích hoạt riêng một terminal
+- [ ] Workspace CHƯA kích hoạt, có 3 terminal → bấm vào terminal thứ hai trong cây → **chỉ nó**
+      mở ra; hai cái kia vẫn ghi "chưa mở"
+- [ ] Thanh tiến trình lúc đó ghi tên TERMINAL, không phải "Đang mở workspace …"
+- [ ] Workspace đó lập tức mang nhãn "(đang mở)" dù mới có một terminal chạy
+- [ ] Hover một terminal chưa mở → tooltip có dòng "Bấm để bật RIÊNG terminal này"
+- [ ] Chuột phải terminal → thấy `Kích hoạt riêng terminal này` ở nhóm trên cùng; bấm nó cho
+      kết quả y hệt bấm vào item
+- [ ] Bấm vào terminal ĐANG mở → chỉ nhảy tới nó, không mở lại, không resume lần hai
+- [ ] Sau khi bật lẻ, chuột phải workspace → `Kích hoạt workspace (mở mọi terminal)` (mục này
+      giờ hiện cả khi workspace ĐANG mở) → hai terminal còn lại mở nốt, cái đang chạy **không**
+      bị mở lần hai (không có tab trùng)
+- [ ] `Đóng workspace` sau đó → đóng cả terminal bật lẻ lẫn terminal bật sau
+- [ ] Workspace đang mở ở CỬA SỔ KHÁC → bật riêng một terminal vẫn hiện modal khóa V5 trước
+- [ ] Reload Window (terminal cũ hồi sinh) → bật riêng ĐÚNG terminal đang chạy dở → thông báo
+      "Đã nối lại 1 terminal", KHÔNG sinh tiến trình claude thứ hai
+- [ ] Cũng sau reload: bật riêng terminal A trong khi tab của B (cùng workspace) vẫn sống →
+      B **không** bị nhận nuôi, cây vẫn ghi "chưa mở"; kích hoạt cả workspace sau đó thì B được
+      NỐI LẠI chứ không mở tab thứ hai
+
 ## Workspace đang nhận terminal mới
 - [ ] Mở workspace A rồi mở workspace B (B mở sau) → B mang nhãn "nhận terminal mới"
 - [ ] Bấm vào một terminal của A cho nó focus → nhãn "nhận terminal mới" chuyển sang A
@@ -427,7 +447,7 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 ## Lập tổ
 - [ ] Chuột phải terminal KHÔNG mang vai điều phối → **không** thấy mục `Lập tổ`
 - [ ] Chuột phải terminal điều phối → thấy `Lập tổ` ở nhóm trên cùng
-- [ ] Terminal điều phối đang đóng → lệnh báo phải kích hoạt workspace trước
+- [ ] Terminal điều phối đang đóng → lệnh báo bấm vào nó trong cây để bật riêng nó trước
 - [ ] Terminal điều phối không nằm trong repo git → lệnh từ chối, nói rõ vì sao
 - [ ] Bấm `Lập tổ`, gõ mô tả việc → một câu xuất hiện trong phiên của agent điều phối, và có
       thông báo nói rõ CHƯA có gì được tạo

@@ -34,7 +34,11 @@
       },
       {
         "command": "aiWorkspace.activateWorkspace",
-        "title": "AI Workspace: Kích hoạt workspace"
+        "title": "AI Workspace: Kích hoạt workspace (mở mọi terminal)"
+      },
+      {
+        "command": "aiWorkspace.activateTerminal",
+        "title": "AI Workspace: Kích hoạt riêng terminal này"
       },
       {
         "command": "aiWorkspace.closeWorkspace",
@@ -172,8 +176,13 @@
       "view/item/context": [
         {
           "command": "aiWorkspace.activateWorkspace",
-          "when": "view == aiWorkspace.workspaces && viewItem == aiWorkspaceInactive",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "1_activate"
+        },
+        {
+          "command": "aiWorkspace.activateTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "0_activate"
         },
         {
           "command": "aiWorkspace.closeWorkspace",
@@ -332,6 +341,10 @@
         },
         {
           "command": "aiWorkspace.createTeam",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.activateTerminal",
           "when": "false"
         }
       ]

@@ -106,7 +106,8 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
 | Command | Command ID | Context |
 |---|---|---|
 | AI Workspace: Create new workspace | `aiWorkspace.createWorkspace` | Palette / "+" button on the view |
-| AI Workspace: Activate workspace | `aiWorkspace.activateWorkspace` | Click item / context menu of an inactive workspace |
+| AI Workspace: Activate workspace (open every terminal) | `aiWorkspace.activateWorkspace` | Click an inactive workspace / workspace context menu. Opens **every** terminal that is not open yet, including on a workspace that is already partly open. |
+| AI Workspace: Activate this terminal only | `aiWorkspace.activateTerminal` | Terminal context menu — opens exactly ONE terminal, leaving the others closed. The workspace still counts as open (it now holds a real terminal). |
 | AI Workspace: Close workspace | `aiWorkspace.closeWorkspace` | Palette / context menu of an open workspace (bottom group, with confirmation modal). Only that workspace closes — the others stay open. |
 | AI Workspace: Clean worktrees | `aiWorkspace.cleanWorktrees` | Context menu of a workspace. Lists worktrees under `<repo>-worktrees/` with their state; never uses `--force` or `-D`. |
 | AI Workspace: Add role | `aiWorkspace.addRole` | Context menu of a workspace. Creates a role and opens its description file for editing. |
@@ -171,7 +172,7 @@ extension refuses any dispatch that does not come from the orchestrator terminal
 | AI Workspace: Show terminal path | `aiWorkspace.showTerminalPath` | Terminal item context menu — shows the full cwd with "Copy path" / "Open folder" (also visible in the item's hover tooltip) |
 | AI Workspace: Set start command for terminal | `aiWorkspace.setStartCommand` | `plain` terminal context menu |
 | AI Workspace: Remove terminal from workspace | `aiWorkspace.removeTerminal` | Terminal context menu — an open terminal prompts for close-and-remove / remove-only / cancel |
-| AI Workspace: Open terminal | `aiWorkspace.focusTerminal` | Click a terminal item in the tree |
+| AI Workspace: Open terminal | `aiWorkspace.focusTerminal` | Click a terminal item in the tree — focuses it when open, otherwise launches just that one (even if the workspace is not active yet) |
 | AI Workspace: Add open terminal to workspace | `aiWorkspace.addOpenTerminalToWorkspace` | Terminal tab right-click menu / palette |
 | AI Workspace: Assign AI session to terminal | `aiWorkspace.assignClaudeSession` | Terminal item context menu — a Claude terminal picks from running sessions; a Codex terminal picks from recent sessions read out of `~/.codex/sessions` (same-cwd first) |
 

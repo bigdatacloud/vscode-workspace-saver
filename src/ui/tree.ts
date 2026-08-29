@@ -94,6 +94,9 @@ export class TerminalItem extends vscode.TreeItem {
       dong.push('prompt thì phải đóng terminal và kích hoạt lại workspace mới khớp.');
     }
     if (view.hasStartCommand) dong.push('Có lệnh khởi động');
+    // Nhắc ngay ở đây vì đây là chỗ người dùng đang phân vân: trước bản này, terminal của
+    // workspace chưa kích hoạt bấm vào chỉ báo "kích hoạt workspace trước".
+    if (view.state === 'closed') dong.push('Bấm để bật RIÊNG terminal này (không mở cả workspace)');
     this.tooltip = dong.join('\n');
     const icon = STATE_ICONS[view.state];
     this.iconPath = new vscode.ThemeIcon(icon.id, new vscode.ThemeColor(icon.color));

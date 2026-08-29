@@ -47,6 +47,7 @@ import {
   type YeuCau,
   type YeuCauTeam,
 } from '../orch/bus';
+import { phamViKichHoat } from './kichhoat';
 import { chonWorkspaceNhan } from './receiving';
 import { chuyenViTri, vaiTuongUng } from './sapxep';
 import { docBangTienTrinh } from '../proc/real';
@@ -736,13 +737,30 @@ export class WorkspaceManager implements vscode.Disposable {
     await this.activate(ws.id);
   }
 
-  async activate(workspaceId: string): Promise<void> {
+  /**
+   * Mở terminal của workspace trong cửa sổ này.
+   *
+   * @param chiEntryId Chỉ mở ĐÚNG entry này (kích hoạt đơn lẻ); bỏ trống = mở mọi entry chưa
+   *   mở của workspace. Dù chỉ mở một terminal, workspace vẫn được ghi là ĐANG MỞ ở cửa sổ
+   *   này: nó đang giữ một terminal thật, nên phải giữ luôn khóa V5, vòng poll trạng thái và
+   *   quyền được `close()` dọn dẹp — nửa vời ở đây là để lại terminal không ai đóng được.
+   */
+  async activate(workspaceId: string, chiEntryId?: string): Promise<void> {
     const ws = findWorkspace(this.store, workspaceId);
     if (!ws) return;
+    const pham = phamViKichHoat(ws.terminals, chiEntryId);
+    // Entry vừa bị xóa/chuyển đi trong lúc người dùng bấm: không mở gì cả. Rơi về mở cả
+    // workspace ở đây là bật hàng loạt phiên agent không ai yêu cầu.
+    if (chiEntryId !== undefined && pham.length === 0) return;
 
     if (this.laDangMo(workspaceId)) {
-      const opened = ws.terminals.find((entry) => this.terminals.has(entry.id));
-      if (opened) this.terminals.focus(opened.id);
+      // Workspace đã thuộc cửa sổ này: khóa V5 đã cầm, terminal còn sống đã track từ lượt
+      // trước. Chỉ còn mở nốt những entry chưa mở TRONG PHẠM VI — đây cũng là đường để "kích
+      // hoạt workspace" bật lại các terminal đã bị đóng lẻ.
+      const canMo = pham.filter((entry) => !this.terminals.has(entry.id));
+      if (canMo.length > 0) await this.moThemEntry(ws, canMo);
+      const daMo = pham.find((entry) => this.terminals.has(entry.id));
+      if (daMo) this.terminals.focus(daMo.id);
       return;
     }
 
@@ -750,7 +768,9 @@ export class WorkspaceManager implements vscode.Disposable {
     // song song sẽ tranh nhau NHẬN cùng một terminal đang chạy sẵn trong noiLaiTerminalHoiSinh,
     // và cả hai cùng ghi activeWindowId nhưng chỉ một lượt về đích.
     if (this.activating) {
-      void vscode.window.showInformationMessage('Đang mở một workspace khác, thử lại sau khi xong.');
+      void vscode.window.showInformationMessage(
+        'Đang có một lượt kích hoạt khác chạy dở, thử lại sau khi xong.',
+      );
       return;
     }
     this.activating = true;
@@ -781,11 +801,12 @@ export class WorkspaceManager implements vscode.Disposable {
       }
       this.touch(wsNow.id);
 
-      for (const entry of wsNow.terminals) this.errorIds.delete(entry.id);
+      const phamNow = phamViKichHoat(wsNow.terminals, chiEntryId);
+      for (const entry of phamNow) this.errorIds.delete(entry.id);
 
       // Ghi lại khối vai TRƯỚC khi mở terminal: agent đọc AGENTS.md lúc khởi động, ghi sau là
       // muộn một phiên. File nào người dùng đã sửa tay thì báo chứ không đè.
-      const suaTay = this.dongBoAgentsMd(wsNow);
+      const suaTay = this.dongBoAgentsMd({ ...wsNow, terminals: phamNow });
       if (suaTay.length > 0) {
         void vscode.window.showWarningMessage(
           `${suaTay.length} file AGENTS.md có khối vai bị sửa tay nên KHÔNG được ghi đè: ${suaTay.join(', ')}`,
@@ -795,12 +816,21 @@ export class WorkspaceManager implements vscode.Disposable {
       // Cả bước dò lẫn bước mở đều nằm trong MỘT thanh tiến trình: bước dò có thể mất vài
       // giây (đọc registry + bảng tiến trình), để trần thì trông như VS Code treo.
       const ketQua = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Đang mở workspace "${wsNow.name}"…` },
+        {
+          location: vscode.ProgressLocation.Notification,
+          title:
+            chiEntryId === undefined
+              ? `Đang mở workspace "${wsNow.name}"…`
+              : `Đang mở terminal "${phamNow[0]?.name ?? ''}"…`,
+        },
         async () => {
           // Nối lại những terminal VẪN ĐANG CHẠY trước khi mở cái mới — nếu không, reload cửa
           // sổ sẽ `--resume` lần hai vào hội thoại đang chạy dở (xem noiLaiTerminalHoiSinh).
           // Sau `touch`, merge giữ nguyên object của ta nên await ở đây không làm mất wsNow.
-          const noiLai = await this.noiLaiTerminalHoiSinh(wsNow);
+          // Phạm vi hẹp thì dò cũng hẹp theo: kích hoạt đơn lẻ mà đi nhận nuôi terminal
+          // sống của entry khác là lặng lẽ kéo chúng vào tầm quản lý của cửa sổ này — lần
+          // `close()` sau sẽ đóng luôn cả những cái người dùng chưa hề bật lại.
+          const noiLai = await this.noiLaiTerminalHoiSinh({ ...wsNow, terminals: phamNow });
           // Bước dò mất vài giây — workspace có thể đã bị xóa trong lúc đó. Nhả lại những
           // terminal vừa nhận: giữ chúng dưới id của một workspace đã chết là khóa chúng lại
           // vĩnh viễn (không ai nhận nuôi được nữa, cũng không bao giờ bị đóng).
@@ -815,7 +845,7 @@ export class WorkspaceManager implements vscode.Disposable {
           // gõ thẳng vào hội thoại đang sống. Chỉ mở những entry thực sự chưa có terminal.
           const toOpen: Workspace = {
             ...wsNow,
-            terminals: wsNow.terminals.filter(
+            terminals: phamNow.filter(
               (entry) => !this.terminals.has(entry.id) && !noiLai.boQua.includes(entry.id),
             ),
           };
@@ -2085,7 +2115,7 @@ export class WorkspaceManager implements vscode.Disposable {
     }
     if (!this.terminals.has(terminalId)) {
       void vscode.window.showWarningMessage(
-        `Terminal "${entry.name}" đang đóng. Kích hoạt workspace để mở nó trước đã.`,
+        `Terminal "${entry.name}" đang đóng. Bấm vào nó trong cây để bật riêng nó lên trước đã.`,
       );
       return;
     }
@@ -3563,14 +3593,24 @@ export class WorkspaceManager implements vscode.Disposable {
     this.onChanged.fire();
   }
 
-  /** Mở lại đúng MỘT entry, tái dùng nguyên nhánh launch của orchestrator. */
-  private async launchOne(ws: Workspace, entry: TerminalEntry): Promise<void> {
+  /**
+   * Mở thêm vài entry vào một workspace ĐANG MỞ, tái dùng nguyên nhánh launch của orchestrator.
+   *
+   * Không dò lại terminal hồi sinh như `activate()`: workspace đã thuộc cửa sổ này nên terminal
+   * còn sống của nó đã được track từ lượt kích hoạt trước — entry chưa track ở đây là entry
+   * thật sự đã tắt, không có tiến trình nào để mà resume chồng.
+   */
+  private async moThemEntry(ws: Workspace, ds: readonly TerminalEntry[]): Promise<void> {
+    if (ds.length === 0) return;
     // Xem ghi chú ở activate(): ports cầm `ws`, nên nó phải là workspace do cửa sổ này làm chủ
     // trước khi có bất kỳ await nào.
     this.touch(ws.id);
-    this.errorIds.delete(entry.id);
-    const single: Workspace = { ...ws, terminals: [entry] };
-    const report = await activateWorkspace(single, this.buildPorts(ws));
+    for (const entry of ds) this.errorIds.delete(entry.id);
+    // Claude mất vài giây boot + resume trước khi registry thấy session — đánh dấu "đang tải"
+    // ngay để cây có phản hồi, giống hệt nhánh kích hoạt cả workspace.
+    this.batDauLoading(ds.filter((entry) => entry.kind === 'claude').map((entry) => entry.id));
+    this.onChanged.fire();
+    const report = await activateWorkspace({ ...ws, terminals: [...ds] }, this.buildPorts(ws));
     this.applyReport(report);
     this.onChanged.fire();
   }
@@ -3698,18 +3738,15 @@ export class WorkspaceManager implements vscode.Disposable {
     this.onChanged.fire();
   }
 
+  /**
+   * Bấm vào một terminal trong cây: đang mở thì nhảy tới, chưa mở thì BẬT ĐÚNG NÓ.
+   *
+   * Trước đây workspace chưa kích hoạt thì chỉ báo "kích hoạt workspace trước" — muốn bật lại
+   * một phiên là phải mở cả loạt. Giờ terminal tự bật được, workspace chỉ đi theo.
+   */
   focusTerminal(workspaceId: string, terminalId: string): void {
     if (this.terminals.focus(terminalId)) return;
-    const ws = findWorkspace(this.store, workspaceId);
-    const entry = ws?.terminals.find((t) => t.id === terminalId);
-    if (!ws || !entry) return;
-    if (!this.laDangMo(ws.id)) {
-      void vscode.window.showInformationMessage(
-        `Kích hoạt workspace "${ws.name}" trước, rồi mới mở lại được terminal "${entry.name}".`,
-      );
-      return;
-    }
-    void this.launchOne(ws, entry);
+    void this.activate(workspaceId, terminalId);
   }
 
   private findEntry(workspaceId: string, terminalId: string): TerminalEntry | undefined {
