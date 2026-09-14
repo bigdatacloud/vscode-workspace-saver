@@ -562,11 +562,11 @@
   <div class="khung">
     <div class="so-day">
       <div class="so-o"><div class="so-n">25</div><div class="so-t">lệnh</div></div>
-      <div class="so-o"><div class="so-n">347</div><div class="so-t">test tự động</div></div>
+      <div class="so-o"><div class="so-n">421</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
       <div class="so-o"><div class="so-n">0</div><div class="so-t">dependency lúc chạy</div></div>
-      <div class="so-o"><div class="so-n">76 KB</div><div class="so-t">gói vsix</div></div>
+      <div class="so-o"><div class="so-n">106 KB</div><div class="so-t">gói vsix</div></div>
     </div>
   </div>
 </header>
@@ -979,12 +979,16 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
 
         <div class="doc rong" style="margin-top:18px">
           <div class="bang-co-che">
-            <div class="bang-dau">Bốn loại dòng trong log</div>
+            <div class="bang-dau">Các loại dòng trong log</div>
             <div class="bang-than">
               <pre class="fs">[13:04:22] <b>GIAO VIỆC →</b> "fix-login-impl": Sửa hàm đăng nhập, chạy test rồi báo lại.
 [13:07:55] <b>XONG ←</b> "fix-login-impl" (succeeded): Đã sửa và test xanh [src/auth.ts]
 [13:08:01] <b>BÁO CÁO:</b> impl xong, đang cho reviewer soi.
-[13:08:40] <b>TỪ CHỐI giao việc →</b> abc123: Terminal "dev" là shell thường, không phải agent.</pre>
+[13:08:40] <b>TỪ CHỐI giao việc →</b> abc123: Terminal "dev" là shell thường, không phải agent.
+[13:12:10] <b>HỎI ←</b> "fix-login-impl" (ask_id=7f1c…): Giới hạn 5 hay 10 lần/phút?
+[13:12:31] <b>TRẢ LỜI →</b> "fix-login-impl": 5 lần/phút, theo spec.
+[13:15:02] <b>XẾP HÀNG →</b> "fix-login-reviewer" (id=9a2e…) sau [7f1c…]: Soi diff của impl.
+[13:21:47] <b>HUỶ hàng chờ →</b> "fix-login-reviewer" (id=9a2e…): việc trước kết cục failed</pre>
             </div>
           </div>
         </div>
@@ -1036,7 +1040,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <div class="lan"><span class="lan-so">1</span><span class="lan-ai">Workspace</span><span class="lan-viec">Bấm <b>+</b> trên khung AI WORKSPACES, đặt tên — ví dụ <b>dang-nhap</b></span></div>
                 <div class="lan"><span class="lan-so">2</span><span class="lan-ai">Ba vai</span><span class="lan-viec">Chuột phải workspace → <b>Thêm vai</b> ba lần: <b>lead</b> (Orchestrator), <b>impl</b> (Worker), <b>reviewer</b> (Worker). Mỗi lần file mở ra thì viết nội dung rồi Lưu.</span></div>
                 <div class="lan"><span class="lan-so">3</span><span class="lan-ai">Ba terminal</span><span class="lan-viec">Chuột phải workspace → <b>Tạo terminal Claude mới</b> ba lần. Mỗi lần: chọn thư mục repo, chọn vai, chọn “Phiên mới”, gõ việc <b>dang-nhap</b>.</span></div>
-                <div class="lan"><span class="lan-so">4</span><span class="lan-ai">Kiểm tra</span><span class="lan-viec">Trong terminal <b>lead</b> gõ <b>/mcp</b> — phải thấy <code>ai-workspace</code> với 5 tool. Trong terminal worker: đúng 1 tool.</span></div>
+                <div class="lan"><span class="lan-so">4</span><span class="lan-ai">Kiểm tra</span><span class="lan-viec">Trong terminal <b>lead</b> gõ <b>/mcp</b> — phải thấy <code>ai-workspace</code> với 7 tool. Trong terminal worker: đúng 2 tool (<code>report_done</code>, <code>ask</code>).</span></div>
                 <div class="lan"><span class="lan-so">5</span><span class="lan-ai">Giao việc</span><span class="lan-viec">Nói với lead bằng tiếng người: <em>“Dùng list_agents xem có ai. Giao cho impl việc thêm rate limit cho hàm đăng nhập. Xong thì đọc transcript kiểm tra rồi cho reviewer soi.”</em></span></div>
                 <div class="lan"><span class="lan-so">6</span><span class="lan-ai">Theo dõi</span><span class="lan-viec">Nhìn trạng thái trên cây; chuột phải workspace → <b>Xem log điều phối</b> để đọc lại mọi thứ đã trao đổi.</span></div>
               </div>
@@ -1303,7 +1307,8 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
     status.json         <i>extension ghi mỗi nhịp: ai, vai gì, trạng thái, kết quả</i>
     mcp-&lt;term-id&gt;.json  <i>cấu hình MCP cho đúng một terminal</i>
     req/&lt;id&gt;.json       <i>MCP server → extension</i>
-    res/&lt;id&gt;.json       <i>extension → MCP server</i></pre>
+    res/&lt;id&gt;.json       <i>extension → MCP server</i>
+    ans/&lt;askId&gt;.json    <i>trả lời cho câu hỏi chặn của worker — file riêng vì có thể tới sau hàng phút</i></pre>
             </div>
           </div>
         </div>
@@ -1446,7 +1451,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <tbody>
                 <tr>
                   <td><strong>Độ sâu điều phối = 1</strong></td>
-                  <td>Chỉ terminal giữ vai điều phối được giao việc. Worker gọi <code>dispatch</code> là bị từ chối — chặn bom đệ quy. Cấp <code>report_done</code> cho worker không nới luật này: nó vẫn không có <code>dispatch</code>.</td>
+                  <td>Chỉ terminal giữ vai điều phối được giao việc. Worker gọi <code>dispatch</code> là bị từ chối — chặn bom đệ quy. Cấp <code>report_done</code> và <code>ask</code> cho worker không nới luật này: cả hai đều đi <em>lên</em> sếp, nó vẫn không có <code>dispatch</code>.</td>
                 </tr>
                 <tr>
                   <td><strong>Không bơm vào shell trần</strong></td>
@@ -1492,7 +1497,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               trả lời rõ “chưa hỗ trợ” thay vì đoán.
             </li>
             <li>
-              <strong>Tầng giao diện không có test tự động.</strong> 347 test phủ các hàm thuần,
+              <strong>Tầng giao diện không có test tự động.</strong> 421 test phủ các hàm thuần,
               schema, giao thức MCP và luật an toàn — nhưng menu, cây, và hộp thoại thì chỉ có
               checklist tay trong <code>docs/manual-verification.md</code> làm lưới.
             </li>
