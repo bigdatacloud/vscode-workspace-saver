@@ -43,6 +43,9 @@ Ràng buộc quyết định đúng/sai:
 - Extension kiểm `reply` giống `xetDispatch`: `from` phải là terminal điều phối, dù bộ tool worker
   không có `reply` — phòng thủ theo lớp, cùng lý do với dispatch.
 - `ask` đi **lên** (worker → điều phối), không đi ngang, không đi xuống: không nới độ sâu 1.
+- Tiếng gõ cửa (một dòng gõ vào terminal điều phối để kéo sự chú ý) **chỉ gõ vào terminal agent
+  Claude**: cùng luật với `xetDispatch` — chữ do worker cung cấp không bao giờ rơi vào shell trần
+  (vai điều phối gắn được cho shell thường, chỉ bị cảnh báo), và Codex không có `reply` để gõ cửa.
 
 ## 2. Hàng chờ giao việc (`dispatch … after`)
 

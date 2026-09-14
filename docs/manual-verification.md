@@ -467,6 +467,12 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Không ai trả lời trong 15 phút → khung kiểm toán ghi `HẾT HẠN câu hỏi của "<tên>"`
 - [ ] Trong terminal WORKER thử ghi tay một file `req` giả mạo `type: reply` với `from` là id
       của worker → bị từ chối "chỉ terminal giữ vai điều phối"
+- [ ] **CHẶN SHELL TRẦN Ở TIẾNG GÕ CỬA**: gắn vai điều phối cho một terminal shell thường (được
+      phép, chỉ cảnh báo) rồi cho worker `ask` → KHÔNG có chữ nào được gõ vào shell đó; khung
+      kiểm toán vẫn ghi `HỎI ←`
+- [ ] Không có terminal điều phối nào ĐANG CHẠY mà worker `ask` → tool báo "Extension không phản
+      hồi trong 20 giây" (vòng điều phối chỉ chạy khi có điều phối đang mở — đây là hành vi
+      mong đợi, không phải lỗi)
 
 ## Hàng chờ giao việc (`dispatch … after`)
 - [ ] `dispatch` bình thường → kết quả tool có `dispatch_id=<id>`; khung kiểm toán ghi

@@ -2721,7 +2721,10 @@ export class WorkspaceManager implements vscode.Disposable {
       // Kéo sự chú ý của người điều phối: nó có thể đang rảnh chứ không ngồi trong `wait`, và
       // một câu hỏi không ai đọc là câu hỏi treo tới hết hạn. Đây chỉ là tiếng gõ cửa — kênh
       // trả lời là tool `reply`, không phải dòng chữ này.
-      const tDp = dp === null ? undefined : this.terminals.get(dp.id);
+      // Chỉ gõ vào terminal điều phối là AGENT Claude: cùng luật với `xetDispatch` — chữ do
+      // worker cung cấp không bao giờ được rơi vào một shell trần, và Codex thì không có tool
+      // `reply` để mà gõ cửa.
+      const tDp = dp !== null && this.agentCuaEntry(dp) === 'claude' ? this.terminals.get(dp.id) : undefined;
       if (tDp !== undefined) {
         tDp.sendText(
           `Worker "${ten}" đang hỏi (ask_id=${yc.id}): ${gopVeMotDong(yc.text)} — trả lời bằng tool reply với ask_id đó.`,
