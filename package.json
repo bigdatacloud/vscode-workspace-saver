@@ -142,6 +142,23 @@
         "mac": "cmd+alt+a"
       }
     ],
+    "colors": [
+      {
+        "id": "aiWorkspace.mauAnthropic",
+        "description": "Màu chấm của terminal Claude trong cây AI Workspaces (màu thương hiệu Anthropic).",
+        "defaults": { "dark": "#D97757", "light": "#C8613F", "highContrast": "#F0A080", "highContrastLight": "#8A3A1E" }
+      },
+      {
+        "id": "aiWorkspace.mauOpenAI",
+        "description": "Màu chấm của terminal Codex trong cây AI Workspaces (màu thương hiệu OpenAI).",
+        "defaults": { "dark": "#10A37F", "light": "#0E8A6B", "highContrast": "#3FD1A9", "highContrastLight": "#0A6650" }
+      },
+      {
+        "id": "aiWorkspace.mauShell",
+        "description": "Màu chấm của terminal shell thường trong cây AI Workspaces.",
+        "defaults": { "dark": "descriptionForeground", "light": "descriptionForeground", "highContrast": "foreground", "highContrastLight": "foreground" }
+      }
+    ],
     "configuration": {
       "title": "AI Workspace",
       "properties": {

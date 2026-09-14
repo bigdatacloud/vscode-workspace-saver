@@ -1,23 +1,12 @@
 import * as vscode from 'vscode';
 import type { TerminalState, TerminalView, WorkspaceManager, WorkspaceView } from '../workspace/manager';
+import { bieuTuongTerminal } from './bieutuong';
 
 const POLL_MS = 3000;
 
 /** Phải khớp với `contributes.keybindings` trong package.json. */
 const PHIM_TERMINAL = process.platform === 'darwin' ? 'Cmd+Alt+T' : 'Ctrl+Alt+T';
 const PHIM_CLAUDE = process.platform === 'darwin' ? 'Cmd+Alt+A' : 'Ctrl+Alt+A';
-
-const STATE_ICONS: Record<TerminalState, { id: string; color: string }> = {
-  busy: { id: 'circle-filled', color: 'charts.green' },
-  idle: { id: 'circle-filled', color: 'charts.blue' },
-  // Dừng giữa chừng chờ người dùng bấm — icon khác hẳn để lướt qua là thấy ngay cái nào cần mình.
-  blocked: { id: 'question', color: 'charts.yellow' },
-  // `loading~spin` là codicon có animation xoay sẵn của VS Code — cây tự chạy animation.
-  loading: { id: 'loading~spin', color: 'charts.purple' },
-  open: { id: 'terminal', color: 'charts.blue' },
-  closed: { id: 'circle-outline', color: 'disabledForeground' },
-  error: { id: 'error', color: 'charts.red' },
-};
 
 const STATE_LABELS: Record<TerminalState, string> = {
   busy: 'đang chạy',
@@ -98,7 +87,8 @@ export class TerminalItem extends vscode.TreeItem {
     // workspace chưa kích hoạt bấm vào chỉ báo "kích hoạt workspace trước".
     if (view.state === 'closed') dong.push('Bấm để bật RIÊNG terminal này (không mở cả workspace)');
     this.tooltip = dong.join('\n');
-    const icon = STATE_ICONS[view.state];
+    // Màu = nhà cung cấp, hình = trạng thái — quy tắc thuần nằm ở `bieutuong.ts`.
+    const icon = bieuTuongTerminal(view.state, view.agent);
     this.iconPath = new vscode.ThemeIcon(icon.id, new vscode.ThemeColor(icon.color));
     // Hậu tố `DieuPhoi` để menu lập tổ chỉ hiện đúng chỗ. Vẫn khớp /aiTerminal(Claude|Plain)/
     // của các menu khác vì chúng dùng `=~` (khớp mẫu) chứ không phải so bằng.

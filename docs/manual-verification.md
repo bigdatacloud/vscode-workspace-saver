@@ -51,6 +51,14 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       B **không** bị nhận nuôi, cây vẫn ghi "chưa mở"; kích hoạt cả workspace sau đó thì B được
       NỐI LẠI chứ không mở tab thứ hai
 
+## Màu chấm theo nhà cung cấp
+- [ ] Terminal Claude đang chạy → chấm ĐẶC màu cam đất (#D97757); rảnh → chấm RỖNG cùng màu
+- [ ] Terminal Codex → chấm màu xanh ngọc (#10A37F); shell thường → chấm xám
+- [ ] Terminal chưa mở → chấm gạch chéo mờ, nhìn khác hẳn chấm rỗng của terminal rảnh
+- [ ] Claude đang hỏi → vẫn là dấu hỏi VÀNG (không bị màu cam che); lỗi → dấu lỗi đỏ
+- [ ] Đổi theme sáng/tối → cả ba màu vẫn đọc được; thêm
+      `"workbench.colorCustomizations": {"aiWorkspace.mauAnthropic": "#ff00ff"}` → chấm Claude đổi màu ngay
+
 ## Workspace đang nhận terminal mới
 - [ ] Mở workspace A rồi mở workspace B (B mở sau) → B mang nhãn "nhận terminal mới"
 - [ ] Bấm vào một terminal của A cho nó focus → nhãn "nhận terminal mới" chuyển sang A

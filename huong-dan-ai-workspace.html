@@ -530,7 +530,7 @@
             <span class="cay-mo">(đang mở · nhận terminal mới) · 4 terminal</span>
           </div>
           <div class="cay-dong thut">
-            <span class="cham c-chay">●</span>
+            <span class="cham" style="color:#D97757">●</span>
             <span class="cay-ten">lead-claude</span>
             <span class="cay-mo">AI · lead ★ · đang chạy</span>
           </div>
@@ -540,12 +540,12 @@
             <span class="cay-mo">AI · impl · CHỜ BẠN TRẢ LỜI</span>
           </div>
           <div class="cay-dong thut">
-            <span class="cham c-ranh">●</span>
+            <span class="cham" style="color:#D97757">○</span>
             <span class="cay-ten">fix-login-reviewer</span>
             <span class="cay-mo">AI · reviewer · rảnh</span>
           </div>
           <div class="cay-dong thut">
-            <span class="cham c-ranh">▪</span>
+            <span class="cham" style="color:var(--nhat)">○</span>
             <span class="cay-ten">dev</span>
             <span class="cay-mo">shell · đang mở</span>
           </div>
@@ -720,6 +720,17 @@
             <span class="vien-tt" style="color:var(--nhat)">chưa mở</span>
             <span class="vien-tt c-loi">lỗi</span>
           </div>
+          <p>
+            <strong>Màu chấm nói nhà cung cấp, hình chấm nói trạng thái.</strong> Chấm màu
+            <span style="color:#D97757;font-weight:600">cam đất</span> là Claude (màu Anthropic), chấm màu
+            <span style="color:#10A37F;font-weight:600">xanh ngọc</span> là Codex (màu OpenAI), chấm xám là shell
+            thường. Chấm <em>đặc</em> là đang chạy, chấm <em>rỗng</em> là rảnh hoặc đang mở, chấm
+            <em>gạch chéo</em> mờ là chưa mở. Chỉ hai trạng thái được đè lên màu nhà cung cấp:
+            dấu hỏi vàng <strong>CHỜ BẠN TRẢ LỜI</strong> và dấu lỗi đỏ — vì “cần bạn” quan trọng
+            hơn “của ai”. Ba màu này khai trong <code>contributes.colors</code>
+            (<code>aiWorkspace.mauAnthropic</code>, <code>aiWorkspace.mauOpenAI</code>,
+            <code>aiWorkspace.mauShell</code>), đè được bằng <code>workbench.colorCustomizations</code>.
+          </p>
           <p>
             Cái đáng chú ý nhất là <strong>CHỜ BẠN TRẢ LỜI</strong>. Registry của Claude chỉ
             báo <em>busy</em> hoặc <em>idle</em>, mà “idle” gộp hai chuyện rất khác nhau: đã xong
