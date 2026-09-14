@@ -155,7 +155,8 @@ không có workspace nào active mới hiện danh sách để chọn.
 Cây "AI Workspaces" (trong Explorer, id view `aiWorkspace.workspaces`) hiện 2 tầng: tầng 1 là
 danh sách workspace (sắp theo lần active gần nhất, workspace active có badge riêng), tầng 2 là
 các terminal của workspace — chấm màu theo nhà cung cấp (cam đất Anthropic cho Claude, xanh ngọc
-OpenAI cho Codex, xám cho shell; đặc = đang chạy, rỗng = rảnh, gạch chéo = chưa mở) — kèm nhãn
+OpenAI cho Codex, xám cho shell; xoay = đang làm việc, đứng yên = rảnh, vàng = chờ bạn, đỏ = lỗi,
+gạch chéo = chưa mở) — kèm nhãn
 trạng thái (đang chạy / rảnh / **CHỜ BẠN TRẢ LỜI** / **đang tải
 phiên… kèm icon xoay** / đang mở / chưa mở / lỗi), tự cập nhật mỗi ~3 giây khi view đang hiển
 thị (dừng poll khi view bị ẩn). Trạng thái "đang tải" hiện từ lúc terminal Claude được

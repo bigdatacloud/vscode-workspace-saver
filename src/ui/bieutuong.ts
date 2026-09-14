@@ -1,12 +1,12 @@
 import type { TerminalState } from '../workspace/manager';
 
 /**
- * Icon của một terminal trong cây: MÀU nói nhà cung cấp, HÌNH nói trạng thái.
+ * Icon của một terminal trong cây: MÀU nói nhà cung cấp, CHUYỂN ĐỘNG nói trạng thái.
  *
- * Trước đây màu chấm nói trạng thái (xanh lá = chạy, xanh dương = rảnh). Đổi vì khi cây có sáu
- * agent, câu hỏi đầu tiên khi lướt là "cái nào là Claude, cái nào là Codex" — mà tên terminal
- * thì do người dùng đặt, không nói được điều đó. Trạng thái vẫn còn hai chỗ: hình chấm (đặc =
- * đang chạy, rỗng = rảnh, gạch chéo = chưa mở) và chữ trong mô tả.
+ * Quy ước (cùng ngôn ngữ với Orca): xoay = đang làm việc; đứng yên = không làm; vàng = đang chờ
+ * bạn; đỏ = lỗi. Màu chấm là màu nhà cung cấp vì khi cây có sáu agent, câu hỏi đầu tiên khi lướt
+ * là "cái nào là Claude, cái nào là Codex" — mà tên terminal thì do người dùng đặt, không nói
+ * được điều đó. Chữ trong mô tả vẫn nêu trạng thái cho ai cần đọc kỹ.
  *
  * Module này KHÔNG import vscode để test được; `tree.ts` bọc kết quả thành ThemeIcon/ThemeColor.
  */
@@ -31,22 +31,23 @@ function mauCua(agent: 'claude' | 'codex' | undefined): string {
 
 export function bieuTuongTerminal(state: TerminalState, agent: 'claude' | 'codex' | undefined): BieuTuong {
   switch (state) {
+    // `~spin` là codicon có animation xoay sẵn của VS Code — cây tự chạy animation. Chỉ trạng
+    // thái này xoay bằng màu nhà cung cấp: nhìn lướt là biết agent nào đang cày.
     case 'busy':
-      return { id: 'circle-filled', color: mauCua(agent) };
+      return { id: 'loading~spin', color: mauCua(agent) };
     case 'idle':
     case 'open':
-      return { id: 'circle-outline', color: mauCua(agent) };
-    // `loading~spin` là codicon có animation xoay sẵn của VS Code — cây tự chạy animation.
+      return { id: 'circle-filled', color: mauCua(agent) };
+    // Cũng xoay, nhưng màu mờ và hình khác: đây là EXTENSION đang bật phiên, không phải agent
+    // đang làm việc — tô màu nhà cung cấp là nói dối trong vài giây đầu.
     case 'loading':
-      return { id: 'loading~spin', color: mauCua(agent) };
-    // Chưa mở thì KHÔNG mang màu nhà cung cấp: một chấm rỗng màu Anthropic đã có nghĩa là
-    // "Claude đang rảnh"; cái đã tắt phải trông khác hẳn, không chỉ khác một chút.
+      return { id: 'sync~spin', color: 'disabledForeground' };
     case 'closed':
       return { id: 'circle-slash', color: 'disabledForeground' };
-    // Hai trạng thái cần người dùng nhìn tới giữ màu cảnh báo riêng: đây là thứ duy nhất trong
-    // cây được phép đè lên màu nhà cung cấp, vì "cần bạn" quan trọng hơn "của ai".
+    // Hai trạng thái cần người dùng nhìn tới đè lên màu nhà cung cấp: "cần bạn" quan trọng hơn
+    // "của ai". Vàng đứng yên = đang chờ bạn bấm; đỏ = hỏng.
     case 'blocked':
-      return { id: 'question', color: 'charts.yellow' };
+      return { id: 'circle-filled', color: 'charts.yellow' };
     case 'error':
       return { id: 'error', color: 'charts.red' };
   }

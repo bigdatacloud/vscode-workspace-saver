@@ -52,10 +52,11 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       NỐI LẠI chứ không mở tab thứ hai
 
 ## Màu chấm theo nhà cung cấp
-- [ ] Terminal Claude đang chạy → chấm ĐẶC màu cam đất (#D97757); rảnh → chấm RỖNG cùng màu
-- [ ] Terminal Codex → chấm màu xanh ngọc (#10A37F); shell thường → chấm xám
-- [ ] Terminal chưa mở → chấm gạch chéo mờ, nhìn khác hẳn chấm rỗng của terminal rảnh
-- [ ] Claude đang hỏi → vẫn là dấu hỏi VÀNG (không bị màu cam che); lỗi → dấu lỗi đỏ
+- [ ] Terminal Claude đang chạy → vòng XOAY màu cam đất (#D97757); rảnh → chấm đứng yên cùng màu
+- [ ] Terminal Codex → xanh ngọc (#10A37F); shell thường → xám
+- [ ] Đang tải phiên (vài giây đầu sau kích hoạt) → vòng xoay MỜ, không phải màu cam
+- [ ] Terminal chưa mở → chấm gạch chéo mờ
+- [ ] Claude đang hỏi → chấm VÀNG đứng yên (không bị màu cam che); lỗi → dấu lỗi đỏ
 - [ ] Đổi theme sáng/tối → cả ba màu vẫn đọc được; thêm
       `"workbench.colorCustomizations": {"aiWorkspace.mauAnthropic": "#ff00ff"}` → chấm Claude đổi màu ngay
 
