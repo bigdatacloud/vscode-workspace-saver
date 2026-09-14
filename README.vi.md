@@ -255,17 +255,20 @@ Nhờ ghép phẳng, mọi vai cùng làm một việc nằm liền nhau khi `gi
 terminal Codex chỉ nhận vai qua `AGENTS.md` và **không làm orchestrator được**.
 
 Terminal giữ vai orchestrator được khởi chạy kèm `--mcp-config` trỏ vào một MCP server do
-chính extension này ship. Agent đó có năm tool:
+chính extension này ship. Agent đó có bảy tool:
 
 | Tool | Việc |
 |---|---|
-| `list_agents` | xem mọi terminal trong workspace: id, tên, vai, trạng thái, thư mục, nhánh |
+| `list_agents` | xem mọi terminal trong workspace: id, tên, vai, trạng thái kèm phán quyết sống chết, thư mục, nhánh; kèm hàng chờ và các chỉ thị đã huỷ |
 | `read_transcript` | đọc N lượt cuối của một worker — nó gọi tool gì, đụng file nào |
-| `dispatch` | gửi chỉ thị vào phiên đang chạy của một worker |
-| `wait` | chờ tới khi các worker dừng tay |
+| `dispatch` | gửi chỉ thị vào phiên đang chạy của một worker; có `after` thì XẾP HÀNG, chỉ giao khi mọi việc trước `succeeded` |
+| `wait` | chờ tới khi worker báo xong, HỎI, hoặc dừng tay |
+| `reply` | trả lời câu hỏi worker đang treo bằng `ask` — về thẳng tool call của nó, không gõ vào terminal |
 | `report` | ghi vào khung kiểm toán và báo cho người dùng |
+| `propose_team` | đề xuất một tổ; người dùng duyệt rồi extension mới tạo |
 
-Terminal mang vai **worker** cũng được cấp server đó nhưng chỉ đúng một tool: `report_done`.
+Terminal mang vai **worker** cũng được cấp server đó nhưng chỉ hai tool, đều đi *lên* người điều
+phối: `report_done` và `ask`.
 Mỗi lần giao việc đều kèm một `dispatch_id`, và worker trả lời bằng một kết quả **có kiểu** —
 `outcome` (`succeeded` / `failed` / `blocked`), tóm tắt, và danh sách file đã sửa. Đó chính là
 thứ `wait` trả về. Không có nó thì người điều phối chỉ thấy `idle`, mà `idle` không phân biệt

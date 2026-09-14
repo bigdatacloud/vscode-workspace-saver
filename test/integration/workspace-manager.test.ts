@@ -414,6 +414,11 @@ describe('WorkspaceManager — nhiều workspace cùng mở', () => {
       errorIds: new Set(),
       loadingIds: new Set(),
       loadingTimer: null,
+      // Đóng workspace dọn cả câu hỏi treo và hàng chờ giao việc — harness phải có các bảng đó.
+      cauHoiWorker: new Map(),
+      hangCho: new Map(),
+      daHuy: new Map(),
+      soGiao: new Map(),
       touch: vi.fn(),
       scheduleSave: vi.fn(),
       flush: vi.fn(),

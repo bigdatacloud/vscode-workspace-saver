@@ -34,6 +34,39 @@ export interface AgentTrangThai {
    * người điều phối đọc lại kết quả cũ và tưởng việc mới đã xong.
    */
   ketQua?: KetQuaWorker;
+  /**
+   * Câu hỏi worker này đang treo chờ người điều phối trả lời. Có nó thì `wait` phải DỪNG:
+   * người điều phối ngồi trong `wait` trong khi worker ngồi trong `ask` là bế tắc hai bên.
+   */
+  cauHoi?: CauHoiWorker;
+}
+
+/** Câu hỏi chặn của một worker — sống trong RAM của extension, đi ra ngoài qua `status.json`. */
+export interface CauHoiWorker {
+  id: string;
+  text: string;
+  at: number;
+  dispatchId?: string;
+}
+
+/**
+ * Một chỉ thị đang XẾP HÀNG: chỉ được giao khi mọi id trong `after` báo `succeeded`.
+ * `text` đi kèm để người điều phối đọc lại được nó đã hứa giao gì.
+ */
+export interface ChoGiao {
+  id: string;
+  terminalId: string;
+  after: string[];
+  at: number;
+  text: string;
+}
+
+/** Một chỉ thị đã bị huỷ khỏi hàng chờ — giữ lại vài dòng gần nhất để người điều phối thấy. */
+export interface DaHuy {
+  id: string;
+  terminalId: string;
+  lyDo: string;
+  at: number;
 }
 
 export interface AnhChupTrangThai {
@@ -42,6 +75,9 @@ export interface AnhChupTrangThai {
   /** Terminal đang giữ vai điều phối; null nếu chưa có ai. */
   idDieuPhoi: string | null;
   agents: AgentTrangThai[];
+  /** Chỉ thị đang xếp hàng chờ việc trước xong. Vắng mặt = bản extension cũ, coi như rỗng. */
+  hangCho?: ChoGiao[];
+  daHuy?: DaHuy[];
 }
 
 export interface YeuCauDispatch {
@@ -50,6 +86,33 @@ export interface YeuCauDispatch {
   at: number;
   type: 'dispatch';
   terminalId: string;
+  text: string;
+  /** Chỉ giao sau khi các dispatch này báo `succeeded`. Vắng mặt = giao ngay. */
+  after?: string[];
+}
+
+/**
+ * Worker hỏi người điều phối và ĐỨNG CHỜ trong tool call cho tới khi có trả lời.
+ *
+ * Đi LÊN, không đi ngang: worker chỉ hỏi được người điều phối, nên độ sâu 1 vẫn nguyên. Câu
+ * trả lời về bằng file `ans/<id>.json` chứ không qua `res/`: vòng req/res bị chặn 20 giây, còn
+ * một câu hỏi thì có thể treo hàng phút.
+ */
+export interface YeuCauAsk {
+  id: string;
+  from: string;
+  at: number;
+  type: 'ask';
+  text: string;
+  dispatchId?: string;
+}
+
+export interface YeuCauReply {
+  id: string;
+  from: string;
+  at: number;
+  type: 'reply';
+  askId: string;
   text: string;
 }
 
@@ -118,7 +181,7 @@ export interface YeuCauTeam {
   thanhVien: ThanhVienTeam[];
 }
 
-export type YeuCau = YeuCauDispatch | YeuCauReport | YeuCauDone | YeuCauTeam;
+export type YeuCau = YeuCauDispatch | YeuCauReport | YeuCauDone | YeuCauTeam | YeuCauAsk | YeuCauReply;
 
 /** Lý do từ chối một đề xuất tổ; `null` nghĩa là hợp lệ. Trả CHUỖI để nói thẳng cho agent sửa. */
 export function kiemTraTeam(team: Pick<YeuCauTeam, 'viec' | 'thanhVien'>): string | null {
@@ -199,6 +262,122 @@ export function xetDispatch(
   return { cho: true };
 }
 
+/** Worker được hỏi không: phải là terminal trong workspace, và không phải chính người điều phối. */
+export function xetAsk(
+  from: string,
+  idDieuPhoi: string | null,
+  agents: readonly AgentTrangThai[],
+): QuyetDinh {
+  if (idDieuPhoi === null) {
+    return { cho: false, lyDo: 'Workspace này chưa có terminal nào giữ vai điều phối — không có ai để hỏi.' };
+  }
+  if (from === idDieuPhoi) {
+    return { cho: false, lyDo: 'Terminal điều phối không hỏi được chính mình; muốn hỏi người dùng thì dùng report.' };
+  }
+  if (!agents.some((a) => a.id === from)) {
+    return { cho: false, lyDo: 'Terminal hỏi không thuộc workspace này.' };
+  }
+  return { cho: true };
+}
+
+export type QuyetDinhReply = { cho: true; terminalId: string } | { cho: false; lyDo: string };
+
+/**
+ * Chỉ người điều phối được trả lời, và chỉ trả lời câu hỏi ĐANG TREO.
+ *
+ * Bộ tool worker không có `reply`, nhưng vẫn kiểm `from` ở đây: cùng lý do với `xetDispatch` —
+ * một file `req` ghi tay không được phép mạo danh người điều phối.
+ */
+export function xetReply(
+  from: string,
+  askId: string,
+  idDieuPhoi: string | null,
+  agents: readonly AgentTrangThai[],
+): QuyetDinhReply {
+  if (idDieuPhoi === null || from !== idDieuPhoi) {
+    return { cho: false, lyDo: 'Chỉ terminal giữ vai điều phối mới trả lời được câu hỏi của worker.' };
+  }
+  const w = agents.find((a) => a.cauHoi?.id === askId);
+  if (w === undefined) {
+    return {
+      cho: false,
+      lyDo: `Không có câu hỏi nào đang treo với ask_id "${askId}" — có thể đã được trả lời, hết hạn, hoặc worker đã nhận việc mới.`,
+    };
+  }
+  return { cho: true, terminalId: w.id };
+}
+
+/**
+ * Phán quyết sống chết ba mức, học từ Orca: `unverifiable` KHÔNG phải chết.
+ *
+ * `open`/`loading` nghĩa là ta đang track terminal nhưng registry chưa (hoặc không còn) thấy
+ * phiên — registry hỏng cũng rơi vào đây. Coi nó là chết rồi dừng chờ là bỏ rơi một worker
+ * đang làm việc thật; coi nó là sống rồi tin tưởng là chờ một cái xác. Nên trả đúng chữ
+ * "chưa xác minh được" và để người điều phối tự quyết.
+ */
+export type PhanQuyetSong = 'live' | 'unverifiable' | 'exited';
+
+export function phanQuyetSong(state: TrangThaiAgent): PhanQuyetSong {
+  if (state === 'closed' || state === 'error') return 'exited';
+  if (state === 'open' || state === 'loading') return 'unverifiable';
+  return 'live';
+}
+
+/** Trạng thái đã dừng tay — `wait` kết thúc ở đây (trừ khi còn hàng chờ nhắm vào nó). */
+const DA_DUNG: ReadonlySet<TrangThaiAgent> = new Set(['idle', 'blocked', 'closed', 'error']);
+
+/**
+ * `wait` có nên dừng vì worker này không.
+ *
+ * Thứ tự ưu tiên là cố ý:
+ *  1. terminal biến mất → dừng, chờ nữa vô ích;
+ *  2. có câu hỏi treo → dừng NGAY, kể cả đang busy — không thì bế tắc hai bên;
+ *  3. còn chỉ thị xếp hàng nhắm vào nó → CHƯA xong dù đang idle — không thì
+ *     `dispatch A; dispatch B after A; wait [A,B]` trả về tức thì vì B đang rảnh;
+ *  4. đã báo kết quả có kiểu → dừng;
+ *  5. đã dừng tay → dừng; `open`/`loading` → chờ tiếp (vắng mặt không phải bằng chứng chết).
+ */
+export function nenDungCho(a: AgentTrangThai | undefined, hangCho: readonly ChoGiao[]): boolean {
+  if (a === undefined) return true;
+  if (a.cauHoi !== undefined) return true;
+  if (hangCho.some((c) => c.terminalId === a.id)) return false;
+  if (a.ketQua !== undefined) return true;
+  return DA_DUNG.has(a.state);
+}
+
+/**
+ * Tình trạng một dispatch trong SỔ theo id — khác `ketQuaWorker` (theo terminal, bị xoá khi
+ * worker nhận việc mới): cổng của hàng chờ cần biết kết cục của ĐÚNG việc A, kể cả khi worker
+ * làm A đã đi làm C.
+ */
+export type TinhTrangGiao = KetCuc | 'dangBay' | 'choGiao' | 'huy';
+
+export type QuyetDinhGiaoSau = { ket: 'giao' } | { ket: 'cho' } | { ket: 'huy'; lyDo: string };
+
+/**
+ * Cổng ngầm của hàng chờ: giao khi MỌI việc trước `succeeded`; một việc `failed`/`blocked`/bị
+ * huỷ/không có trong sổ thì HUỶ chứ không chờ mãi — chờ một việc đã hỏng là treo vô hạn.
+ */
+export function xetGiaoSau(
+  after: readonly string[],
+  so: ReadonlyMap<string, TinhTrangGiao>,
+): QuyetDinhGiaoSau {
+  let conCho = false;
+  for (const id of after) {
+    const t = so.get(id);
+    if (t === 'succeeded') continue;
+    if (t === 'dangBay' || t === 'choGiao') {
+      conCho = true;
+      continue;
+    }
+    if (t === undefined) {
+      return { ket: 'huy', lyDo: `việc trước "${id}" không có trong sổ (gõ nhầm id, hoặc sổ đã mất sau reload)` };
+    }
+    return { ket: 'huy', lyDo: `việc trước "${id}" kết cục ${t}, không phải succeeded` };
+  }
+  return conCho ? { ket: 'cho' } : { ket: 'giao' };
+}
+
 /** Id đi vào TÊN FILE: chỉ cho chữ, số, gạch — nếu không một id bịa ghi được ra ngoài thư mục. */
 const ID_HOP_LE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -228,6 +407,34 @@ export function tenFilePhanHoi(orchDir: string, id: string, sep = '/'): string {
   return [thuMucPhanHoi(orchDir, sep), `${id}.json`].join(sep);
 }
 
+export function thuMucTraLoi(orchDir: string, sep = '/'): string {
+  return [orchDir, 'ans'].join(sep);
+}
+
+/** Câu trả lời cho một câu hỏi chặn — file riêng vì nó có thể tới sau `res/` hàng phút. */
+export function tenFileTraLoi(orchDir: string, askId: string, sep = '/'): string {
+  kiemId(askId);
+  return [thuMucTraLoi(orchDir, sep), `${askId}.json`].join(sep);
+}
+
+export interface TraLoi {
+  id: string;
+  text: string;
+  at: number;
+}
+
+export function docTraLoi(raw: string): TraLoi | null {
+  try {
+    const p: unknown = JSON.parse(raw);
+    if (typeof p !== 'object' || p === null) return null;
+    const o = p as Record<string, unknown>;
+    if (!laChuoi(o.id) || !laChuoi(o.text) || typeof o.at !== 'number') return null;
+    return { id: o.id, text: o.text, at: o.at };
+  } catch {
+    return null;
+  }
+}
+
 function laChuoi(v: unknown): v is string {
   return typeof v === 'string' && v !== '';
 }
@@ -251,7 +458,26 @@ export function docYeuCau(raw: string): YeuCau | null {
     return { id: o.id, from: o.from, at: o.at, type: 'report', text: o.text };
   }
   if (o.type === 'dispatch' && laChuoi(o.terminalId)) {
-    return { id: o.id, from: o.from, at: o.at, type: 'dispatch', terminalId: o.terminalId, text: o.text };
+    const goc: YeuCauDispatch = { id: o.id, from: o.from, at: o.at, type: 'dispatch', terminalId: o.terminalId, text: o.text };
+    if (o.after === undefined) return goc;
+    // Một phần tử rác trong `after` làm hỏng CẢ yêu cầu, không lọc im: lọc im là âm thầm bỏ
+    // một điều kiện tiên quyết, và chỉ thị sẽ được giao trong khi việc trước chưa xong.
+    if (!Array.isArray(o.after) || !o.after.every(laChuoi)) return null;
+    return { ...goc, after: [...o.after] };
+  }
+  if (o.type === 'ask') {
+    return {
+      id: o.id,
+      from: o.from,
+      at: o.at,
+      type: 'ask',
+      text: o.text,
+      ...(laChuoi(o.dispatchId) ? { dispatchId: o.dispatchId } : {}),
+    };
+  }
+  if (o.type === 'reply') {
+    if (!laChuoi(o.askId)) return null;
+    return { id: o.id, from: o.from, at: o.at, type: 'reply', askId: o.askId, text: o.text };
   }
   if (o.type === 'team') {
     if (!laChuoi(o.viec) || !Array.isArray(o.thanhVien)) return null;
@@ -299,6 +525,8 @@ export function docTrangThai(raw: string): AnhChupTrangThai | null {
       workspaceId: laChuoi(o.workspaceId) ? o.workspaceId : '',
       idDieuPhoi: laChuoi(o.idDieuPhoi) ? o.idDieuPhoi : null,
       agents: o.agents as AgentTrangThai[],
+      ...(Array.isArray(o.hangCho) ? { hangCho: o.hangCho as ChoGiao[] } : {}),
+      ...(Array.isArray(o.daHuy) ? { daHuy: o.daHuy as DaHuy[] } : {}),
     };
   } catch {
     return null;

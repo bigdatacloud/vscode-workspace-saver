@@ -37,14 +37,23 @@ import {
   kiemTraTeam,
   tenFilePhanHoi,
   tenFileTrangThai,
+  tenFileTraLoi,
   thuMucYeuCau,
+  xetAsk,
   xetDispatch,
+  xetGiaoSau,
+  xetReply,
   yeuCauConHan,
+  type CauHoiWorker,
+  type ChoGiao,
+  type DaHuy,
   type KetQuaWorker,
   type AgentTrangThai,
   type AnhChupTrangThai,
   type ThanhVienTeam,
+  type TinhTrangGiao,
   type YeuCau,
+  type YeuCauDispatch,
   type YeuCauTeam,
 } from '../orch/bus';
 import { phamViKichHoat } from './kichhoat';
@@ -161,6 +170,16 @@ const ACTIVE_POLL_MS = 3000;
  * mỗi nhịp chậm là mỗi nhịp người điều phối ngồi không.
  */
 const ORCH_POLL_MS = 500;
+/**
+ * Một câu hỏi treo quá lâu thì bị gỡ. Phải ≥ hạn chờ tối đa của tool `ask` phía worker (15 phút):
+ * gỡ sớm hơn là worker còn đứng chờ trong khi extension đã quên câu hỏi, và `reply` tới sau đó
+ * bị từ chối oan.
+ */
+const HAN_HOI_MS = 900_000;
+/** Sổ kết cục theo dispatch chỉ cần đủ cho một phiên làm việc; quá một ngày thì dọn. */
+const HAN_SO_GIAO_MS = 24 * 3_600_000;
+/** Chỉ giữ vài dòng huỷ gần nhất trong `status.json` — người điều phối cần biết, không cần lịch sử. */
+const SO_DONG_HUY = 10;
 const TEN_KENH_KIEM_TOAN = 'AI Workspace — Điều phối';
 /** Log kiểm toán bền, nằm cạnh bus của workspace: `orch/<wsId>/audit.log`. */
 const TEN_FILE_KIEM_TOAN = 'audit.log';
@@ -258,6 +277,17 @@ export class WorkspaceManager implements vscode.Disposable {
    * đọc lại nó sau khi khởi động lại chỉ làm người điều phối tưởng việc mới đã xong.
    */
   private readonly ketQuaWorker = new Map<string, KetQuaWorker>();
+  /** Câu hỏi đang treo của mỗi worker (terminalId → câu hỏi). RAM, cùng lý do với `ketQuaWorker`. */
+  private readonly cauHoiWorker = new Map<string, CauHoiWorker>();
+  /**
+   * Sổ kết cục THEO DISPATCH (dispatchId → tình trạng). Khác `ketQuaWorker` (theo terminal, bị
+   * xoá khi worker nhận việc mới): cổng của hàng chờ cần kết cục của đúng việc A kể cả khi
+   * worker làm A đã đi làm C.
+   */
+  private readonly soGiao = new Map<string, { tinhTrang: TinhTrangGiao; wsId: string; at: number }>();
+  /** Hàng chờ giao việc theo workspace. `from` giữ lại để kiểm quyền LẠI lúc giao. */
+  private readonly hangCho = new Map<string, (ChoGiao & { from: string })[]>();
+  private readonly daHuy = new Map<string, DaHuy[]>();
   private daBaoThieuMcp = false;
   private readonly boNhoChung: vscode.Memento;
   private store: StoreFile;
@@ -1369,9 +1399,11 @@ export class WorkspaceManager implements vscode.Disposable {
       // Chỉ gỡ nhãn "đang tải" của workspace này: xoá sạch loadingIds làm spinner của
       // workspace khác đang mở dở biến mất oan.
       this.ketThucLoading(ws.terminals.map((t) => t.id));
+      this.huyCaHangCho(ws, 'workspace đã đóng');
       for (const entry of ws.terminals) {
         this.terminals.get(entry.id)?.dispose();
         this.statuses.delete(entry.id);
+        this.cauHoiWorker.delete(entry.id);
         // Không xóa thì nhãn "lỗi" của lần activate trước còn dính mãi ở lần mở sau.
         this.errorIds.delete(entry.id);
       }
@@ -2549,6 +2581,7 @@ export class WorkspaceManager implements vscode.Disposable {
         ...(entry.worktree === undefined ? {} : { branch: entry.worktree.branch }),
         ...(entry.claudeSessionId === undefined ? {} : { sessionId: entry.claudeSessionId }),
         ...(this.ketQuaWorker.has(entry.id) ? { ketQua: this.ketQuaWorker.get(entry.id) } : {}),
+        ...(this.cauHoiWorker.has(entry.id) ? { cauHoi: this.cauHoiWorker.get(entry.id) } : {}),
       };
     });
   }
@@ -2559,6 +2592,9 @@ export class WorkspaceManager implements vscode.Disposable {
       workspaceId: ws.id,
       idDieuPhoi: this.terminalDieuPhoi(ws)?.id ?? null,
       agents: this.dsAgentTrangThai(ws),
+      // Bỏ `from` khỏi bản công khai: nó là chuyện kiểm quyền của extension, không phải của agent.
+      hangCho: (this.hangCho.get(ws.id) ?? []).map(({ from: _from, ...c }) => c),
+      daHuy: this.daHuy.get(ws.id) ?? [],
     };
     try {
       const dir = this.thuMucOrch(ws.id);
@@ -2643,6 +2679,11 @@ export class WorkspaceManager implements vscode.Disposable {
         ...(yc.dispatchId === undefined ? {} : { dispatchId: yc.dispatchId }),
         ...(yc.files === undefined ? {} : { files: yc.files }),
       });
+      if (yc.dispatchId !== undefined) {
+        this.soGiao.set(yc.dispatchId, { tinhTrang: yc.outcome, wsId, at: Date.now() });
+      }
+      // Đã báo xong thì câu hỏi treo (nếu còn) không còn nghĩa — không gỡ là nó ghim `wait` mãi.
+      this.cauHoiWorker.delete(yc.from);
       const keFile = yc.files === undefined || yc.files.length === 0 ? '' : ` [${yc.files.join(', ')}]`;
       this.ghiKiemToan(`XONG ← "${nguoiBao.name}" (${yc.outcome}): ${yc.text}${keFile}`, wsId);
       // Ghi lại trạng thái NGAY thay vì đợi nhịp sau: người điều phối có thể đang treo trong
@@ -2658,6 +2699,70 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
 
+    if (yc.type === 'ask') {
+      const dp = this.terminalDieuPhoi(ws);
+      const quyet = xetAsk(yc.from, dp?.id ?? null, this.dsAgentTrangThai(ws));
+      const nguoiHoi = ws.terminals.find((t) => t.id === yc.from);
+      const ten = nguoiHoi?.name ?? yc.from;
+      if (!quyet.cho) {
+        this.ghiKiemToan(`TỪ CHỐI câu hỏi ← "${ten}": ${quyet.lyDo}`, wsId);
+        this.traLoiYeuCau(wsId, yc.id, false, quyet.lyDo);
+        return;
+      }
+      // Id yêu cầu chính là ask_id: MCP server của worker đã biết nó và sẽ poll `ans/<id>`.
+      this.cauHoiWorker.set(yc.from, {
+        id: yc.id,
+        text: yc.text,
+        at: yc.at,
+        ...(yc.dispatchId === undefined ? {} : { dispatchId: yc.dispatchId }),
+      });
+      this.ghiKiemToan(`HỎI ← "${ten}" (ask_id=${yc.id}): ${yc.text}`, wsId);
+      this.ghiTrangThaiOrch(ws);
+      // Kéo sự chú ý của người điều phối: nó có thể đang rảnh chứ không ngồi trong `wait`, và
+      // một câu hỏi không ai đọc là câu hỏi treo tới hết hạn. Đây chỉ là tiếng gõ cửa — kênh
+      // trả lời là tool `reply`, không phải dòng chữ này.
+      const tDp = dp === null ? undefined : this.terminals.get(dp.id);
+      if (tDp !== undefined) {
+        tDp.sendText(
+          `Worker "${ten}" đang hỏi (ask_id=${yc.id}): ${gopVeMotDong(yc.text)} — trả lời bằng tool reply với ask_id đó.`,
+          true,
+        );
+      }
+      this.traLoiYeuCau(wsId, yc.id, true, 'Đã chuyển câu hỏi tới người điều phối; đứng chờ trả lời.');
+      this.onChanged.fire();
+      return;
+    }
+
+    if (yc.type === 'reply') {
+      const quyet = xetReply(yc.from, yc.askId, this.terminalDieuPhoi(ws)?.id ?? null, this.dsAgentTrangThai(ws));
+      if (!quyet.cho) {
+        this.ghiKiemToan(`TỪ CHỐI trả lời (ask_id=${yc.askId}): ${quyet.lyDo}`, wsId);
+        this.traLoiYeuCau(wsId, yc.id, false, quyet.lyDo);
+        return;
+      }
+      const ten = ws.terminals.find((t) => t.id === quyet.terminalId)?.name ?? quyet.terminalId;
+      // Ghi file trả lời TRƯỚC rồi mới gỡ câu hỏi: tool `ask` phía worker coi "câu hỏi biến mất
+      // mà chưa có trả lời" là bị bỏ rơi — thứ tự ngược lại tạo ra đúng cửa sổ đua đó.
+      try {
+        const f = tenFileTraLoi(this.thuMucOrch(wsId), yc.askId, path.sep);
+        nodeFs.mkdirSync(path.dirname(f), { recursive: true });
+        const tam = `${f}.tmp-${randomUUID().slice(0, 8)}`;
+        nodeFs.writeFileSync(tam, JSON.stringify({ id: yc.askId, text: yc.text, at: yc.at }), 'utf8');
+        nodeFs.renameSync(tam, f);
+      } catch (e) {
+        this.traLoiYeuCau(wsId, yc.id, false, `Không ghi được file trả lời: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      this.cauHoiWorker.delete(quyet.terminalId);
+      this.ghiKiemToan(`TRẢ LỜI → "${ten}": ${yc.text}`, wsId);
+      this.ghiTrangThaiOrch(ws);
+      // CỐ Ý không sendText: worker đang đứng giữa một tool call, chữ gõ vào sẽ thành lượt kế
+      // tiếp của nó và nó nhận câu trả lời hai lần.
+      this.traLoiYeuCau(wsId, yc.id, true, `Đã chuyển trả lời tới "${ten}" — về thẳng tool ask của nó, không gõ vào terminal.`);
+      this.onChanged.fire();
+      return;
+    }
+
     if (yc.type === 'report') {
       this.ghiKiemToan(`BÁO CÁO: ${yc.text}`, wsId);
       this.traLoiYeuCau(wsId, yc.id, true, 'Đã ghi vào khung kiểm toán và báo cho người dùng.');
@@ -2670,40 +2775,155 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
 
-    const quyet = xetDispatch(
-      yc.from,
-      yc.terminalId,
-      this.terminalDieuPhoi(ws)?.id ?? null,
-      this.dsAgentTrangThai(ws),
-    );
+    await this.xuLyGiaoViec(wsId, ws, yc);
+  }
+
+  /**
+   * Giao việc: ngay, hoặc xếp hàng nếu có `after`.
+   *
+   * Cổng là NGẦM — giao khi mọi việc trước `succeeded`, huỷ khi một việc trước hỏng. Không có
+   * primitive "cổng quyết định" riêng: kế hoạch vẫn nằm ở agent, extension chỉ sắp thứ tự.
+   */
+  private async xuLyGiaoViec(wsId: string, ws: Workspace, yc: YeuCauDispatch): Promise<void> {
+    const after = yc.after ?? [];
+    if (after.length > 0) {
+      const dp = this.terminalDieuPhoi(ws);
+      if (dp === null || dp.id !== yc.from) {
+        this.traLoiYeuCau(wsId, yc.id, false, 'Chỉ terminal giữ vai điều phối mới xếp hàng được.');
+        return;
+      }
+      // Kiểm đích NGAY lúc xếp hàng để agent sửa trong cùng lượt; lúc giao sẽ kiểm lại lần nữa
+      // vì đích có thể đã đóng trong lúc chờ.
+      const truoc = xetDispatch(yc.from, yc.terminalId, dp.id, this.dsAgentTrangThai(ws));
+      if (!truoc.cho) {
+        this.ghiKiemToan(`TỪ CHỐI xếp hàng → ${yc.terminalId}: ${truoc.lyDo}`, wsId);
+        this.traLoiYeuCau(wsId, yc.id, false, truoc.lyDo);
+        return;
+      }
+      const quyet = xetGiaoSau(after, this.bangSoGiao());
+      if (quyet.ket === 'huy') {
+        this.ghiKiemToan(`TỪ CHỐI xếp hàng → ${yc.terminalId}: ${quyet.lyDo}`, wsId);
+        this.traLoiYeuCau(wsId, yc.id, false, `Không xếp hàng được: ${quyet.lyDo}.`);
+        return;
+      }
+      if (quyet.ket === 'cho') {
+        const ten = ws.terminals.find((t) => t.id === yc.terminalId)?.name ?? yc.terminalId;
+        const hang = this.hangCho.get(wsId) ?? [];
+        hang.push({ id: yc.id, terminalId: yc.terminalId, after: [...after], at: yc.at, text: yc.text, from: yc.from });
+        this.hangCho.set(wsId, hang);
+        this.soGiao.set(yc.id, { tinhTrang: 'choGiao', wsId, at: Date.now() });
+        this.ghiKiemToan(`XẾP HÀNG → "${ten}" (id=${yc.id}) sau [${after.join(', ')}]: ${gopVeMotDong(yc.text)}`, wsId);
+        this.ghiTrangThaiOrch(ws);
+        this.traLoiYeuCau(
+          wsId,
+          yc.id,
+          true,
+          `Đã xếp hàng: sẽ tự giao vào terminal "${ten}" khi ${after.join(', ')} đều succeeded; một cái hỏng thì huỷ và báo ở list_agents/wait.`,
+        );
+        return;
+      }
+      // 'giao': mọi việc trước đã xong từ trước — giao ngay như bình thường.
+    }
+    const kq = this.giaoNgay(ws, yc.id, yc.from, yc.terminalId, yc.text);
+    this.traLoiYeuCau(wsId, yc.id, kq.ok, kq.message);
+  }
+
+  /** Gõ chỉ thị vào worker ngay bây giờ — dùng cho cả giao trực tiếp lẫn giao từ hàng chờ. */
+  private giaoNgay(
+    ws: Workspace,
+    id: string,
+    from: string,
+    terminalId: string,
+    text: string,
+  ): { ok: boolean; message: string } {
+    const quyet = xetDispatch(from, terminalId, this.terminalDieuPhoi(ws)?.id ?? null, this.dsAgentTrangThai(ws));
     if (!quyet.cho) {
-      this.ghiKiemToan(`TỪ CHỐI giao việc → ${yc.terminalId}: ${quyet.lyDo}`, wsId);
-      this.traLoiYeuCau(wsId, yc.id, false, quyet.lyDo);
-      return;
+      this.ghiKiemToan(`TỪ CHỐI giao việc → ${terminalId}: ${quyet.lyDo}`, ws.id);
+      return { ok: false, message: quyet.lyDo };
     }
-    const terminal = this.terminals.get(yc.terminalId);
-    if (terminal === undefined) {
-      this.traLoiYeuCau(wsId, yc.id, false, 'Terminal không còn được theo dõi.');
-      return;
-    }
-    const dich = ws.terminals.find((t) => t.id === yc.terminalId);
-    // Xoá kết quả CŨ của worker này trước khi giao việc mới: để lại thì lần `wait` kế tiếp
-    // trả về báo cáo của việc trước và người điều phối tưởng việc mới đã xong ngay lập tức.
-    this.ketQuaWorker.delete(yc.terminalId);
+    const terminal = this.terminals.get(terminalId);
+    if (terminal === undefined) return { ok: false, message: 'Terminal không còn được theo dõi.' };
+    const dich = ws.terminals.find((t) => t.id === terminalId);
     // GỘP VỀ MỘT DÒNG. `sendText` gõ thẳng vào pty, và trong TUI của agent mỗi xuống dòng là
     // một lần Enter — chỉ thị nhiều dòng sẽ thành nhiều lượt, agent bắt tay làm khi mới đọc
     // nửa câu. Mất ngắt dòng là cái giá rẻ hơn nhiều so với một chỉ thị bị cắt đôi.
-    const motDong = gopVeMotDong(yc.text);
-    if (motDong === '') {
-      this.traLoiYeuCau(wsId, yc.id, false, 'Chỉ thị rỗng sau khi gộp dòng.');
-      return;
-    }
+    const motDong = gopVeMotDong(text);
+    if (motDong === '') return { ok: false, message: 'Chỉ thị rỗng sau khi gộp dòng.' };
+    // Xoá kết quả CŨ của worker này trước khi giao việc mới: để lại thì lần `wait` kế tiếp
+    // trả về báo cáo của việc trước và người điều phối tưởng việc mới đã xong ngay lập tức.
+    this.ketQuaWorker.delete(terminalId);
+    // Câu hỏi treo (nếu có) cũng bị gỡ: chỉ thị mới thay cho câu trả lời. Tool `ask` của worker
+    // tự thấy câu hỏi biến mất và bảo nó đọc chỉ thị mới nhất.
+    this.cauHoiWorker.delete(terminalId);
     // Gắn hợp đồng trả kết quả vào chính chỉ thị: không nói thì worker báo bằng văn xuôi và
     // người điều phối lại phải đi đoán — đúng cái mà kết quả có kiểu sinh ra để bỏ.
-    const kemHopDong = `${motDong} — Khi xong việc này, gọi tool report_done với dispatch_id="${yc.id}".`;
+    const kemHopDong = `${motDong} — Khi xong việc này, gọi tool report_done với dispatch_id="${id}".`;
     terminal.sendText(kemHopDong, true);
-    this.ghiKiemToan(`GIAO VIỆC → "${dich?.name ?? yc.terminalId}": ${motDong}`, wsId);
-    this.traLoiYeuCau(wsId, yc.id, true, `Đã gửi vào terminal "${dich?.name ?? yc.terminalId}".`);
+    this.soGiao.set(id, { tinhTrang: 'dangBay', wsId: ws.id, at: Date.now() });
+    this.ghiKiemToan(`GIAO VIỆC → "${dich?.name ?? terminalId}" (id=${id}): ${motDong}`, ws.id);
+    return { ok: true, message: `Đã gửi vào terminal "${dich?.name ?? terminalId}".` };
+  }
+
+  private bangSoGiao(): Map<string, TinhTrangGiao> {
+    const ra = new Map<string, TinhTrangGiao>();
+    for (const [id, r] of this.soGiao) ra.set(id, r.tinhTrang);
+    return ra;
+  }
+
+  private huyMotChoGiao(ws: Workspace, c: ChoGiao, lyDo: string): void {
+    this.soGiao.set(c.id, { tinhTrang: 'huy', wsId: ws.id, at: Date.now() });
+    const ds = this.daHuy.get(ws.id) ?? [];
+    ds.push({ id: c.id, terminalId: c.terminalId, lyDo, at: Date.now() });
+    // Chỉ giữ vài dòng gần nhất — đủ để người điều phối thấy, không phình `status.json` mãi.
+    while (ds.length > SO_DONG_HUY) ds.shift();
+    this.daHuy.set(ws.id, ds);
+    const ten = ws.terminals.find((t) => t.id === c.terminalId)?.name ?? c.terminalId;
+    this.ghiKiemToan(`HUỶ hàng chờ → "${ten}" (id=${c.id}): ${lyDo}`, ws.id);
+  }
+
+  /** Mỗi nhịp: giao những chỉ thị đã đủ điều kiện, huỷ những chỉ thị mà việc trước đã hỏng. */
+  private xuLyHangCho(ws: Workspace): void {
+    const hang = this.hangCho.get(ws.id);
+    if (hang === undefined || hang.length === 0) return;
+    let doi = false;
+    for (const c of [...hang]) {
+      const quyet = xetGiaoSau(c.after, this.bangSoGiao());
+      if (quyet.ket === 'cho') continue;
+      // Gỡ khỏi hàng TRƯỚC khi làm gì: một chỉ thị giao hai lần là bơm chữ hai lần vào worker.
+      const i = hang.indexOf(c);
+      if (i >= 0) hang.splice(i, 1);
+      doi = true;
+      if (quyet.ket === 'huy') {
+        this.huyMotChoGiao(ws, c, quyet.lyDo);
+        continue;
+      }
+      const kq = this.giaoNgay(ws, c.id, c.from, c.terminalId, c.text);
+      if (!kq.ok) this.huyMotChoGiao(ws, c, kq.message);
+    }
+    if (doi) {
+      this.ghiTrangThaiOrch(ws);
+      this.onChanged.fire();
+    }
+  }
+
+  /** Huỷ cả hàng chờ của một workspace (đóng workspace) — RAM mất thì phải nói, không im. */
+  private huyCaHangCho(ws: Workspace, lyDo: string): void {
+    const hang = this.hangCho.get(ws.id);
+    if (hang === undefined || hang.length === 0) return;
+    for (const c of hang) this.huyMotChoGiao(ws, c, lyDo);
+    this.hangCho.delete(ws.id);
+  }
+
+  /** Gỡ câu hỏi treo quá lâu và dọn sổ cũ — chạy mỗi nhịp, rẻ. */
+  private donHoiDapCu(ws: Workspace): void {
+    const now = Date.now();
+    for (const entry of ws.terminals) {
+      const ch = this.cauHoiWorker.get(entry.id);
+      if (ch === undefined || now - ch.at <= HAN_HOI_MS) continue;
+      this.cauHoiWorker.delete(entry.id);
+      this.ghiKiemToan(`HẾT HẠN câu hỏi của "${entry.name}" (ask_id=${ch.id}) — không ai trả lời trong ${HAN_HOI_MS / 60_000} phút.`, ws.id);
+    }
+    for (const [id, r] of this.soGiao) if (now - r.at > HAN_SO_GIAO_MS) this.soGiao.delete(id);
   }
 
   /** Workspace đang mở nào có terminal điều phối ĐANG CHẠY — chỉ khi đó mới cần vòng nền. */
@@ -2738,8 +2958,11 @@ export class WorkspaceManager implements vscode.Disposable {
     this.dangXuLyOrch = true;
     try {
       for (const ws of this.wsCanDieuPhoi()) {
+        this.donHoiDapCu(ws);
         this.ghiTrangThaiOrch(ws);
         await this.xuLyYeuCauOrch(ws);
+        // Sau khi đã nhận các báo cáo của nhịp này: sổ vừa cập nhật là lúc hàng chờ có thể mở.
+        this.xuLyHangCho(ws);
       }
     } finally {
       this.dangXuLyOrch = false;
@@ -3968,6 +4191,7 @@ export class WorkspaceManager implements vscode.Disposable {
     // vai. Giữ cờ lại chỉ làm cây báo "vai đã đổi" vĩnh viễn cho một thứ đã hết lệch.
     this.vaiDaDoi.delete(terminalId);
     this.ketQuaWorker.delete(terminalId);
+    this.cauHoiWorker.delete(terminalId);
   }
 
   /** Trả startCommand về giá trị trước khi lệnh đang dở chiếm chỗ (lệnh không bao giờ kết thúc). */

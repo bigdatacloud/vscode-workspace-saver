@@ -143,21 +143,40 @@ it is detected and never silently overwritten. Content outside the markers is ne
 Codex terminal receives its role only through `AGENTS.md`, and cannot act as an orchestrator.
 
 The terminal holding an orchestrator role is launched with `--mcp-config` pointing at a server
-this extension ships. That gives the agent five tools — `list_agents`, `read_transcript`,
-`dispatch`, `wait`, `report` — so it can see the other agents, read what they actually did,
-send them instructions, and wait for them. At most one orchestrator terminal per workspace.
+this extension ships. That gives the agent seven tools — `list_agents`, `read_transcript`,
+`dispatch`, `wait`, `reply`, `report`, `propose_team` — so it can see the other agents, read what
+they actually did, send them instructions, answer their questions, and wait for them. At most one
+orchestrator terminal per workspace.
 Every dispatch and report is written to the `AI Workspace — Orchestration` output channel and
 appended to `orch/<wsId>/audit.log`. The channel is for reading live; the file is what survives a
 window reload, which matters because the thing worth re-reading is usually what happened before
 the last reload.
 
-Terminals holding a **worker** role get the same server but exactly one tool: `report_done`.
+Terminals holding a **worker** role get the same server but only two tools, both pointing *up*
+to the orchestrator: `report_done` and `ask`.
 Every dispatch carries a `dispatch_id`, and the worker answers with a schema-validated result —
 `outcome` (`succeeded` / `failed` / `blocked`), a summary, and the files it changed. That is
 what `wait` returns. Without it the orchestrator only sees `idle`, which cannot distinguish
 "finished the assigned task" from "waiting for a keypress" from "finished something else
 entirely" — so it would have to read the transcript and guess. The result is cleared whenever a
 new task is dispatched to that worker, so a stale report can never be mistaken for a fresh one.
+
+Three more pieces, learned from Orca's orchestration guide:
+
+- **Blocking ask/reply.** A worker that is stuck on a decision calls `ask(question)` and the tool
+  call itself waits for the answer. The orchestrator's `wait` returns immediately with an
+  `ĐANG HỎI (ask_id=…)` line, it answers with `reply(ask_id, text)`, and the answer lands in the
+  worker's tool result — never typed into its terminal, so it is never delivered twice. Questions
+  expire, are dropped when the worker gets a new dispatch or reports done, and can be resumed
+  after a timeout with `ask(ask_id)`.
+- **Queued dispatch.** `dispatch(..., after: [dispatch_ids])` is held by the extension and typed
+  into the worker only when every listed dispatch reported `succeeded`. One of them `failed` or
+  `blocked` cancels the queued dispatch with an audit line and an `ĐÃ HUỶ` entry in
+  `list_agents`/`wait`. The plan still lives in the agent; the extension only sequences.
+- **Three-way liveness.** Every agent line carries a verdict: `sống` (the registry saw the
+  session), `CHƯA XÁC MINH ĐƯỢC` (tracked, but the registry is silent — not proof of death), or
+  `đã thoát`. `wait` keeps waiting on an unverifiable worker; the timeout message names the
+  verdict per worker so the orchestrator stops guessing.
 
 Dispatch depth stays fixed at 1: giving workers a tool does not give them `dispatch`, and the
 extension refuses any dispatch that does not come from the orchestrator terminal.

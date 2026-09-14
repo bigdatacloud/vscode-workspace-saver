@@ -922,11 +922,13 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <tbody>
                 <tr><td><code>list_agents</code></td><td>Xem mọi terminal: id, tên, vai, trạng thái, thư mục, nhánh. Gọi trước tiên — đừng đoán id.</td></tr>
                 <tr><td><code>read_transcript</code></td><td>Đọc N lượt cuối của một worker: nó gọi tool gì, đụng file nào. Đây là cách <em>kiểm bài</em> thật, thay vì tin lời tự thuật.</td></tr>
-                <tr><td><code>dispatch</code></td><td>Gửi chỉ thị vào phiên đang chạy của một worker.</td></tr>
-                <tr><td><code>wait</code></td><td>Chờ tới khi worker báo xong hoặc dừng tay. Trả kèm kết quả có kiểu.</td></tr>
+                <tr><td><code>dispatch</code></td><td>Gửi chỉ thị vào phiên đang chạy của một worker. Có <code>after</code> thì <em>xếp hàng</em>: chỉ giao khi mọi việc trước báo <code>succeeded</code>; một cái hỏng thì huỷ và báo lại.</td></tr>
+                <tr><td><code>wait</code></td><td>Chờ tới khi worker báo xong, <em>hỏi</em>, hoặc dừng tay. Trả kèm kết quả có kiểu và phán quyết sống chết của từng worker.</td></tr>
+                <tr><td><code>reply</code></td><td>Trả lời câu hỏi worker đang treo bằng <code>ask</code>. Câu trả lời về thẳng tool call của worker, không gõ vào terminal nó.</td></tr>
                 <tr><td><code>report</code></td><td>Ghi vào khung kiểm toán và báo cho bạn.</td></tr>
                 <tr><td><code>propose_team</code></td><td>Đề xuất một tổ. Extension hỏi bạn duyệt và sửa trước khi tạo terminal, worktree và nhánh git.</td></tr>
                 <tr><td><code>report_done</code><br><span style="font-size:11.5px;color:var(--nhat);font-family:'JetBrains Mono',monospace">chỉ worker</span></td><td>Worker khai kết cục: <code>succeeded</code> / <code>failed</code> / <code>blocked</code>, kèm tóm tắt và danh sách file đã sửa.</td></tr>
+                <tr><td><code>ask</code><br><span style="font-size:11.5px;color:var(--nhat);font-family:'JetBrains Mono',monospace">chỉ worker</span></td><td>Worker kẹt vì thiếu một quyết định thì hỏi sếp và <em>đứng chờ ngay trong tool call</em>. Sếp thấy dòng <code>ĐANG HỎI</code> ở <code>wait</code>, trả lời bằng <code>reply</code>. Hết hạn thì gọi lại với <code>ask_id</code> để chờ tiếp.</td></tr>
               </tbody>
             </table>
           </div>
@@ -1116,10 +1118,34 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             </p>
           </div>
 
+          <h3>Ba thứ học từ Orca</h3>
+          <p>
+            <strong>Hỏi–đáp chặn.</strong> Trước đây worker kẹt chỉ có hai đường, đều dở: <code>report_done</code>
+            với <code>blocked</code> là <em>kết thúc</em> việc, còn hỏi trong terminal thì sếp chỉ thấy
+            <code>idle</code>. Nay worker gọi <code>ask</code> và đứng chờ; <code>wait</code> của sếp dừng
+            ngay với dòng <code>ĐANG HỎI (ask_id=…)</code>; sếp <code>reply</code>; câu trả lời về thẳng
+            tool call của worker. Cố ý <em>không</em> gõ vào terminal worker — nó đang đứng giữa một tool
+            call, gõ vào là nó nhận câu trả lời hai lần.
+          </p>
+          <p>
+            <strong>Hàng chờ giao việc.</strong> <code>dispatch</code> với <code>after: [id…]</code> được
+            extension giữ lại và chỉ gõ vào worker khi mọi việc trước báo <code>succeeded</code>. Một việc
+            trước <code>failed</code> hay <code>blocked</code> thì chỉ thị bị huỷ, có dòng kiểm toán và dòng
+            <code>ĐÃ HUỶ</code> trong <code>list_agents</code>. Kế hoạch vẫn nằm ở sếp — extension chỉ
+            sắp thứ tự, để sếp không phải ngồi <code>wait</code> ba lần cho một chuỗi ba việc.
+          </p>
+          <p>
+            <strong>Phán quyết sống chết ba mức.</strong> Mỗi dòng agent mang một trong ba chữ:
+            <em>sống</em> (registry vừa thấy phiên), <em>chưa xác minh được</em> (đang track nhưng
+            registry im — <strong>không phải</strong> bằng chứng chết), <em>đã thoát</em>. <code>wait</code>
+            vẫn chờ tiếp trên worker chưa xác minh được, và thông điệp hết hạn nêu phán quyết từng
+            worker để sếp thôi đoán rồi vội giao lại việc cho người khác.
+          </p>
+
           <h3>Sáu chỗ người mới hay vấp</h3>
           <ol>
             <li><strong>Tạo terminal trước rồi mới gắn vai.</strong> Cấu hình MCP nằm trong lệnh khởi chạy, nên phải đóng terminal đó rồi bật lại riêng nó. Chọn vai lúc tạo thì không cần.</li>
-            <li><strong>Xoá mục “Báo cáo khi xong” trong file vai worker.</strong> Đó là chỗ duy nhất dạy nó gọi <code>report_done</code>; xoá đi thì <code>wait</code> của sếp chờ mãi.</li>
+            <li><strong>Xoá mục “Báo cáo khi xong” trong file vai worker.</strong> Đó là chỗ duy nhất dạy nó gọi <code>report_done</code> và <code>ask</code>; xoá đi thì <code>wait</code> của sếp chờ mãi.</li>
             <li><strong>Cho Codex làm sếp.</strong> Nó không nhận được cấu hình MCP theo từng lần chạy. Sếp phải là Claude.</li>
             <li><strong>Định nghĩa hai vai điều phối.</strong> Được, nhưng chỉ một <em>terminal</em> mang vai điều phối tại một thời điểm.</li>
             <li><strong>Bảo sếp “mở thêm một agent nữa”.</strong> Nó không tạo được terminal — độ sâu điều phối là 1. Nó sẽ <code>report</code> để bạn tự mở.</li>

@@ -27,8 +27,10 @@ export function duongDanRole(goc: string, wsId: string, roleId: string, sep = '/
  */
 const PHAN_BAO_CAO = `## Báo cáo khi xong
 
-Bạn có một tool duy nhất: \`report_done\`. Khi làm xong việc mà người điều phối giao (chỉ thị
-của họ có kèm \`dispatch_id\`), gọi nó với:
+Bạn có hai tool, cả hai đều nói với người điều phối: \`report_done\` và \`ask\`.
+
+Khi làm xong việc mà người điều phối giao (chỉ thị của họ có kèm \`dispatch_id\`), gọi
+\`report_done\` với:
 
 - \`outcome\`: \`succeeded\` (xong và đạt) / \`failed\` (đã thử và hỏng) / \`blocked\` (kẹt, cần quyết)
 - \`summary\`: đã làm gì, kết quả ra sao
@@ -37,6 +39,14 @@ của họ có kèm \`dispatch_id\`), gọi nó với:
 
 Không gọi thì người điều phối chỉ thấy bạn "rảnh" — mà "rảnh" không phân biệt được "xong việc"
 với "đang chờ ai đó bấm", nên nó sẽ phải đi đọc transcript của bạn và tự đoán.
+
+## Khi kẹt vì thiếu một quyết định
+
+Gọi \`ask\` với câu hỏi (nêu rõ các phương án). Tool này ĐỨNG CHỜ cho tới khi người điều phối
+trả lời — câu trả lời về ngay trong kết quả tool, không phải trong terminal. Đừng hỏi người
+dùng trong terminal: người điều phối không đọc được màn hình của bạn. Hết thời gian mà chưa có
+trả lời thì gọi lại \`ask\` với \`ask_id\` để chờ tiếp, đừng gửi câu hỏi mới trùng nội dung.
+Kẹt hẳn, không có câu trả lời nào gỡ được, thì \`report_done\` với \`blocked\`.
 `;
 
 /**

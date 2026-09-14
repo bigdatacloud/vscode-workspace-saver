@@ -421,14 +421,15 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 ## Điều phối (orchestration)
 - [ ] Tạo vai `lead` loại Orchestrator, viết mô tả, gắn cho một terminal Claude
 - [ ] Đóng workspace rồi kích hoạt lại → lệnh khởi chạy terminal đó có `--mcp-config`
-- [ ] Trong terminal điều phối, gõ `/mcp` → thấy server `ai-workspace` với 5 tool
+- [ ] Trong terminal điều phối, gõ `/mcp` → thấy server `ai-workspace` với 7 tool
+      (`list_agents`, `read_transcript`, `dispatch`, `wait`, `reply`, `report`, `propose_team`)
 - [ ] Bảo nó `dùng list_agents xem có ai` → liệt kê đúng các terminal, đúng vai, đúng nhánh
 - [ ] Bảo nó giao việc cho một worker → chữ XUẤT HIỆN trong terminal của worker, và
       Output Channel `AI Workspace — Điều phối` có dòng `GIAO VIỆC → "<tên>"`
 - [ ] Bảo nó `đọc transcript của worker đó` → thấy tool worker đã gọi và file đã đụng
 - [ ] Bảo nó `report` một câu → hiện thông báo cho bạn kèm nút mở khung kiểm toán
-- [ ] Terminal WORKER có vai: gõ `/mcp` → thấy server `ai-workspace` với ĐÚNG MỘT tool
-      `report_done` (không có `dispatch`)
+- [ ] Terminal WORKER có vai: gõ `/mcp` → thấy server `ai-workspace` với ĐÚNG HAI tool
+      `report_done` và `ask` (không có `dispatch`, không có `reply`)
 - [ ] Điều phối giao việc → chỉ thị gõ vào worker có kèm `dispatch_id`
 - [ ] Bảo worker gọi `report_done` với outcome `succeeded` → khung kiểm toán ghi
       `XONG ← "<tên>" (succeeded): …` kèm danh sách file
@@ -443,6 +444,57 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] **CHẶN SHELL TRẦN**: bảo điều phối gửi vào terminal shell thường → bị từ chối
 - [ ] Bảo điều phối gửi cho CHÍNH NÓ → bị từ chối
 - [ ] Đóng workspace trong lúc điều phối đang chờ → tool báo hết hạn chứ không treo mãi
+
+## Hỏi–đáp chặn (ask / reply)
+- [ ] Bảo worker gọi `ask` với một câu hỏi → tool call của worker ĐỨNG CHỜ (không trả về ngay);
+      khung kiểm toán ghi `HỎI ← "<tên>" (ask_id=…)`; terminal điều phối nhận MỘT dòng
+      "Worker … đang hỏi (ask_id=…)"
+- [ ] Điều phối đang ngồi trong `wait` cho worker đó → `wait` trả về NGAY kèm dòng
+      `↳ ĐANG HỎI (ask_id=…): … — trả lời bằng tool reply`, dù worker vẫn đang `busy`
+- [ ] `list_agents` cũng hiện dòng `ĐANG HỎI` đó
+- [ ] Điều phối gọi `reply(ask_id, text)` → tool `ask` của worker trả về "Trả lời của người điều
+      phối: …"; terminal worker KHÔNG có thêm dòng chữ nào được gõ vào; khung kiểm toán ghi
+      `TRẢ LỜI → "<tên>"`
+- [ ] Sau reply, `list_agents` không còn dòng `ĐANG HỎI`
+- [ ] Điều phối `reply` với ask_id bịa → bị từ chối, nêu lý do "không có câu hỏi nào đang treo"
+- [ ] Worker thử gọi `reply` → không có tool đó
+- [ ] Điều phối thử gọi `ask` → không có tool đó
+- [ ] Worker `ask` với `timeout_ms` = 5000 và không ai trả lời → sau ~5 giây tool trả lỗi kèm
+      hướng dẫn gọi lại với `ask_id`; gọi lại `ask(ask_id)` rồi reply → nhận được trả lời
+- [ ] Worker đang `ask` mà điều phối `dispatch` việc mới cho nó → tool `ask` trả về báo "câu hỏi
+      không còn treo… đọc chỉ thị mới nhất"; `list_agents` không còn `ĐANG HỎI`
+- [ ] Worker đang `ask` mà bị đóng terminal → `list_agents` không còn `ĐANG HỎI`
+- [ ] Không ai trả lời trong 15 phút → khung kiểm toán ghi `HẾT HẠN câu hỏi của "<tên>"`
+- [ ] Trong terminal WORKER thử ghi tay một file `req` giả mạo `type: reply` với `from` là id
+      của worker → bị từ chối "chỉ terminal giữ vai điều phối"
+
+## Hàng chờ giao việc (`dispatch … after`)
+- [ ] `dispatch` bình thường → kết quả tool có `dispatch_id=<id>`; khung kiểm toán ghi
+      `GIAO VIỆC → "<tên>" (id=…)`
+- [ ] `dispatch` việc B cho worker 2 với `after: [<id việc A>]` trong khi A chưa xong → tool trả
+      "Đã xếp hàng…"; `list_agents` có mục `HÀNG CHỜ` liệt kê B; khung kiểm toán ghi `XẾP HÀNG →`
+- [ ] `wait [worker 2]` khi B đang xếp hàng → KHÔNG trả về ngay dù worker 2 đang rảnh
+- [ ] Worker 1 `report_done` A với `succeeded` → trong vòng ~1 giây, B được gõ vào worker 2 kèm
+      `dispatch_id` CỦA B; `HÀNG CHỜ` trống; `wait` ở trên vẫn chờ tiếp tới khi B xong
+- [ ] Làm lại với A báo `failed` → B KHÔNG được giao; `list_agents` có mục `ĐÃ HUỶ khỏi hàng chờ`
+      nêu lý do "kết cục failed"; khung kiểm toán ghi `HUỶ hàng chờ →`
+- [ ] Xếp hàng C sau B, rồi để A `failed` → cả B lẫn C bị huỷ (huỷ dây chuyền)
+- [ ] `dispatch` với `after` chứa id bịa → bị từ chối ngay, nêu "không có trong sổ"
+- [ ] Xếp hàng B rồi đóng terminal worker 2 trước khi A xong → khi A xong, B bị huỷ với lý do
+      của `xetDispatch` (terminal đóng), không gõ vào đâu cả
+- [ ] Xếp hàng B rồi đóng workspace → khung kiểm toán ghi `HUỶ hàng chờ … workspace đã đóng`
+- [ ] Reload cửa sổ khi còn hàng chờ → hàng chờ mất (RAM); `dispatch` sau đó với `after` trỏ id
+      cũ bị từ chối "không có trong sổ… sau reload"
+
+## Phán quyết sống chết
+- [ ] `list_agents`: worker đang chạy hiện `busy [sống]` / `idle [sống]`
+- [ ] Terminal đã đóng hiện `closed [đã thoát]`
+- [ ] Đổi tên tạm `claude` trong PATH (hoặc làm `claude agents --json` hỏng) rồi `list_agents` →
+      các terminal đang mở hiện `open [CHƯA XÁC MINH ĐƯỢC (…)]`, KHÔNG phải `đã thoát`
+- [ ] `wait` một worker ở trạng thái chưa xác minh được → KHÔNG trả về ngay; hết hạn thì thông
+      điệp nêu "xem phán quyết trong ngoặc vuông" và dòng đó ghi chưa xác minh được
+- [ ] Worker `blocked` (chờ bấm quyền) → dòng `↳ đang chờ người dùng bấm quyền — chỉ người dùng
+      gỡ được`, phân biệt rõ với `ĐANG HỎI`
 
 ## Lập tổ
 - [ ] Chuột phải terminal KHÔNG mang vai điều phối → **không** thấy mục `Lập tổ`
