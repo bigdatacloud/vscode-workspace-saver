@@ -68,6 +68,8 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       `aiWorkspace.dangNghe`)
 - [ ] Tắt `dictation.enabled` rồi Ctrl+Shift+Y → cảnh báo "Không bật được nghe giọng nói…", không có
       chỉ báo treo lại
+- [ ] Nghe xong không ra chữ → `AI Workspace: Chọn micro nghe giọng nói` mở bảng chọn micro của
+      VS Code; chọn micro thật → lần nghe sau ra chữ; log renderer không còn `reason=noTranscript`
 - [ ] Nhấn Ctrl+Shift+Y KHÔNG hiện "Waiting for second key of chord…" (không extension nào giữ
       phím này làm tiền tố chord — Ctrl+E thì SQLTools chiếm, đó là lý do đổi phím)
 

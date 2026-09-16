@@ -7,7 +7,7 @@ import { TerminalManager } from './terminal/manager';
 import { WorkspaceManager } from './workspace/manager';
 import { WorkspaceDragAndDrop, WorkspaceTreeProvider } from './ui/tree';
 import { registerCommands } from './ui/commands';
-import { BoNgheGiongNoi, damBaoPhimQuaShell, LENH_TOGGLE } from './ui/giongnoi';
+import { BoNgheGiongNoi, damBaoPhimQuaShell, LENH_CHON_MIC, LENH_TOGGLE } from './ui/giongnoi';
 
 let manager: WorkspaceManager | null = null;
 
@@ -31,7 +31,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(view, tree, manager, terminals, ...registerCommands(manager));
   const nghe = new BoNgheGiongNoi();
-  context.subscriptions.push(nghe, vscode.commands.registerCommand(LENH_TOGGLE, () => nghe.toggle()));
+  context.subscriptions.push(
+    nghe,
+    vscode.commands.registerCommand(LENH_TOGGLE, () => nghe.toggle()),
+    vscode.commands.registerCommand(LENH_CHON_MIC, () => nghe.chonMic()),
+  );
   void damBaoPhimQuaShell();
 }
 

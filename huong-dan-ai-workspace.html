@@ -561,7 +561,7 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">26</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">27</div><div class="so-t">lệnh</div></div>
       <div class="so-o"><div class="so-n">421</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
@@ -1268,7 +1268,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>26 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>27 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -1288,6 +1288,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Tạo terminal Codex mới</td><td>Như trên, cho Codex</td><td>chuột phải workspace</td></tr>
                 <tr><td>Tạo terminal mới</td><td>Shell thường, không tạo worktree</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td></tr>
                 <tr><td>Nghe giọng nói vào terminal</td><td>Bật dictation của VS Code vào terminal vừa dùng, hiện ĐANG NGHE; bấm lại để dừng. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd></td></tr>
+                <tr><td>Chọn micro nghe giọng nói</td><td>Mở bảng chọn micro của VS Code — dùng khi nghe xong không ra chữ (micro mặc định là thiết bị ảo câm)</td><td>Command Palette</td></tr>
                 <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
                 <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
@@ -1559,6 +1560,21 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <p>
                 Nếu vẫn không có, extension sẽ đã báo một cảnh báo rằng không ghi được cấu hình.
                 Kiểm tra <code>dist/mcp.js</code> có trong thư mục extension không.
+              </p>
+            </details>
+
+            <details>
+              <summary>Nghe xong không ra chữ nào, cũng không báo lỗi</summary>
+              <p>
+                Gần như luôn là <strong>micro sai</strong>. Dictation của VS Code lấy micro “mặc định” theo
+                Chromium; máy có micro ảo (app chia sẻ màn hình, bộ trộn âm…) thì cái đó có thể là một
+                thiết bị câm — model nghe toàn im lặng, kết thúc với transcript rỗng và log ghi
+                <code>reason=noTranscript</code>. Chạy <strong>AI Workspace: Chọn micro nghe giọng nói</strong>
+                (hoặc <em>Voice: Select Microphone</em>) rồi chọn micro thật. VS Code nhớ lựa chọn.
+              </p>
+              <p>
+                Lần đầu sau khi tải model còn một bẫy nữa: nói trước khi model nạp xong (hàng chục giây) thì
+                lời bị bỏ. Chờ tiếng báo hoặc chấm đỏ cạnh con trỏ rồi mới nói.
               </p>
             </details>
 

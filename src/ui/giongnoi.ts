@@ -15,6 +15,9 @@ const LENH_BAT = 'workbench.action.terminal.startVoice';
 const LENH_DUNG = 'workbench.action.terminal.stopVoice';
 const KHOA_NGU_CANH = 'aiWorkspace.dangNghe';
 export const LENH_TOGGLE = 'aiWorkspace.voiceToggle';
+export const LENH_CHON_MIC = 'aiWorkspace.voiceSelectMicrophone';
+/** Lệnh chọn micro của chính VS Code cho dictation — ghi nhớ theo cửa sổ, không có setting tương ứng. */
+const LENH_CHON_MIC_VSCODE = 'workbench.action.chat.selectSpeechToTextMicrophone';
 const PHIM = process.platform === 'darwin' ? 'Cmd+Shift+Y' : 'Ctrl+Shift+Y';
 
 export class BoNgheGiongNoi implements vscode.Disposable {
@@ -27,7 +30,7 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     // Ưu tiên rất cao để đứng sát mép trái: lúc đang nghe, đây là thứ duy nhất cần thấy.
     this.thanh = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10_000);
     this.thanh.command = LENH_TOGGLE;
-    this.thanh.tooltip = `Đang nghe giọng nói vào terminal. Bấm ${PHIM} hoặc bấm vào đây để dừng.`;
+    this.thanh.tooltip = `Đang nghe giọng nói vào terminal. Bấm ${PHIM} hoặc bấm vào đây để dừng. Nói mà không ra chữ → lệnh "AI Workspace: Chọn micro nghe giọng nói".`;
     this.thanh.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   }
 
@@ -95,6 +98,22 @@ export class BoNgheGiongNoi implements vscode.Disposable {
   dispose(): void {
     if (this.dangNghe) void this.dung();
     this.thanh.dispose();
+  }
+
+  /**
+   * Mở bảng chọn micro của VS Code. Vì sao cần: dictation mặc định lấy micro "mặc định" theo
+   * Chromium, trên máy có micro ảo (app chia sẻ màn hình…) cái đó có thể là một thiết bị câm —
+   * model nghe toàn im lặng, kết thúc với transcript rỗng mà không báo lỗi nào. Chọn tay đúng
+   * micro thật là cách gỡ duy nhất; VS Code nhớ lựa chọn này.
+   */
+  async chonMic(): Promise<void> {
+    try {
+      await vscode.commands.executeCommand(LENH_CHON_MIC_VSCODE);
+    } catch (e) {
+      void vscode.window.showWarningMessage(
+        `Không mở được bảng chọn micro của VS Code: ${e instanceof Error ? e.message : String(e)}. Thử Command Palette → "Voice: Select Microphone".`,
+      );
+    }
   }
 }
 

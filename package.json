@@ -131,6 +131,10 @@
         "icon": "$(mic)"
       },
       {
+        "command": "aiWorkspace.voiceSelectMicrophone",
+        "title": "AI Workspace: Chọn micro nghe giọng nói"
+      },
+      {
         "command": "aiWorkspace.showWorkspaceInfo",
         "title": "AI Workspace: Xem thông tin workspace"
       }
