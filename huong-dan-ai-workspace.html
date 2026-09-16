@@ -1563,14 +1563,13 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             </details>
 
             <details>
-              <summary>Nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> chỉ thấy “Waiting for second key of chord…”</summary>
+              <summary>Nhấn phím nghe chỉ thấy “Waiting for second key of chord…”</summary>
               <p>
-                Một extension khác đang giữ <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> làm <em>phím đầu của tổ hợp hai
-                phím</em> (chord), và VS Code luôn ưu tiên chờ phím thứ hai thay vì chạy phím đơn. Thủ phạm
-                thường gặp là <strong>SQLTools</strong> (<code>Ctrl+Shift+Y Ctrl+E</code> chạy query…). Tắt chord
-                của nó bằng <code>"sqltools.disableChordKeybindings": true</code> trong settings, hoặc
-                gán lại phím của lệnh <code>aiWorkspace.voiceToggle</code> sang phím khác trong
-                Keyboard Shortcuts.
+                Một extension khác đang giữ phím đó làm <em>phím đầu của tổ hợp hai phím</em> (chord), và
+                VS Code luôn ưu tiên chờ phím thứ hai thay vì chạy phím đơn. Phím mặc định
+                <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> được chọn vì không extension phổ biến nào
+                dùng nó làm chord (Ctrl+E thì SQLTools chiếm). Nếu vẫn gặp, mở Keyboard Shortcuts, tìm
+                <code>aiWorkspace.voiceToggle</code> và gán phím khác.
               </p>
             </details>
 

@@ -68,8 +68,8 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       `aiWorkspace.dangNghe`)
 - [ ] Tắt `dictation.enabled` rồi Ctrl+Shift+Y → cảnh báo "Không bật được nghe giọng nói…", không có
       chỉ báo treo lại
-- [ ] Máy có SQLTools: nếu Ctrl+Shift+Y chỉ hiện "Waiting for second key of chord…" → đặt
-      `sqltools.disableChordKeybindings: true`, reload → Ctrl+Shift+Y chạy ngay
+- [ ] Nhấn Ctrl+Shift+Y KHÔNG hiện "Waiting for second key of chord…" (không extension nào giữ
+      phím này làm tiền tố chord — Ctrl+E thì SQLTools chiếm, đó là lý do đổi phím)
 
 ## Màu chấm theo nhà cung cấp
 - [ ] Terminal Claude đang chạy → vòng XOAY màu cam đất (#D97757); rảnh → chấm đứng yên cùng màu

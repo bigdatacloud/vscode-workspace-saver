@@ -102,8 +102,7 @@ export class BoNgheGiongNoi implements vscode.Disposable {
  * VS Code mặc định chuyển hầu hết phím vào shell khi terminal focus; chỉ lệnh nằm trong
  * `terminal.integrated.commandsToSkipShell` mới được giữ lại. Extension KHÔNG khai được vào
  * danh sách đó bằng `contributes`, nên phải ghi vào cài đặt người dùng — một lần, có báo.
- * Không làm thế thì Ctrl+Shift+Y trong terminal thành lệnh "về cuối dòng" của readline và không bao
- * giờ tới được ta.
+ * Không làm thế thì phím trong terminal bị đẩy xuống shell và không bao giờ tới được ta.
  */
 export async function damBaoPhimQuaShell(): Promise<void> {
   const KHOA = 'terminal.integrated.commandsToSkipShell';
