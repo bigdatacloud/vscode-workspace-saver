@@ -65,7 +65,9 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     void vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Đang nghe cho terminal "${terminal.name}" — nói xong bấm ${PHIM} (hoặc Cancel) để dừng`,
+        // Nói trước khi model sẵn sàng là mất lời (VS Code không đệm âm thanh lúc đang nạp model;
+        // lần đầu sau khi tải, nạp model CPU 755 MB mất hàng chục giây). Nên dặn ngay tại đây.
+        title: `Đang nghe cho terminal "${terminal.name}" — CHỜ tiếng báo / chấm đỏ cạnh con trỏ rồi mới nói (lần đầu nạp model có thể mất 10–30 giây); nói xong bấm ${PHIM} hoặc Cancel`,
         cancellable: true,
       },
       (_tienTrinh, token) =>
