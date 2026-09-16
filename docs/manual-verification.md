@@ -68,6 +68,8 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       `aiWorkspace.dangNghe`)
 - [ ] Tắt `dictation.enabled` rồi Ctrl+E → cảnh báo "Không bật được nghe giọng nói…", không có
       chỉ báo treo lại
+- [ ] Máy có SQLTools: nếu Ctrl+E chỉ hiện "Waiting for second key of chord…" → đặt
+      `sqltools.disableChordKeybindings: true`, reload → Ctrl+E chạy ngay
 
 ## Màu chấm theo nhà cung cấp
 - [ ] Terminal Claude đang chạy → vòng XOAY màu cam đất (#D97757); rảnh → chấm đứng yên cùng màu

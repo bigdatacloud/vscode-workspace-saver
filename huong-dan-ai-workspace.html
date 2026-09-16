@@ -1563,6 +1563,18 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             </details>
 
             <details>
+              <summary>Nhấn <kbd>Ctrl</kbd>+<kbd>E</kbd> chỉ thấy “Waiting for second key of chord…”</summary>
+              <p>
+                Một extension khác đang giữ <kbd>Ctrl</kbd>+<kbd>E</kbd> làm <em>phím đầu của tổ hợp hai
+                phím</em> (chord), và VS Code luôn ưu tiên chờ phím thứ hai thay vì chạy phím đơn. Thủ phạm
+                thường gặp là <strong>SQLTools</strong> (<code>Ctrl+E Ctrl+E</code> chạy query…). Tắt chord
+                của nó bằng <code>"sqltools.disableChordKeybindings": true</code> trong settings, hoặc
+                gán lại phím của lệnh <code>aiWorkspace.voiceToggle</code> sang phím khác trong
+                Keyboard Shortcuts.
+              </p>
+            </details>
+
+            <details>
               <summary>Terminal quay về nhưng mở hội thoại trắng</summary>
               <p>
                 Nghĩa là extension chưa bắt được id phiên của terminal đó, nên không
