@@ -148,8 +148,8 @@
       },
       {
         "command": "aiWorkspace.voiceToggle",
-        "key": "ctrl+e",
-        "mac": "cmd+e",
+        "key": "ctrl+shift+y",
+        "mac": "cmd+shift+y",
         "when": "terminalFocus || focusedView == aiWorkspace.workspaces || aiWorkspace.dangNghe"
       }
     ],

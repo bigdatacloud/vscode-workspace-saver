@@ -15,7 +15,7 @@ const LENH_BAT = 'workbench.action.terminal.startVoice';
 const LENH_DUNG = 'workbench.action.terminal.stopVoice';
 const KHOA_NGU_CANH = 'aiWorkspace.dangNghe';
 export const LENH_TOGGLE = 'aiWorkspace.voiceToggle';
-const PHIM = process.platform === 'darwin' ? 'Cmd+E' : 'Ctrl+E';
+const PHIM = process.platform === 'darwin' ? 'Cmd+Shift+Y' : 'Ctrl+Shift+Y';
 
 export class BoNgheGiongNoi implements vscode.Disposable {
   private dangNghe = false;
@@ -102,7 +102,7 @@ export class BoNgheGiongNoi implements vscode.Disposable {
  * VS Code mặc định chuyển hầu hết phím vào shell khi terminal focus; chỉ lệnh nằm trong
  * `terminal.integrated.commandsToSkipShell` mới được giữ lại. Extension KHÔNG khai được vào
  * danh sách đó bằng `contributes`, nên phải ghi vào cài đặt người dùng — một lần, có báo.
- * Không làm thế thì Ctrl+E trong terminal thành lệnh "về cuối dòng" của readline và không bao
+ * Không làm thế thì Ctrl+Shift+Y trong terminal thành lệnh "về cuối dòng" của readline và không bao
  * giờ tới được ta.
  */
 export async function damBaoPhimQuaShell(): Promise<void> {

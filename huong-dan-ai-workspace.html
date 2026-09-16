@@ -703,10 +703,10 @@
 
           <h3>Ra lệnh bằng giọng nói</h3>
           <p>
-            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>E</kbd>. Thanh trạng thái hiện
+            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>. Thanh trạng thái hiện
             <strong>ĐANG NGHE → "tên terminal"</strong> kèm một thông báo tiến trình ở góc dưới.
             Nói tiếng Việt; chữ được gõ dần vào ô nhập của terminal. Nhấn
-            <kbd>Ctrl</kbd>+<kbd>E</kbd> lần nữa (hoặc Cancel trên thông báo) để dừng, đọc lại rồi
+            <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> lần nữa (hoặc Cancel trên thông báo) để dừng, đọc lại rồi
             tự nhấn Enter — extension <em>không bao giờ</em> gửi Enter hộ, vì một câu nghe nhầm
             gửi thẳng vào agent là thứ không được phép xảy ra.
           </p>
@@ -717,7 +717,7 @@
             để <code>auto</code> trên máy locale en-US thì tiếng Việt bị chép thành tiếng Anh. Lần
             đầu chạy, extension thêm lệnh của nó vào
             <code>terminal.integrated.commandsToSkipShell</code> (có báo) để
-            <kbd>Ctrl</kbd>+<kbd>E</kbd> trong terminal tới được nó thay vì bị shell nuốt.
+            <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> trong terminal tới được nó thay vì bị shell nuốt.
           </p>
         </div>
       </section>
@@ -1287,7 +1287,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Tạo terminal Claude mới</td><td>Hỏi đường dẫn → vai → cách chạy → việc</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td></tr>
                 <tr><td>Tạo terminal Codex mới</td><td>Như trên, cho Codex</td><td>chuột phải workspace</td></tr>
                 <tr><td>Tạo terminal mới</td><td>Shell thường, không tạo worktree</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td></tr>
-                <tr><td>Nghe giọng nói vào terminal</td><td>Bật dictation của VS Code vào terminal vừa dùng, hiện ĐANG NGHE; bấm lại để dừng. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td></tr>
+                <tr><td>Nghe giọng nói vào terminal</td><td>Bật dictation của VS Code vào terminal vừa dùng, hiện ĐANG NGHE; bấm lại để dừng. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd></td></tr>
                 <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
                 <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
@@ -1563,11 +1563,11 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             </details>
 
             <details>
-              <summary>Nhấn <kbd>Ctrl</kbd>+<kbd>E</kbd> chỉ thấy “Waiting for second key of chord…”</summary>
+              <summary>Nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> chỉ thấy “Waiting for second key of chord…”</summary>
               <p>
-                Một extension khác đang giữ <kbd>Ctrl</kbd>+<kbd>E</kbd> làm <em>phím đầu của tổ hợp hai
+                Một extension khác đang giữ <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> làm <em>phím đầu của tổ hợp hai
                 phím</em> (chord), và VS Code luôn ưu tiên chờ phím thứ hai thay vì chạy phím đơn. Thủ phạm
-                thường gặp là <strong>SQLTools</strong> (<code>Ctrl+E Ctrl+E</code> chạy query…). Tắt chord
+                thường gặp là <strong>SQLTools</strong> (<code>Ctrl+Shift+Y Ctrl+E</code> chạy query…). Tắt chord
                 của nó bằng <code>"sqltools.disableChordKeybindings": true</code> trong settings, hoặc
                 gán lại phím của lệnh <code>aiWorkspace.voiceToggle</code> sang phím khác trong
                 Keyboard Shortcuts.
