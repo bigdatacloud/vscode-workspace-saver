@@ -51,6 +51,24 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       B **không** bị nhận nuôi, cây vẫn ghi "chưa mở"; kích hoạt cả workspace sau đó thì B được
       NỐI LẠI chứ không mở tab thứ hai
 
+## Nghe giọng nói vào terminal (Ctrl+E)
+- [ ] Lần đầu kích hoạt extension → thông báo đã thêm `aiWorkspace.voiceToggle` vào
+      `terminal.integrated.commandsToSkipShell`; settings.json có dòng đó; lần sau KHÔNG báo lại
+- [ ] Focus terminal Claude, nhấn Ctrl+E → thanh trạng thái hiện `ĐANG NGHE → "<tên>"` nền vàng,
+      góc dưới có thông báo tiến trình; VS Code tải model ở lần đầu
+- [ ] Nói tiếng Việt → chữ xuất hiện trong ô nhập terminal (không phải editor)
+- [ ] Nhấn Ctrl+E lần nữa → chỉ báo biến mất, chữ VẪN nằm trong ô nhập, KHÔNG có Enter được gửi
+- [ ] Bấm Cancel trên thông báo tiến trình thay vì Ctrl+E → cũng dừng, chỉ báo biến mất
+- [ ] Focus CÂY AI Workspaces (không phải terminal), nhấn Ctrl+E → nghe vào terminal hoạt động
+      gần nhất, terminal đó được kéo lên focus
+- [ ] Không có terminal nào mở, nhấn Ctrl+E → cảnh báo "Chưa có terminal nào", không bật gì
+- [ ] Focus editor, nhấn Ctrl+E → vẫn là Quick Open của VS Code (phím chỉ đè khi terminal / cây
+      focus / đang nghe)
+- [ ] Đang nghe, chuyển focus sang editor rồi nhấn Ctrl+E → vẫn DỪNG được (khoá ngữ cảnh
+      `aiWorkspace.dangNghe`)
+- [ ] Tắt `dictation.enabled` rồi Ctrl+E → cảnh báo "Không bật được nghe giọng nói…", không có
+      chỉ báo treo lại
+
 ## Màu chấm theo nhà cung cấp
 - [ ] Terminal Claude đang chạy → vòng XOAY màu cam đất (#D97757); rảnh → chấm đứng yên cùng màu
 - [ ] Terminal Codex → xanh ngọc (#10A37F); shell thường → xám

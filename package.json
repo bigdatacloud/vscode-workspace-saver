@@ -126,6 +126,11 @@
         "title": "AI Workspace: Xem đường dẫn terminal"
       },
       {
+        "command": "aiWorkspace.voiceToggle",
+        "title": "AI Workspace: Nghe giọng nói vào terminal (bật / dừng)",
+        "icon": "$(mic)"
+      },
+      {
         "command": "aiWorkspace.showWorkspaceInfo",
         "title": "AI Workspace: Xem thông tin workspace"
       }
@@ -140,6 +145,12 @@
         "command": "aiWorkspace.newClaudeTerminal",
         "key": "ctrl+alt+a",
         "mac": "cmd+alt+a"
+      },
+      {
+        "command": "aiWorkspace.voiceToggle",
+        "key": "ctrl+e",
+        "mac": "cmd+e",
+        "when": "terminalFocus || focusedView == aiWorkspace.workspaces || aiWorkspace.dangNghe"
       }
     ],
     "colors": [

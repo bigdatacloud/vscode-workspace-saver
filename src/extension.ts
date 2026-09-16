@@ -7,6 +7,7 @@ import { TerminalManager } from './terminal/manager';
 import { WorkspaceManager } from './workspace/manager';
 import { WorkspaceDragAndDrop, WorkspaceTreeProvider } from './ui/tree';
 import { registerCommands } from './ui/commands';
+import { BoNgheGiongNoi, damBaoPhimQuaShell, LENH_TOGGLE } from './ui/giongnoi';
 
 let manager: WorkspaceManager | null = null;
 
@@ -29,6 +30,9 @@ export function activate(context: vscode.ExtensionContext): void {
   if (view.visible) tree.startPolling();
 
   context.subscriptions.push(view, tree, manager, terminals, ...registerCommands(manager));
+  const nghe = new BoNgheGiongNoi();
+  context.subscriptions.push(nghe, vscode.commands.registerCommand(LENH_TOGGLE, () => nghe.toggle()));
+  void damBaoPhimQuaShell();
 }
 
 export function deactivate(): void {

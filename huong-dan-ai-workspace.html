@@ -561,7 +561,7 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">25</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">26</div><div class="so-t">lệnh</div></div>
       <div class="so-o"><div class="so-n">421</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
@@ -699,6 +699,25 @@
             Và không phải mở lại cả loạt mới dùng được một cái: <strong>bấm thẳng vào một
             terminal trong cây thì chỉ mình nó bật lên</strong>, những cái còn lại nằm yên.
             Kích hoạt cả workspace là khi bạn muốn tất cả cùng quay lại.
+          </p>
+
+          <h3>Ra lệnh bằng giọng nói</h3>
+          <p>
+            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>E</kbd>. Thanh trạng thái hiện
+            <strong>ĐANG NGHE → "tên terminal"</strong> kèm một thông báo tiến trình ở góc dưới.
+            Nói tiếng Việt; chữ được gõ dần vào ô nhập của terminal. Nhấn
+            <kbd>Ctrl</kbd>+<kbd>E</kbd> lần nữa (hoặc Cancel trên thông báo) để dừng, đọc lại rồi
+            tự nhấn Enter — extension <em>không bao giờ</em> gửi Enter hộ, vì một câu nghe nhầm
+            gửi thẳng vào agent là thứ không được phép xảy ra.
+          </p>
+          <p>
+            Bên dưới là dictation tích hợp của VS Code (từ 1.131): model Nemotron chạy offline, tải
+            về ở lần đầu, tiếng Việt ở nhóm hỗ trợ đầy đủ. Extension chỉ chọn đúng terminal, bật,
+            hiện chỉ báo và dừng. Cần <code>agents.voice.language</code> đặt <code>vi-VN</code> —
+            để <code>auto</code> trên máy locale en-US thì tiếng Việt bị chép thành tiếng Anh. Lần
+            đầu chạy, extension thêm lệnh của nó vào
+            <code>terminal.integrated.commandsToSkipShell</code> (có báo) để
+            <kbd>Ctrl</kbd>+<kbd>E</kbd> trong terminal tới được nó thay vì bị shell nuốt.
           </p>
         </div>
       </section>
@@ -1249,7 +1268,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>25 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>26 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -1268,6 +1287,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Tạo terminal Claude mới</td><td>Hỏi đường dẫn → vai → cách chạy → việc</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td></tr>
                 <tr><td>Tạo terminal Codex mới</td><td>Như trên, cho Codex</td><td>chuột phải workspace</td></tr>
                 <tr><td>Tạo terminal mới</td><td>Shell thường, không tạo worktree</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td></tr>
+                <tr><td>Nghe giọng nói vào terminal</td><td>Bật dictation của VS Code vào terminal vừa dùng, hiện ĐANG NGHE; bấm lại để dừng. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td></tr>
                 <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
                 <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
