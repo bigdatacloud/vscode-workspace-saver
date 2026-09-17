@@ -703,17 +703,21 @@
 
           <h3>Ra lệnh bằng giọng nói</h3>
           <p>
-            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>. Thanh trạng thái hiện
-            <strong>ĐANG NGHE → "tên terminal"</strong> kèm một thông báo tiến trình ở góc dưới.
-            Nói tiếng Việt; chữ được gõ dần vào ô nhập của terminal. Nhấn
-            <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> lần nữa (hoặc Cancel trên thông báo) để dừng, đọc lại rồi
-            tự nhấn Enter — extension <em>không bao giờ</em> gửi Enter hộ, vì một câu nghe nhầm
-            gửi thẳng vào agent là thứ không được phép xảy ra.
+            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>. Một tab nháp
+            mở ra, thanh trạng thái hiện <strong>ĐANG NGHE → "tên terminal"</strong> kèm một thông báo
+            tiến trình ở góc dưới. <strong>Nhìn tab nháp</strong>: khi nó còn ghi “đang chuẩn bị
+            model” thì chưa nói — lần nạp model mất khoảng 20–30 giây trên CPU. Rồi nói tiếng Việt;
+            chữ hiện dần trong tab nháp. Nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> lần nữa
+            (hoặc Cancel) để dừng: tab nháp tự đóng, chữ được đưa vào ô nhập của terminal, bạn đọc
+            lại rồi tự nhấn Enter — extension <em>không bao giờ</em> gửi Enter hộ, vì một câu nghe
+            nhầm gửi thẳng vào agent là thứ không được phép xảy ra.
           </p>
           <p>
             Bên dưới là dictation tích hợp của VS Code (từ 1.131): model Nemotron chạy offline, tải
-            về ở lần đầu, tiếng Việt ở nhóm hỗ trợ đầy đủ. Extension chỉ chọn đúng terminal, bật,
-            hiện chỉ báo và dừng. Cần <code>agents.voice.language</code> đặt <code>vi-VN</code> —
+            về ở lần đầu, tiếng Việt ở nhóm hỗ trợ đầy đủ. Extension đi qua tab nháp thay vì bảo VS
+            Code gõ thẳng vào terminal vì: giữ nguyên dấu câu (đường terminal của VS Code cố ý bỏ dấu
+            câu cho dòng lệnh), bạn thấy được model đã sẵn sàng chưa và đã nghe ra gì, và extension
+            cầm được chữ để báo lại. Cần <code>agents.voice.language</code> đặt <code>vi-VN</code> —
             để <code>auto</code> trên máy locale en-US thì tiếng Việt bị chép thành tiếng Anh. Lần
             đầu chạy, extension thêm lệnh của nó vào
             <code>terminal.integrated.commandsToSkipShell</code> (có báo) để
@@ -1287,7 +1291,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Tạo terminal Claude mới</td><td>Hỏi đường dẫn → vai → cách chạy → việc</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td></tr>
                 <tr><td>Tạo terminal Codex mới</td><td>Như trên, cho Codex</td><td>chuột phải workspace</td></tr>
                 <tr><td>Tạo terminal mới</td><td>Shell thường, không tạo worktree</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td></tr>
-                <tr><td>Nghe giọng nói vào terminal</td><td>Bật dictation của VS Code vào terminal vừa dùng, hiện ĐANG NGHE; bấm lại để dừng. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd></td></tr>
+                <tr><td>Nghe giọng nói vào terminal</td><td>Dictation của VS Code vào một tab nháp, dừng thì đưa chữ vào terminal vừa dùng, hiện ĐANG NGHE. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd></td></tr>
                 <tr><td>Chọn micro nghe giọng nói</td><td>Mở bảng chọn micro của VS Code — dùng khi nghe xong không ra chữ (micro mặc định là thiết bị ảo câm)</td><td>Command Palette</td></tr>
                 <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
@@ -1566,15 +1570,16 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             <details>
               <summary>Nghe xong không ra chữ nào, cũng không báo lỗi</summary>
               <p>
-                Gần như luôn là <strong>micro sai</strong>. Dictation của VS Code lấy micro “mặc định” theo
-                Chromium; máy có micro ảo (app chia sẻ màn hình, bộ trộn âm…) thì cái đó có thể là một
-                thiết bị câm — model nghe toàn im lặng, kết thúc với transcript rỗng và log ghi
-                <code>reason=noTranscript</code>. Chạy <strong>AI Workspace: Chọn micro nghe giọng nói</strong>
-                (hoặc <em>Voice: Select Microphone</em>) rồi chọn micro thật. VS Code nhớ lựa chọn.
+                Thủ phạm số một, đo được trên máy thật: <strong>nói trước khi model nạp xong</strong>. Mỗi lần
+                bắt đầu nghe, VS Code nạp model 755 MB lên CPU (20–30 giây); lời nói trong lúc đó bị bỏ,
+                dừng lại thì rỗng, log ghi <code>reason=noTranscript</code>. Tab nháp của extension hiện
+                dòng “đang chuẩn bị model” cho tới khi sẵn sàng — chờ dòng đó biến mất rồi mới nói.
+                Kênh Output <em>AI Workspace — Giọng nói</em> ghi từng bước và số ký tự nghe được.
               </p>
               <p>
-                Lần đầu sau khi tải model còn một bẫy nữa: nói trước khi model nạp xong (hàng chục giây) thì
-                lời bị bỏ. Chờ tiếng báo hoặc chấm đỏ cạnh con trỏ rồi mới nói.
+                Thủ phạm số hai: <strong>micro sai</strong>. Dictation lấy micro “mặc định” theo Chromium; máy có
+                micro ảo (app chia sẻ màn hình…) thì cái đó có thể là thiết bị câm. Chạy
+                <strong>AI Workspace: Chọn micro nghe giọng nói</strong> rồi chọn micro thật; VS Code nhớ lựa chọn.
               </p>
             </details>
 

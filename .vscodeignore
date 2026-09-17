@@ -19,3 +19,4 @@ docs/**
 package-lock.json
 README.vi.md
 scripts/**
+.vscode-test.giongnoi.mjs

@@ -54,10 +54,19 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 ## Nghe giọng nói vào terminal (Ctrl+Shift+Y)
 - [ ] Lần đầu kích hoạt extension → thông báo đã thêm `aiWorkspace.voiceToggle` vào
       `terminal.integrated.commandsToSkipShell`; settings.json có dòng đó; lần sau KHÔNG báo lại
-- [ ] Focus terminal Claude, nhấn Ctrl+Shift+Y → thanh trạng thái hiện `ĐANG NGHE → "<tên>"` nền vàng,
-      góc dưới có thông báo tiến trình; VS Code tải model ở lần đầu
-- [ ] Nói tiếng Việt → chữ xuất hiện trong ô nhập terminal (không phải editor)
-- [ ] Nhấn Ctrl+Shift+Y lần nữa → chỉ báo biến mất, chữ VẪN nằm trong ô nhập, KHÔNG có Enter được gửi
+- [ ] Focus terminal Claude, nhấn Ctrl+Shift+Y → một tab nháp (Untitled) mở ra và được focus; thanh
+      trạng thái hiện `ĐANG NGHE → "<tên>"` nền vàng, góc dưới có thông báo tiến trình; tab nháp
+      hiện "đang chuẩn bị model" khoảng 20–30 giây rồi hết
+- [ ] Nói tiếng Việt SAU khi hết "đang chuẩn bị" → chữ hiện dần trong tab nháp, có dấu câu
+- [ ] Nhấn Ctrl+Shift+Y lần nữa → tab nháp tự đóng KHÔNG hỏi lưu, terminal được focus lại, chữ
+      nằm trong ô nhập terminal trên MỘT dòng, KHÔNG có Enter được gửi; thanh trạng thái báo
+      "Đã đưa vào … — Enter để gửi" vài giây; kênh Output `AI Workspace — Giọng nói` có đủ các
+      dòng bật / dừng / số ký tự / đã đưa vào
+- [ ] Không nói gì rồi dừng → cảnh báo "Không nghe được chữ nào", tab nháp vẫn đóng sạch
+- [ ] Thí nghiệm tự động bằng micro giả (không cần loa): `AI_WORKSPACE_THI_NGHIEM_GIONG_NOI=1
+      AI_WORKSPACE_WAV=<wav tiếng Việt 16-bit> npx vscode-test --config .vscode-test.giongnoi.mjs`
+      (model phải có sẵn trong `.vscode-test/user-data/chatDictationModels`) → ca
+      "3. BoNgheGiongNoi" xanh: terminal nhận chữ, không có Enter
 - [ ] Bấm Cancel trên thông báo tiến trình thay vì Ctrl+Shift+Y → cũng dừng, chỉ báo biến mất
 - [ ] Focus CÂY AI Workspaces (không phải terminal), nhấn Ctrl+Shift+Y → nghe vào terminal hoạt động
       gần nhất, terminal đó được kéo lên focus
