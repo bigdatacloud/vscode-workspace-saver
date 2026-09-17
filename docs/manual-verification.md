@@ -52,6 +52,24 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       NỐI LẠI chứ không mở tab thứ hai
 
 ## Nghe giọng nói vào terminal (Ctrl+Shift+Y)
+- [ ] Mở cửa sổ mới → sau ~4 s thanh trạng thái hiện "Đang nạp model giọng nói (~40 s…)", một tab
+      Untitled mở ra; sau ~40 s tab tự đóng, thanh trạng thái báo "Giọng nói sẵn sàng"; kênh Output
+      ghi "làm nóng xong"
+- [ ] Đặt `aiWorkspace.voice.warmUpOnStartup: false`, reload → KHÔNG có làm nóng, micro không sáng
+- [ ] Bấm Ctrl+Shift+Y → bảng chọn hiện; mục mặc định có dấu ✓ và được chọn sẵn; Enter → đi ngay
+- [ ] Chọn một model khác → dùng luôn; mở settings thấy `aiWorkspace.voice.model` đã đổi; lần bấm sau
+      dấu ✓ nằm ở model đó
+- [ ] Chọn "Không hỏi nữa" → lần bấm sau đi thẳng, không có bảng; bật lại `askOnStart` → có bảng
+- [ ] Bảng chọn: "Nhập / đổi API key…" → hỏi nhà cung cấp → ô nhập dạng mật khẩu → lưu; mục cloud
+      tương ứng không còn ghi "CHƯA có API key"; nhập trống → báo đã xoá
+- [ ] Chọn model cloud khi CHƯA có key → hỏi key ngay; Esc → không ghi âm
+- [ ] Chọn model cloud (có key) → thanh trạng thái "ĐANG GHI → …" đỏ NGAY (không chờ nạp); nói; bấm
+      lại → "Đang chuyển âm…" vài giây → chữ vào ô nhập terminal, có dấu câu, KHÔNG Enter
+- [ ] Cloud với micro câm (rút micro / chọn thiết bị câm) → cảnh báo "Micro gần như câm (đỉnh …)",
+      KHÔNG gửi gì lên mạng
+- [ ] Cloud với key sai → thông báo lỗi KHÔNG chứa key, có nút "Nhập lại API key"
+- [ ] Bấm trong 40 s đầu (đang làm nóng, chọn local) → thanh trạng thái đổi sang "ĐANG NGHE → …
+      ĐANG NẠP MODEL", không mở tab thứ hai; nói sau khi hết "đang chuẩn bị" → chữ về bình thường
 - [ ] Lần đầu kích hoạt extension → thông báo đã thêm `aiWorkspace.voiceToggle` vào
       `terminal.integrated.commandsToSkipShell`; settings.json có dòng đó; lần sau KHÔNG báo lại
 - [ ] Focus terminal Claude, nhấn Ctrl+Shift+Y → một tab nháp (Untitled) mở ra và được focus; thanh

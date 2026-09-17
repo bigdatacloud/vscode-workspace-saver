@@ -561,7 +561,7 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">27</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">28</div><div class="so-t">lệnh</div></div>
       <div class="so-o"><div class="so-n">421</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
@@ -703,24 +703,38 @@
 
           <h3>Ra lệnh bằng giọng nói</h3>
           <p>
-            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>. Một tab nháp
-            mở ra, thanh trạng thái hiện <strong>ĐANG NGHE → "tên terminal"</strong> kèm một thông báo
-            tiến trình ở góc dưới. <strong>Nhìn tab nháp</strong>: khi nó còn ghi “đang chuẩn bị
-            model” thì chưa nói — lần nạp model mất khoảng 20–30 giây trên CPU. Rồi nói tiếng Việt;
-            chữ hiện dần trong tab nháp. Nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> lần nữa
-            (hoặc Cancel) để dừng: tab nháp tự đóng, chữ được đưa vào ô nhập của terminal, bạn đọc
-            lại rồi tự nhấn Enter — extension <em>không bao giờ</em> gửi Enter hộ, vì một câu nghe
-            nhầm gửi thẳng vào agent là thứ không được phép xảy ra.
+            Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>. Một bảng chọn
+            hiện ra: <strong>trên máy</strong> (Nemotron của VS Code, offline) hay <strong>cloud</strong>
+            (OpenAI gpt-4o-mini-transcribe / gpt-4o-transcribe / whisper-1, Gemini flash-lite / 3.5 / 3.7).
+            Mặc định được chọn sẵn nên <strong>Enter là đi ngay</strong>; chọn mục khác là dùng luôn và
+            lưu làm mặc định. Không muốn hỏi nữa thì chọn mục cuối (hoặc setting
+            <code>aiWorkspace.voice.askOnStart</code>). Trong bảng còn có: nhập/đổi API key, chọn micro,
+            đổi phím tắt.
           </p>
           <p>
-            Bên dưới là dictation tích hợp của VS Code (từ 1.131): model Nemotron chạy offline, tải
-            về ở lần đầu, tiếng Việt ở nhóm hỗ trợ đầy đủ. Extension đi qua tab nháp thay vì bảo VS
-            Code gõ thẳng vào terminal vì: giữ nguyên dấu câu (đường terminal của VS Code cố ý bỏ dấu
-            câu cho dòng lệnh), bạn thấy được model đã sẵn sàng chưa và đã nghe ra gì, và extension
-            cầm được chữ để báo lại. Cần <code>agents.voice.language</code> đặt <code>vi-VN</code> —
-            để <code>auto</code> trên máy locale en-US thì tiếng Việt bị chép thành tiếng Anh. Lần
-            đầu chạy, extension thêm lệnh của nó vào
-            <code>terminal.integrated.commandsToSkipShell</code> (có báo) để
+            <strong>Đường trên máy.</strong> Một tab nháp mở ra, thanh trạng thái hiện
+            <strong>ĐANG NGHE → "tên terminal"</strong>. Model Nemotron nạp một lần mỗi cửa sổ (~40 giây)
+            — extension <em>tự làm nóng</em> ngay sau khi mở cửa sổ (micro sáng trong lúc đó; tắt bằng
+            <code>aiWorkspace.voice.warmUpOnStartup</code>), nên lúc bạn bấm thì nói được ngay. Bấm trong
+            lúc đang làm nóng thì phiên đó thành phiên của bạn, không mất thêm vòng nạp. Chữ hiện dần
+            trong tab nháp; nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> lần nữa (hoặc Cancel) để
+            dừng: tab tự đóng, chữ vào ô nhập của terminal, bạn đọc lại rồi tự Enter — extension
+            <em>không bao giờ</em> gửi Enter hộ.
+          </p>
+          <p>
+            <strong>Đường cloud.</strong> Extension tự ghi âm bằng helper Windows (WinMM, không cài gì
+            thêm), bấm là nói được ngay; dừng thì gửi WAV lên dịch vụ và đưa chữ về terminal. Đổi lại:
+            mất vài giây sau khi dừng (đo với 6 giây tiếng Việt: Gemini flash-lite ~2 s, 3.5-flash ~7 s),
+            cần API key (giữ trong kho bí mật của VS Code, không nằm trong settings), và âm thanh rời máy.
+            Chỉ chạy trên Windows.
+          </p>
+          <p>
+            Vì sao đường trên máy đi qua tab nháp thay vì bảo VS Code gõ thẳng vào terminal: giữ nguyên
+            dấu câu (đường terminal của VS Code cố ý bỏ dấu câu cho dòng lệnh), bạn thấy được model đã
+            sẵn sàng chưa và đã nghe ra gì, và extension cầm được chữ để báo lại. Cần
+            <code>agents.voice.language</code> đặt <code>vi-VN</code> — để <code>auto</code> trên máy
+            locale en-US thì tiếng Việt bị chép thành tiếng Anh. Lần đầu chạy, extension thêm lệnh của nó
+            vào <code>terminal.integrated.commandsToSkipShell</code> (có báo) để
             <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> trong terminal tới được nó thay vì bị shell nuốt.
           </p>
         </div>
@@ -1272,7 +1286,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>27 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>28 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -1291,7 +1305,8 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Tạo terminal Claude mới</td><td>Hỏi đường dẫn → vai → cách chạy → việc</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td></tr>
                 <tr><td>Tạo terminal Codex mới</td><td>Như trên, cho Codex</td><td>chuột phải workspace</td></tr>
                 <tr><td>Tạo terminal mới</td><td>Shell thường, không tạo worktree</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd></td></tr>
-                <tr><td>Nghe giọng nói vào terminal</td><td>Dictation của VS Code vào một tab nháp, dừng thì đưa chữ vào terminal vừa dùng, hiện ĐANG NGHE. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd></td></tr>
+                <tr><td>Nghe giọng nói vào terminal</td><td>Bảng chọn trên máy / cloud + model (Enter = mặc định, chọn là lưu); nghe rồi đưa chữ vào terminal vừa dùng. Không tự gửi Enter</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd></td></tr>
+                <tr><td>Nhập API key nghe giọng nói</td><td>OpenAI hoặc Gemini; vào kho bí mật của VS Code. Để trống là xoá</td><td>Command Palette / trong bảng chọn</td></tr>
                 <tr><td>Chọn micro nghe giọng nói</td><td>Mở bảng chọn micro của VS Code — dùng khi nghe xong không ra chữ (micro mặc định là thiết bị ảo câm)</td><td>Command Palette</td></tr>
                 <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
@@ -1312,8 +1327,11 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
 
         <div class="doc" style="margin-top:20px">
           <p>
-            Một setting duy nhất: <code>aiWorkspace.terminalLocation</code> — mở terminal thành tab
-            trong khu editor (mặc định) hay trong panel dưới. Mỗi workspace đè riêng được.
+            Setting: <code>aiWorkspace.terminalLocation</code> (mở terminal thành tab trong khu editor
+            hay panel dưới; mỗi workspace đè riêng được), và nhóm <code>aiWorkspace.voice.*</code>:
+            <code>model</code> (mặc định khi bấm phím nghe), <code>askOnStart</code> (hiện bảng chọn hay
+            dùng mặc định ngay), <code>language</code> (mã ngôn ngữ gửi cloud), <code>warmUpOnStartup</code>
+            (làm nóng model trên máy lúc mở cửa sổ).
           </p>
         </div>
       </section>
@@ -1570,11 +1588,14 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
             <details>
               <summary>Nghe xong không ra chữ nào, cũng không báo lỗi</summary>
               <p>
-                Thủ phạm số một, đo được trên máy thật: <strong>nói trước khi model nạp xong</strong>. Mỗi lần
-                bắt đầu nghe, VS Code nạp model 755 MB lên CPU (20–30 giây); lời nói trong lúc đó bị bỏ,
-                dừng lại thì rỗng, log ghi <code>reason=noTranscript</code>. Tab nháp của extension hiện
-                dòng “đang chuẩn bị model” cho tới khi sẵn sàng — chờ dòng đó biến mất rồi mới nói.
-                Kênh Output <em>AI Workspace — Giọng nói</em> ghi từng bước và số ký tự nghe được.
+                Thủ phạm số một, đo được trên máy thật: <strong>nói trước khi model nạp xong</strong>. Model
+                755 MB nạp lên CPU một lần mỗi cửa sổ (~40 giây); lời nói trong lúc đó bị bỏ, dừng lại
+                thì rỗng, log ghi <code>reason=noTranscript</code>. Extension tự làm nóng ngay sau khi mở
+                cửa sổ (thanh trạng thái hiện “Đang nạp model giọng nói”), nên chuyện này chỉ xảy ra nếu
+                bạn tắt <code>warmUpOnStartup</code> hoặc bấm trong 40 giây đầu — khi đó thanh trạng
+                thái ghi “ĐANG NẠP MODEL”, chờ tab nháp hết báo “đang chuẩn bị” rồi mới nói. Kênh Output
+                <em>AI Workspace — Giọng nói</em> ghi từng bước và số ký tự nghe được. Hoặc chọn đường
+                cloud: không có bước nạp.
               </p>
               <p>
                 Thủ phạm số hai: <strong>micro sai</strong>. Dictation lấy micro “mặc định” theo Chromium; máy có

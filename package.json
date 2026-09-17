@@ -135,6 +135,10 @@
         "title": "AI Workspace: Chọn micro nghe giọng nói"
       },
       {
+        "command": "aiWorkspace.voiceSetApiKey",
+        "title": "AI Workspace: Nhập API key nghe giọng nói (OpenAI / Gemini)"
+      },
+      {
         "command": "aiWorkspace.showWorkspaceInfo",
         "title": "AI Workspace: Xem thông tin workspace"
       }
@@ -177,6 +181,36 @@
     "configuration": {
       "title": "AI Workspace",
       "properties": {
+        "aiWorkspace.voice.model": {
+          "type": "string",
+          "default": "local",
+          "enum": ["local", "openai:gpt-4o-mini-transcribe", "openai:gpt-4o-transcribe", "openai:whisper-1", "gemini:gemini-3.1-flash-lite", "gemini:gemini-3.5-flash", "gemini:gemini-3.7-flash"],
+          "enumDescriptions": [
+            "Nemotron 3.5 của VS Code — offline, không cần key; extension làm nóng model lúc mở cửa sổ",
+            "OpenAI gpt-4o-mini-transcribe — nhanh, rẻ; cần OpenAI API key",
+            "OpenAI gpt-4o-transcribe — chính xác hơn; cần OpenAI API key",
+            "OpenAI whisper-1 — đời cũ; cần OpenAI API key",
+            "Gemini 3.1 Flash Lite — nhanh nhất (~2 s), rẻ nhất; cần Gemini API key",
+            "Gemini 3.5 Flash — ~7 s; cần Gemini API key",
+            "Gemini 3.7 Flash — hay quá tải; cần Gemini API key"
+          ],
+          "description": "Model chuyển giọng nói thành chữ dùng mặc định khi bấm phím nghe. Đường cloud ghi âm bằng helper Windows và gửi âm thanh lên dịch vụ; key giữ trong kho bí mật của VS Code (lệnh AI Workspace: Nhập API key)."
+        },
+        "aiWorkspace.voice.askOnStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bấm phím nghe thì hiện bảng chọn local/cloud và model (Enter = mặc định). Tắt để bấm là dùng mặc định ngay."
+        },
+        "aiWorkspace.voice.language": {
+          "type": "string",
+          "default": "vi",
+          "description": "Mã ngôn ngữ gửi kèm cho dịch vụ cloud (vi, en…). Đường local dùng agents.voice.language của VS Code."
+        },
+        "aiWorkspace.voice.warmUpOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Nạp sẵn model nhận dạng giọng nói của VS Code ngay sau khi mở cửa sổ (micro sáng khoảng 40 giây, một lần mỗi cửa sổ) để lần bấm phím nghe đầu tiên nói được ngay. Tắt nếu không muốn micro tự bật lúc khởi động."
+        },
         "aiWorkspace.terminalLocation": {
           "type": "string",
           "enum": ["editor", "panel"],

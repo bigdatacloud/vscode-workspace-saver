@@ -20,6 +20,11 @@ const STDIN_LOG = join(tmpdir(), 'ai-workspace-terminal-stdin.txt');
 const STDIN_META = `${STDIN_LOG}.meta`;
 
 const ngu = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** Thí nghiệm chỉ đi đường local — không cần key; kho giả trả rỗng cho mọi thứ. */
+function khoBiMatGia(): vscode.SecretStorage {
+  const e = new vscode.EventEmitter<vscode.SecretStorageChangeEvent>();
+  return { get: async () => undefined, store: async () => undefined, delete: async () => undefined, keys: async () => [], onDidChange: e.event };
+}
 const ghi: string[] = [];
 const log = (d: string): void => {
   ghi.push(`${new Date().toISOString()} ${d}`);
@@ -53,6 +58,89 @@ async function choHoatDong(term: vscode.Terminal): Promise<void> {
 }
 
 suite('dictation tích hợp — thí nghiệm có tiếng thật', () => {
+  test('5. hai lần liên tiếp cùng phiên: lần hai nói NGAY sau khi bật', async function () {
+    if (!BAT) return this.skip();
+    this.timeout(300_000);
+    if (existsSync(KET_QUA)) unlinkSync(KET_QUA);
+    // Lần 1: chờ model nạp lần đầu.
+    let d = await vscode.workspace.openTextDocument({ language: 'plaintext', content: '' });
+    await vscode.window.showTextDocument(d);
+    await vscode.commands.executeCommand('workbench.action.editorDictation.start');
+    await ngu(CHO_MODEL_MS);
+    await vscode.commands.executeCommand('workbench.action.editorDictation.stop');
+    await ngu(4_000);
+    log(`[lần 1, chờ ${CHO_MODEL_MS}] "${motDong(d.getText()).slice(0, 80)}"`);
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    // Lần 2: micro giả phát ngay từ lúc mở stream; chỉ chờ 8 s (file dài 6 s) rồi dừng.
+    for (const lan of [2, 3]) {
+      d = await vscode.workspace.openTextDocument({ language: 'plaintext', content: '' });
+      await vscode.window.showTextDocument(d);
+      const t0 = Date.now();
+      await vscode.commands.executeCommand('workbench.action.editorDictation.start');
+      await ngu(8_000);
+      await vscode.commands.executeCommand('workbench.action.editorDictation.stop');
+      await ngu(4_000);
+      log(`[lần ${lan}, chờ 8 s, tổng ${Date.now() - t0} ms] "${motDong(d.getText()).slice(0, 80)}"`);
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  });
+
+  test('6. làm nóng lúc khởi động rồi bấm nghe: chữ vào terminal chỉ sau 8 s', async function () {
+    if (!BAT) return this.skip();
+    this.timeout(300_000);
+    if (existsSync(KET_QUA)) unlinkSync(KET_QUA);
+    const nghe = new BoNgheGiongNoi(khoBiMatGia(), String.raw`D:\Codingscode-workspace-saver`);
+    const term = taoTerminalGhiStdin();
+    try {
+      const t0 = Date.now();
+      await nghe.lamNong(); // chạy trọn LAM_NONG_MS
+      log(`[lam-nong] xong sau ${Date.now() - t0} ms; tab đang mở: ${vscode.window.tabGroups.all.flatMap((g) => g.tabs).map((t) => t.label).join(', ')}`);
+      await choHoatDong(term);
+      const t1 = Date.now();
+      await nghe.toggle();
+      await ngu(8_000);
+      await nghe.toggle();
+      await ngu(2_000);
+      const truocEnter = doc(STDIN_LOG);
+      term.sendText('', true);
+      await ngu(1_500);
+      const chu = doc(STDIN_LOG);
+      log(`[lam-nong] sau bấm nghe ${Date.now() - t1} ms, terminal có: "${motDong(chu).slice(0, 120)}"`);
+      assert.ok(chu.trim().length > 0, 'terminal phải nhận được chữ dù chỉ chờ 8 s');
+      assert.strictEqual(truocEnter.trim(), '', 'không được tự gửi Enter');
+    } finally {
+      nghe.dispose();
+      term.dispose();
+    }
+  });
+
+  test('7. bấm nghe TRONG LÚC đang làm nóng → nhận phiên, không mất vòng nạp thứ hai', async function () {
+    if (!BAT) return this.skip();
+    this.timeout(300_000);
+    const nghe = new BoNgheGiongNoi(khoBiMatGia(), String.raw`D:\Codingscode-workspace-saver`);
+    const term = taoTerminalGhiStdin();
+    try {
+      await choHoatDong(term);
+      const lamNong = nghe.lamNong();
+      await ngu(3_000);
+      const t0 = Date.now();
+      await nghe.toggle(); // nhập vào phiên làm nóng
+      await lamNong; // phải trả về ngay vì phiên đã thành phiên thật
+      log(`[nhap-phien] lamNong() trả về sau ${Date.now() - t0} ms kể từ lúc bấm`);
+      await ngu(45_000); // model nạp trong phiên này; micro giả phát liên tục
+      await nghe.toggle();
+      await ngu(2_000);
+      term.sendText('', true);
+      await ngu(1_500);
+      const chu = doc(STDIN_LOG);
+      log(`[nhap-phien] terminal có: "${motDong(chu).slice(0, 120)}"`);
+      assert.ok(chu.trim().length > 0, 'terminal phải nhận được chữ');
+    } finally {
+      nghe.dispose();
+      term.dispose();
+    }
+  });
+
   test('1. editor thuần', async function () {
     if (!BAT) return this.skip();
     this.timeout(240_000);
@@ -91,7 +179,7 @@ suite('dictation tích hợp — thí nghiệm có tiếng thật', () => {
     this.timeout(240_000);
     const term = taoTerminalGhiStdin();
     await choHoatDong(term);
-    const nghe = new BoNgheGiongNoi();
+    const nghe = new BoNgheGiongNoi(khoBiMatGia(), String.raw`D:\Codingscode-workspace-saver`);
     try {
       await nghe.toggle();
       log(`[bo-nghe] bật; chờ ${CHO_MODEL_MS} ms`);
