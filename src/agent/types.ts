@@ -13,6 +13,12 @@ export type LaunchMode =
   | { kind: 'new'; sessionId: string }
   | { kind: 'resume'; sessionId: string }
   /**
+   * Nối tiếp hội thoại `sessionId` nhưng đẻ ra một hội thoại MỚI (`--fork-session`): bản sao
+   * mang theo toàn bộ bối cảnh mà không giẫm lên bản gốc. Id của hội thoại mới do claude sinh,
+   * nên KHÔNG mint trước được — entry ra đời dạng `plain` rồi matcher phả hệ PID thăng cấp.
+   */
+  | { kind: 'fork'; sessionId: string }
+  /**
    * Nối lại hội thoại GẦN NHẤT của thư mục đó, khi không biết id. Dùng lúc khôi phục một
    * terminal agent mà extension chưa kịp bắt được id: mở phiên mới toanh là làm người dùng
    * mất chỗ đang làm dở, còn `-c` đưa họ về đúng hội thoại cuối.

@@ -561,8 +561,8 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">28</div><div class="so-t">lệnh</div></div>
-      <div class="so-o"><div class="so-n">421</div><div class="so-t">test tự động</div></div>
+      <div class="so-o"><div class="so-n">29</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">462</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
       <div class="so-o"><div class="so-n">0</div><div class="so-t">dependency lúc chạy</div></div>
@@ -780,6 +780,27 @@
             Nhãn <strong>vai đã đổi</strong> xuất hiện khi bạn sửa file mô tả vai của một terminal
             đang chạy: <code>AGENTS.md</code> đã cập nhật ngay, nhưng system prompt thì đóng băng
             từ lúc khởi chạy — phải mở lại mới khớp hẳn. Sự lệch đó được hiện ra chứ không bị giấu.
+          </p>
+
+          <h3>Nhân bản một terminal</h3>
+          <p>
+            Chuột phải một terminal → <strong>Nhân bản terminal ra worktree riêng</strong>. Bản sao
+            giữ <em>vai</em> và <em>loại agent</em> của bản gốc, nhưng có thư mục và nhánh git riêng —
+            dùng khi đang làm dở một việc thì muốn thử một hướng khác mà không đụng vào việc đang chạy.
+          </p>
+          <p>
+            Với terminal Claude đã bắt được id phiên, extension hỏi thêm: <strong>nối tiếp hội thoại
+            này</strong> hay <strong>phiên mới trắng</strong>. Nối tiếp chạy
+            <code>claude --resume … --fork-session</code>: bản sao biết mọi thứ bản gốc đã biết rồi
+            rẽ hướng khác. Cố ý là <em>fork</em> chứ không phải <code>--resume</code> thẳng — hai tiến
+            trình cùng resume một phiên là cùng ghi một file hội thoại, và lịch sử bị xé làm đôi không
+            cứu được. Cùng lý do đó, id phiên của bản gốc <strong>không bao giờ</strong> được chép sang
+            bản sao, và bản sao Codex luôn mở phiên mới (giữ <code>--yolo</code> nếu bản gốc có).
+          </p>
+          <p>
+            Tên việc là bắt buộc khi terminal nằm trong repo git: bản sao mà dùng chung thư mục với
+            bản gốc thì hai phiên sửa đè lên nhau — đúng thứ worktree sinh ra để tránh. Không phải
+            repo git thì extension hỏi xác nhận rồi mới dùng chung thư mục.
           </p>
 
           <h3>Sắp xếp và chuyển terminal</h3>
@@ -1286,7 +1307,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
       <!-- ================================================== lệnh -->
       <section id="lenh">
         <div class="doc">
-          <h2><span class="h2-eo">Tra cứu</span>28 lệnh</h2>
+          <h2><span class="h2-eo">Tra cứu</span>29 lệnh</h2>
           <p>Tất cả đều có trong Command Palette với tiền tố <code>AI Workspace:</code>. Cột cuối là chỗ gọi thuận tay nhất.</p>
         </div>
 
@@ -1311,6 +1332,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Dọn worktree</td><td>Liệt kê kèm trạng thái, chỉ tích sẵn cái sạch</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thêm vai / Quản lý vai</td><td>Tạo, sửa mô tả, đổi tên, xoá</td><td>chuột phải workspace</td></tr>
                 <tr><td>Gắn vai cho terminal</td><td>Chọn vai hoặc bỏ vai</td><td>chuột phải terminal</td></tr>
+                <tr><td>Nhân bản terminal ra worktree riêng</td><td>Cùng vai, cùng loại agent, nhánh + thư mục riêng; Claude chọn được nối tiếp hội thoại (fork)</td><td>chuột phải terminal</td></tr>
                 <tr><td>Chuyển terminal sang workspace khác</td><td>Terminal đang chạy không bị đóng</td><td>chuột phải terminal</td></tr>
                 <tr><td>Xem log điều phối</td><td>Mở khung kiểm toán, kèm lối mở file log bền</td><td>chuột phải workspace</td></tr>
                 <tr><td>Lập tổ</td><td>Nhờ agent điều phối đề xuất tổ; bạn duyệt và sửa trước khi tạo</td><td>chuột phải terminal điều phối</td></tr>
@@ -1552,7 +1574,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               trả lời rõ “chưa hỗ trợ” thay vì đoán.
             </li>
             <li>
-              <strong>Tầng giao diện không có test tự động.</strong> 421 test phủ các hàm thuần,
+              <strong>Tầng giao diện không có test tự động.</strong> 462 test phủ các hàm thuần,
               schema, giao thức MCP và luật an toàn — nhưng menu, cây, và hộp thoại thì chỉ có
               checklist tay trong <code>docs/manual-verification.md</code> làm lưới.
             </li>

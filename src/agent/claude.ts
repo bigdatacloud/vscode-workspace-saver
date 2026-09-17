@@ -59,6 +59,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     // `-c` không đi kèm id nào cả; cũng KHÔNG kèm `-n`: tên hiển thị là của hội thoại đang
     // được nối lại, ép tên mới vào là ghi đè tên phiên người dùng đã có.
     if (spec.mode.kind === 'continue') return [CLAUDE_BIN, '-c', ...them].join(' ');
+    // Fork: `-n` ở đây KHÔNG ghi đè tên phiên nào cả (khác `-c`) — hội thoại sinh ra là hội
+    // thoại mới, nên đặt cho nó tên của bản sao là đúng.
+    if (spec.mode.kind === 'fork') {
+      return [CLAUDE_BIN, '--resume', q(spec.mode.sessionId), '--fork-session', '-n', q(spec.name), ...them].join(' ');
+    }
     const idFlag = spec.mode.kind === 'new' ? '--session-id' : '--resume';
     return [CLAUDE_BIN, idFlag, q(spec.mode.sessionId), '-n', q(spec.name), ...them].join(' ');
   }

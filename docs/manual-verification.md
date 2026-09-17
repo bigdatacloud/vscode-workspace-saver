@@ -604,6 +604,27 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Đổi tên `dist/mcp.js` rồi gắn vai điều phối → hiện cảnh báo rằng terminal sẽ không có
       bộ tool (không im lặng)
 
+## Nhân bản terminal ra worktree riêng
+- [ ] Chuột phải một terminal Claude ĐANG CHẠY (đã có id phiên) → thấy `Nhân bản terminal ra
+      worktree riêng` ngay dưới `Kích hoạt riêng terminal này`
+- [ ] Chọn nó → hỏi "Nối tiếp hội thoại này" / "Phiên mới trắng"
+- [ ] Chọn **nối tiếp** → hỏi tên việc (KHÔNG cho để trống) → terminal mới mở trong
+      `<repo>-worktrees/<việc>-<vai>/`, lệnh chạy có `--resume <id cũ> --fork-session`
+- [ ] Trong bản sao hỏi "vừa nãy ta đang làm gì" → nó nhớ bối cảnh của bản gốc
+- [ ] Bản GỐC vẫn chạy bình thường, không bị ngắt, lịch sử không bị đụng
+- [ ] Mở file lưu workspace: entry bản sao KHÔNG mang `claudeSessionId` của bản gốc; sau vài giây
+      matcher thăng cấp nó thành entry claude với id phiên MỚI (khác id bản gốc)
+- [ ] Chọn **phiên mới trắng** → lệnh có `--session-id` mới, entry là `claude` ngay, hội thoại trống
+- [ ] Bản sao mang đúng vai của bản gốc; `AGENTS.md` trong worktree mới có khối vai đó
+- [ ] Nhân bản terminal Codex → không hỏi fork; lệnh chạy là `codex` (hoặc `codex --yolo` nếu bản
+      gốc có `--yolo`), KHÔNG phải `codex resume --last`
+- [ ] Nhân bản shell thường → terminal mới mở ở worktree mới, KHÔNG tự chạy `startCommand`; entry
+      vẫn giữ lệnh đó cho lần kích hoạt sau
+- [ ] Nhân bản terminal KHÔNG nằm trong repo git → modal cảnh báo dùng chung thư mục; bấm huỷ thì
+      không tạo gì; bấm "Vẫn nhân bản" thì terminal mới tên `<tên gốc> (bản sao)`
+- [ ] Nhập tên việc TRÙNG một worktree đã có → dùng lại worktree đó, không đẻ ra `-2`
+- [ ] Esc ở mỗi bước (chọn chế độ, nhập tên việc) → không tạo thư mục, nhánh hay entry nào
+
 ## Chuyển terminal & sắp xếp bằng kéo thả
 - [ ] Chuột phải terminal → `Chuyển terminal sang workspace khác` → chọn workspace → entry
       biến khỏi cây workspace cũ, xuất hiện ở cây workspace mới

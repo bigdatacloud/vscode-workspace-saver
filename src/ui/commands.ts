@@ -79,6 +79,9 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
     vscode.commands.registerCommand('aiWorkspace.activateTerminal', (item: TerminalItem) =>
       manager.activate(item.view.workspaceId, item.view.id),
     ),
+    vscode.commands.registerCommand('aiWorkspace.duplicateTerminal', (item: TerminalItem) =>
+      manager.nhanBanTerminal(item.view.workspaceId, item.view.id),
+    ),
     vscode.commands.registerCommand('aiWorkspace.assignRole', (item: TerminalItem) =>
       manager.assignRole(item.view.workspaceId, item.view.id),
     ),

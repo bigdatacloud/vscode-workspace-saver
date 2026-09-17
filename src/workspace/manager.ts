@@ -57,6 +57,7 @@ import {
   type YeuCauTeam,
 } from '../orch/bus';
 import { phamViKichHoat } from './kichhoat';
+import { dungEntryNhanBan, duocNhanBan, lenhCodexChoBanSao, vaiChoTenWorktree } from './nhanban';
 import { chonWorkspaceNhan } from './receiving';
 import { chuyenViTri, vaiTuongUng } from './sapxep';
 import { docBangTienTrinh } from '../proc/real';
@@ -3054,6 +3055,149 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   /**
+   * Nhân bản một terminal ra worktree riêng: cùng vai, cùng loại agent, thư mục và nhánh git
+   * mới, để đi một hướng khác mà không đụng vào việc đang dở của bản gốc.
+   *
+   * Với terminal Claude đã bắt được id phiên, người dùng chọn được **nối tiếp hội thoại**
+   * (`--fork-session`): bản sao mang toàn bộ bối cảnh bản gốc đã có. Cố ý dùng fork chứ không
+   * `--resume` thẳng — hai tiến trình cùng resume một phiên là cùng ghi một file hội thoại, và
+   * lịch sử của người dùng bị xé làm đôi không cứu được.
+   */
+  async nhanBanTerminal(workspaceId: string, terminalId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    const goc = ws.terminals.find((t) => t.id === terminalId);
+    if (goc === undefined) {
+      void vscode.window.showWarningMessage('Terminal không còn trong workspace này.');
+      return;
+    }
+    const xet = duocNhanBan(goc);
+    if (!xet.duoc) {
+      void vscode.window.showWarningMessage(xet.lyDo);
+      return;
+    }
+
+    let fork = false;
+    if (xet.forkDuoc) {
+      const chon = await vscode.window.showQuickPick(
+        [
+          {
+            label: '$(git-branch) Nối tiếp hội thoại này',
+            detail: 'Bản sao biết mọi thứ bản gốc đã biết, rồi đi hướng khác. Bản gốc không bị đụng tới.',
+            fork: true,
+          },
+          {
+            label: '$(add) Phiên mới trắng',
+            detail: 'Cùng vai, cùng loại agent, nhưng không mang bối cảnh nào.',
+            fork: false,
+          },
+        ],
+        { placeHolder: `Nhân bản "${goc.name}" thế nào?` },
+      );
+      if (chon === undefined) return;
+      fork = chon.fork;
+    }
+
+    const laCodex = goc.agentId === 'codex';
+    const tenAgent = laCodex ? this.codex.id : goc.kind === 'claude' ? this.agent.id : 'shell';
+    const vaiTen = vaiChoTenWorktree({ entry: goc, roles: ws.roles ?? [] }, tenAgent);
+
+    const repo = await this.git.repoRoot(goc.cwd);
+    if (repo === null) {
+      const tra = await vscode.window.showWarningMessage(
+        `"${goc.cwd}" không nằm trong repo git nên bản sao sẽ DÙNG CHUNG thư mục với "${goc.name}" — hai phiên sửa cùng bộ file.`,
+        { modal: true },
+        'Vẫn nhân bản',
+      );
+      if (tra !== 'Vẫn nhân bản') return;
+    }
+    // Bước này TẠO THẬT thư mục + nhánh git, nên để sau mọi hộp thoại có thể bị Esc.
+    const kq = await this.hoiWorktree(goc.cwd, vaiTen, repo !== null);
+    if (kq === undefined) return;
+    const cwd = kq.cwd;
+    // Cùng thư mục (không phải repo git) thì basename trùng tên bản gốc — phân biệt bằng hậu tố.
+    const ten =
+      chuanHoaDuongDan(cwd) === chuanHoaDuongDan(goc.cwd)
+        ? `${goc.name} (bản sao)`
+        : path.basename(cwd) || `${goc.name} (bản sao)`;
+
+    const entryId = randomUUID();
+    const vai = goc.roleId === undefined ? undefined : (ws.roles ?? []).find((r) => r.id === goc.roleId);
+    const coThem = vai === undefined ? undefined : this.coThemChoRole(workspaceId, vai, entryId);
+
+    let lenh = '';
+    let sessionIdMoi: string | undefined;
+    let startCommandMoi: string | undefined;
+    if (laCodex) {
+      startCommandMoi = lenhCodexChoBanSao(goc.startCommand);
+      lenh = startCommandMoi;
+    } else if (goc.kind === 'claude') {
+      if (fork && goc.claudeSessionId !== undefined) {
+        lenh = this.agent.buildLaunchCommand({
+          name: ten,
+          mode: { kind: 'fork', sessionId: goc.claudeSessionId },
+          ...(coThem === undefined ? {} : { coThem }),
+        });
+      } else {
+        sessionIdMoi = this.agent.newSessionId();
+        lenh = this.agent.buildLaunchCommand({
+          name: ten,
+          mode: { kind: 'new', sessionId: sessionIdMoi },
+          ...(coThem === undefined ? {} : { coThem }),
+        });
+      }
+    }
+    // Shell thường: KHÔNG tự chạy `startCommand` ở đây. Lệnh đó đi qua cổng tin cậy ở đường
+    // kích hoạt; chạy thẳng tại đây là mở một cửa sau cho chính cơ chế ấy.
+
+    // Lấy lại object sau chuỗi hộp thoại rồi mới touch (xem ghi chú ở activate()).
+    const wsNow = findWorkspace(this.store, workspaceId);
+    if (!wsNow) {
+      void vscode.window.showWarningMessage('Workspace không còn tồn tại.');
+      return;
+    }
+    this.touch(wsNow.id);
+
+    const entry = dungEntryNhanBan(goc, {
+      id: entryId,
+      cwd,
+      ten,
+      ...(kq.worktree === undefined ? {} : { worktree: kq.worktree }),
+      ...(sessionIdMoi === undefined ? {} : { sessionIdMoi }),
+      ...(startCommandMoi === undefined ? {} : { startCommandMoi }),
+    });
+    // Khối vai vào AGENTS.md của worktree MỚI trước khi lệnh chạy — agent đọc lúc khởi động.
+    this.ghiKhoiVaiChoEntry(wsNow.id, cwd, vai);
+    upsertTerminal(wsNow, entry);
+    this.scheduleSave();
+    // Id mint phải nằm trên đĩa TRƯỚC khi lệnh chạy (chống mồ côi hội thoại).
+    this.flush();
+
+    const truocKhiChay = Date.now();
+    const handle = this.terminals.create(entry.id, {
+      name: entry.name,
+      cwd,
+      location: wsNow.terminalLocation,
+    });
+    this.ghiNhanShellPid(entry.id);
+    if (lenh !== '') {
+      handle.sendText(lenh);
+      this.batDauLoading([entry.id]);
+    }
+    this.onChanged.fire();
+    void this.nhoCwd(cwd);
+    if (laCodex) {
+      // Bản sao luôn mở phiên MỚI nên phải có file rollout mới; `laResume` = false.
+      void this.khamPhaSessionCodex(workspaceId, entry.id, cwd, truocKhiChay, false);
+    }
+    void vscode.window.showInformationMessage(
+      fork
+        ? `Đã nhân bản "${goc.name}" thành "${ten}" — bản sao nối tiếp hội thoại cũ trong worktree riêng.`
+        : `Đã nhân bản "${goc.name}" thành "${ten}".`,
+    );
+  }
+
+  /**
    * Tạo terminal Codex. Khác luồng Claude ở chỗ Codex KHÔNG cho đặt trước session id, nên
    * không thể "mint rồi chạy" — phải chạy trước rồi khám phá id từ file rollex mà Codex ghi
    * ra (`~/.codex/sessions/…`). Lệnh khởi chạy được lưu vào `startCommand` để lần khôi phục
@@ -3361,17 +3505,24 @@ export class WorkspaceManager implements vscode.Disposable {
    * Trả về thư mục làm việc cuối cùng kèm worktree (nếu có); `undefined` nghĩa là người dùng
    * hủy cả lệnh.
    */
-  private async hoiWorktree(cwd: string, vai: string): Promise<KetQuaWorktree | undefined> {
+  /**
+   * @param batBuocViec Không cho để trống tên việc. Dùng cho lệnh nhân bản: bản sao mà dùng
+   *   chung thư mục với bản gốc thì hai agent sửa đè lên nhau — đúng thứ worktree sinh ra để
+   *   tránh, nên ở đó "để trống" không phải một lựa chọn hợp lệ.
+   */
+  private async hoiWorktree(cwd: string, vai: string, batBuocViec = false): Promise<KetQuaWorktree | undefined> {
     const goc = await this.git.repoRoot(cwd);
     if (goc === null) return { cwd }; // không phải repo git thì không có worktree để bàn
 
     const viec = await vscode.window.showInputBox({
       title: `Worktree trong repo ${path.basename(goc)}`,
-      prompt: `Tên việc — thư mục + nhánh riêng sẽ là "<việc>-${vai}". Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.`,
+      prompt: batBuocViec
+        ? `Tên việc — thư mục + nhánh riêng cho bản sao sẽ là "<việc>-${vai}".`
+        : `Tên việc — thư mục + nhánh riêng sẽ là "<việc>-${vai}". Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.`,
       placeHolder: 'ví dụ: fix-login',
       validateInput: (v) => {
         const t = v.trim();
-        if (t === '') return undefined;
+        if (t === '') return batBuocViec ? 'Nhập tên việc — bản sao cần thư mục và nhánh riêng.' : undefined;
         // Tên này đi thẳng vào tên nhánh git và một đoạn đường dẫn — chặn ngay ở cửa nhập.
         if (!/^[\w.][\w./-]*$/.test(t) || t.includes('..')) {
           return 'Chỉ dùng chữ, số, dấu . _ - / và không bắt đầu bằng dấu -';

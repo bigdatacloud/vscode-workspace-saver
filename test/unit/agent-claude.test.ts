@@ -98,6 +98,26 @@ describe('buildLaunchCommand', () => {
     expect(cmd).toBe(`claude --resume '${UUID}' -n 'Coordinator'`);
   });
 
+  it('fork dùng --resume kèm --fork-session và -n: hội thoại MỚI mang lịch sử cũ', () => {
+    const cmd = adapter.buildLaunchCommand({ name: 'ban-sao', mode: { kind: 'fork', sessionId: UUID } });
+    expect(cmd).toBe(`claude --resume '${UUID}' --fork-session -n 'ban-sao'`);
+  });
+
+  it('fork KHÔNG mang --session-id: id của hội thoại fork do claude sinh, đoán trước là đoán sai', () => {
+    const cmd = adapter.buildLaunchCommand({ name: 'ban-sao', mode: { kind: 'fork', sessionId: UUID } });
+    expect(cmd).not.toContain('--session-id');
+  });
+
+  it('fork vẫn nhận cờ vai và MCP ở cuối', () => {
+    const cmd = adapter.buildLaunchCommand({
+      name: 'ban-sao',
+      mode: { kind: 'fork', sessionId: UUID },
+      coThem: { fileVai: 'D:/vai.md', cauHinhMcp: 'D:/mcp.json' },
+    });
+    expect(cmd).toContain("--append-system-prompt-file 'D:/vai.md'");
+    expect(cmd).toContain("--mcp-config 'D:/mcp.json'");
+  });
+
   it('quote tên có khoảng trắng và tiếng Việt', () => {
     const cmd = adapter.buildLaunchCommand({ name: 'Tổ Backend', mode: { kind: 'new', sessionId: UUID } });
     expect(cmd).toContain("-n 'Tổ Backend'");

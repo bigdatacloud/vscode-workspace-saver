@@ -37,6 +37,11 @@
         "title": "AI Workspace: Kích hoạt workspace (mở mọi terminal)"
       },
       {
+        "command": "aiWorkspace.duplicateTerminal",
+        "title": "AI Workspace: Nhân bản terminal ra worktree riêng",
+        "icon": "$(files)"
+      },
+      {
         "command": "aiWorkspace.activateTerminal",
         "title": "AI Workspace: Kích hoạt riêng terminal này"
       },
@@ -251,6 +256,11 @@
           "group": "0_activate"
         },
         {
+          "command": "aiWorkspace.duplicateTerminal",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "0_activate@2"
+        },
+        {
           "command": "aiWorkspace.closeWorkspace",
           "when": "view == aiWorkspace.workspaces && viewItem == aiWorkspaceActive",
           "group": "9_close"
@@ -383,6 +393,10 @@
         },
         {
           "command": "aiWorkspace.focusTerminal",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.duplicateTerminal",
           "when": "false"
         },
         {
