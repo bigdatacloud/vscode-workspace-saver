@@ -85,7 +85,7 @@ export class TerminalItem extends vscode.TreeItem {
     if (view.hasStartCommand) dong.push('Có lệnh khởi động');
     // Nhắc ngay ở đây vì đây là chỗ người dùng đang phân vân: trước bản này, terminal của
     // workspace chưa kích hoạt bấm vào chỉ báo "kích hoạt workspace trước".
-    if (view.state === 'closed') dong.push('Bấm để bật RIÊNG terminal này (không mở cả workspace)');
+    if (view.state === 'closed') dong.push('Bấm để bật RIÊNG terminal này (có hỏi xác nhận, không mở cả workspace)');
     this.tooltip = dong.join('\n');
     // Màu = nhà cung cấp, hình = trạng thái — quy tắc thuần nằm ở `bieutuong.ts`.
     const icon = bieuTuongTerminal(view.state, view.agent);

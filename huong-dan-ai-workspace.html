@@ -700,6 +700,14 @@
             terminal trong cây thì chỉ mình nó bật lên</strong>, những cái còn lại nằm yên.
             Kích hoạt cả workspace là khi bạn muốn tất cả cùng quay lại.
           </p>
+          <p>
+            Trước khi bật, extension <strong>hỏi xác nhận</strong> bằng một hộp thoại nói đúng cái
+            sắp xảy ra: nối lại hội thoại Claude, mở phiên Codex, hay mở shell kèm lệnh khởi động.
+            Lý do: một cú bấm nhầm trong cây là một phiên agent được nạp lại ngữ cảnh — tốn token và
+            không rút lại được. Tắt hỏi bằng <code>aiWorkspace.confirmActivateOnClick</code>; mục
+            <em>Kích hoạt riêng terminal này</em> ở menu chuột phải thì không hỏi, vì đã qua hai bước
+            chọn là đủ chủ ý.
+          </p>
 
           <h3>Ra lệnh bằng giọng nói</h3>
           <p>
@@ -1318,7 +1326,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               <tbody>
                 <tr><td>Tạo workspace mới</td><td>Tạo và kích hoạt ngay</td><td>nút <strong>+</strong> trên khung</td></tr>
                 <tr><td>Kích hoạt workspace</td><td>Mở lại <strong>mọi</strong> terminal chưa mở — kể cả khi workspace đang mở dở</td><td>click vào item / chuột phải</td></tr>
-                <tr><td>Kích hoạt riêng terminal này</td><td>Bật đúng MỘT phiên; các terminal khác vẫn nằm im</td><td>click vào terminal / chuột phải</td></tr>
+                <tr><td>Kích hoạt riêng terminal này</td><td>Bật đúng MỘT phiên; các terminal khác vẫn nằm im. Click vào terminal thì có hộp xác nhận trước; chuột phải thì không</td><td>click vào terminal / chuột phải</td></tr>
                 <tr><td>Đóng workspace</td><td>Chỉ đóng cái đó, cái khác nguyên vẹn</td><td>chuột phải workspace</td></tr>
                 <tr><td>Đổi tên / Xóa workspace</td><td>Xoá dọn luôn vai và thư mục điều phối của nó</td><td>chuột phải workspace</td></tr>
                 <tr><td>Xem thông tin workspace</td><td>Id, cửa sổ đang giữ, đường dẫn file lưu, từng terminal</td><td>chuột phải workspace</td></tr>

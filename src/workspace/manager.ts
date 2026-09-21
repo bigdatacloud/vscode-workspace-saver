@@ -56,7 +56,7 @@ import {
   type YeuCauDispatch,
   type YeuCauTeam,
 } from '../orch/bus';
-import { phamViKichHoat } from './kichhoat';
+import { moTaKichHoat, phamViKichHoat } from './kichhoat';
 import { dungEntryNhanBan, duocNhanBan, lenhCodexChoBanSao, vaiChoTenWorktree } from './nhanban';
 import { chonWorkspaceNhan } from './receiving';
 import { chuyenViTri, vaiTuongUng } from './sapxep';
@@ -4116,14 +4116,30 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   /**
-   * Bấm vào một terminal trong cây: đang mở thì nhảy tới, chưa mở thì BẬT ĐÚNG NÓ.
+   * Bấm vào một terminal trong cây: đang mở thì nhảy tới, chưa mở thì HỎI rồi mới bật đúng nó.
    *
    * Trước đây workspace chưa kích hoạt thì chỉ báo "kích hoạt workspace trước" — muốn bật lại
    * một phiên là phải mở cả loạt. Giờ terminal tự bật được, workspace chỉ đi theo.
+   *
+   * Vì sao hỏi: một cú bấm nhầm là một phiên agent được nối lại — nạp lại ngữ cảnh, tốn token,
+   * không rút lại được. Hộp thoại là modal để không bị bỏ qua, và nói đúng cái sắp xảy ra.
+   * Lệnh "Kích hoạt riêng terminal này" ở menu chuột phải thì KHÔNG hỏi: đã qua hai bước chọn
+   * là đủ chủ ý rồi.
    */
-  focusTerminal(workspaceId: string, terminalId: string): void {
+  async focusTerminal(workspaceId: string, terminalId: string): Promise<void> {
     if (this.terminals.focus(terminalId)) return;
-    void this.activate(workspaceId, terminalId);
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (entry === undefined) return;
+    const canHoi = vscode.workspace.getConfiguration('aiWorkspace').get<boolean>('confirmActivateOnClick', true);
+    if (canHoi) {
+      const tra = await vscode.window.showWarningMessage(
+        `Kích hoạt terminal "${entry.name}"?`,
+        { modal: true, detail: `${moTaKichHoat(entry)}\n\nTắt hỏi bằng setting aiWorkspace.confirmActivateOnClick.` },
+        'Kích hoạt',
+      );
+      if (tra !== 'Kích hoạt') return;
+    }
+    await this.activate(workspaceId, terminalId);
   }
 
   private findEntry(workspaceId: string, terminalId: string): TerminalEntry | undefined {

@@ -32,6 +32,15 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       lại từ `workspaces.json` trong global storage), KHÔNG có workspace nào tự động active
 
 ## Kích hoạt riêng một terminal
+- [ ] Bấm vào terminal Claude ĐANG ĐÓNG (có id phiên) → hộp thoại MODAL "Kích hoạt terminal …?"
+      với dòng "Sẽ nối lại hội thoại Claude … tốn token"; bấm Cancel/Esc → KHÔNG có gì được mở,
+      registry không có phiên mới
+- [ ] Bấm "Kích hoạt" → chỉ terminal đó mở, đúng như trước
+- [ ] Terminal Codex đang đóng → dòng mô tả nói "phiên Codex"; shell có lệnh khởi động → nêu đúng
+      lệnh; shell trần → "mở một shell mới", không nhắc token
+- [ ] Bấm vào terminal ĐANG MỞ → nhảy tới ngay, KHÔNG hỏi
+- [ ] Chuột phải → "Kích hoạt riêng terminal này" → KHÔNG hỏi, mở luôn
+- [ ] Đặt `aiWorkspace.confirmActivateOnClick: false` → bấm vào terminal đóng mở luôn, không hỏi
 - [ ] Workspace CHƯA kích hoạt, có 3 terminal → bấm vào terminal thứ hai trong cây → **chỉ nó**
       mở ra; hai cái kia vẫn ghi "chưa mở"
 - [ ] Thanh tiến trình lúc đó ghi tên TERMINAL, không phải "Đang mở workspace …"

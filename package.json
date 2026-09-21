@@ -186,6 +186,11 @@
     "configuration": {
       "title": "AI Workspace",
       "properties": {
+        "aiWorkspace.confirmActivateOnClick": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bấm vào một terminal đang đóng trong cây thì hỏi xác nhận trước khi kích hoạt — tránh bấm nhầm mà nối lại một phiên agent (nạp lại ngữ cảnh, tốn token). Lệnh \"Kích hoạt riêng terminal này\" ở menu chuột phải không hỏi."
+        },
         "aiWorkspace.voice.model": {
           "type": "string",
           "default": "local",
