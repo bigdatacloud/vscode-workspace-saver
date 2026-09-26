@@ -13,6 +13,7 @@ import {
   type NhaCungCap,
 } from '../voice/cloud';
 import { MayGhiAm } from '../voice/ghiam';
+import { canBatWordWrap } from '../voice/wrap';
 
 /**
  * Bật/tắt nghe giọng nói vào terminal đang hoạt động, kèm chỉ báo "đang nghe" — cùng nhịp tay với
@@ -368,6 +369,7 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     // Đóng không lưu ở bước dừng, không để lại file nào.
     const nhap = await vscode.workspace.openTextDocument({ language: 'plaintext', content: '' });
     await vscode.window.showTextDocument(nhap, { preview: true, preserveFocus: false });
+    await this.batWordWrap(nhap);
     this.ghi(`bật: đích "${tenDich}", tab nháp ${nhap.uri.toString()}, editor đang hoạt động = ${vscode.window.activeTextEditor?.document.uri.toString() ?? 'không có'}`);
     try {
       await vscode.commands.executeCommand(LENH_BAT);
@@ -380,6 +382,28 @@ export class BoNgheGiongNoi implements vscode.Disposable {
         `Không bật được nghe giọng nói: ${e instanceof Error ? e.message : String(e)}. Cần VS Code ≥ 1.131 với dictation.enabled đang bật; lần đầu VS Code sẽ tải model về.`,
       );
       return null;
+    }
+  }
+
+  /**
+   * Cho tab nháp xuống dòng tự động để đọc lại được cả đoạn mà không phải cuộn ngang.
+   *
+   * Dùng lệnh toggle của VS Code vì API không có đường đặt `wordWrap` theo từng editor; lệnh đó
+   * đặt một thuộc tính tạm chỉ sống trong model đang mở, nên KHÔNG đụng settings của người dùng
+   * và mất theo tab khi ta đóng nó. Chỉ gọi khi đang thật sự tắt wrap — toggle là hai chiều.
+   */
+  private async batWordWrap(nhap: vscode.TextDocument): Promise<void> {
+    const hienTai = vscode.workspace.getConfiguration('editor', nhap.uri).get<string>('wordWrap');
+    if (!canBatWordWrap(hienTai)) {
+      this.ghi(`wordWrap đang là "${hienTai}" — để nguyên`);
+      return;
+    }
+    try {
+      await vscode.commands.executeCommand('editor.action.toggleWordWrap');
+      this.ghi('đã bật xuống dòng tự động cho tab nháp (chỉ tab này)');
+    } catch (e) {
+      // Không wrap thì vẫn đọc được bằng cách cuộn — không đáng làm hỏng cả phiên nghe.
+      this.ghi(`không bật được wordWrap (bỏ qua): ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

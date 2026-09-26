@@ -85,6 +85,10 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       trạng thái hiện `ĐANG NGHE → "<tên>"` nền vàng, góc dưới có thông báo tiến trình; tab nháp
       hiện "đang chuẩn bị model" khoảng 20–30 giây rồi hết
 - [ ] Nói tiếng Việt SAU khi hết "đang chuẩn bị" → chữ hiện dần trong tab nháp, có dấu câu
+- [ ] Nói một đoạn DÀI → chữ tự xuống dòng trong tab nháp, đọc hết được mà không phải cuộn ngang
+- [ ] Đặt `"editor.wordWrap": "on"` trong settings rồi nghe lại → extension KHÔNG tắt wrap
+      (kênh Output ghi `wordWrap đang là "on" — để nguyên`)
+- [ ] Đóng tab nháp xong, mở một file plaintext khác → wrap của file đó KHÔNG bị đổi
 - [ ] Nhấn Ctrl+Shift+Y lần nữa → tab nháp tự đóng KHÔNG hỏi lưu, terminal được focus lại, chữ
       nằm trong ô nhập terminal trên MỘT dòng, KHÔNG có Enter được gửi; thanh trạng thái báo
       "Đã đưa vào … — Enter để gửi" vài giây; kênh Output `AI Workspace — Giọng nói` có đủ các
