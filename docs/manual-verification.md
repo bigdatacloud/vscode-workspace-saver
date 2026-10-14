@@ -66,6 +66,19 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       ghi "làm nóng xong"
 - [ ] Đặt `aiWorkspace.voice.warmUpOnStartup: false`, reload → KHÔNG có làm nóng, micro không sáng
 - [ ] Bấm Ctrl+Shift+Y → bảng chọn hiện; mục mặc định có dấu ✓ và được chọn sẵn; Enter → đi ngay
+- [ ] QUAN-Transcribe đứng ĐẦU bảng, dưới tiêu đề "Trên máy — tiếng Việt"; mặc định (✓) vẫn là
+      Nemotron chứ KHÔNG phải QUAN
+- [ ] Chọn QUAN khi CHƯA cài gói → hộp thoại modal "Chưa cài QUAN-Transcribe" nêu đúng lệnh
+      `pip install torch` + `pip install git+https://github.com/qnguyen3/QUAN-Transcribe`, nói
+      trước cỡ tải ~2 GB và license Gemma, KHÔNG bắt đăng nhập Hugging Face (repo đã mở);
+      có nút "Mở trang model"; KHÔNG mở micro, không có vết lỗi Python thô
+- [ ] Sau khi cài torch + gói: chọn QUAN → thông báo
+      "Đang nạp model QUAN-Transcribe…" (lần đầu mỗi cửa sổ), rồi mới "ĐANG GHI"
+- [ ] Nói tiếng Việt → chữ vào terminal, CHỮ THƯỜNG không dấu câu (đúng hành vi model)
+- [ ] Bấm nghe lần thứ hai trong cùng cửa sổ → KHÔNG nạp lại model, ghi âm ngay; bảng chọn ghi
+      "model đã nạp, nói là ăn ngay"
+- [ ] `aiWorkspace.voice.quanPython` trỏ sang python khác → extension dùng đúng python đó
+- [ ] Đóng cửa sổ → tiến trình python QUAN không còn trong Task Manager
 - [ ] Chọn một model khác → dùng luôn; mở settings thấy `aiWorkspace.voice.model` đã đổi; lần bấm sau
       dấu ✓ nằm ở model đó
 - [ ] Chọn "Không hỏi nữa" → lần bấm sau đi thẳng, không có bảng; bật lại `askOnStart` → có bảng

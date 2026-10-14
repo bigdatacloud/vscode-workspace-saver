@@ -194,17 +194,23 @@
         "aiWorkspace.voice.model": {
           "type": "string",
           "default": "local",
-          "enum": ["local", "openai:gpt-4o-mini-transcribe", "openai:gpt-4o-transcribe", "openai:whisper-1", "gemini:gemini-3.1-flash-lite", "gemini:gemini-3.5-flash", "gemini:gemini-3.7-flash"],
+          "enum": ["quan", "local", "openai:gpt-4o-mini-transcribe", "openai:gpt-4o-transcribe", "openai:whisper-1", "gemini:gemini-3.1-flash-lite", "gemini:gemini-3.8-flash", "gemini:gemini-3.6-flash"],
           "enumDescriptions": [
+            "QUAN-Transcribe 1.0 — chuyên tiếng Việt, chạy trên máy; cần Python + torch, lần đầu tải ~2 GB; trả chữ thường không dấu câu",
             "Nemotron 3.5 của VS Code — offline, không cần key; extension làm nóng model lúc mở cửa sổ",
             "OpenAI gpt-4o-mini-transcribe — nhanh, rẻ; cần OpenAI API key",
             "OpenAI gpt-4o-transcribe — chính xác hơn; cần OpenAI API key",
             "OpenAI whisper-1 — đời cũ; cần OpenAI API key",
             "Gemini 3.1 Flash Lite — nhanh nhất (~2 s), rẻ nhất; cần Gemini API key",
-            "Gemini 3.5 Flash — ~7 s; cần Gemini API key",
-            "Gemini 3.7 Flash — hay quá tải; cần Gemini API key"
+            "Gemini 3.8 Flash — Flash đời mới nhất (10/2026); cần Gemini API key",
+            "Gemini 3.6 Flash — bản GA trước đó, dùng khi 3.8 quá tải; cần Gemini API key"
           ],
           "description": "Model chuyển giọng nói thành chữ dùng mặc định khi bấm phím nghe. Đường cloud ghi âm bằng helper Windows và gửi âm thanh lên dịch vụ; key giữ trong kho bí mật của VS Code (lệnh AI Workspace: Nhập API key)."
+        },
+        "aiWorkspace.voice.quanPython": {
+          "type": "string",
+          "default": "python",
+          "description": "Trình thông dịch Python dùng để chạy QUAN-Transcribe (đường dẫn đầy đủ nếu `python` trong PATH không phải cái đã cài gói)."
         },
         "aiWorkspace.voice.askOnStart": {
           "type": "boolean",

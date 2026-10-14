@@ -25,9 +25,16 @@ describe('danh sách model STT', () => {
   });
 
   it('mỗi model cloud nêu rõ nhà cung cấp và tên gọi API', () => {
-    for (const m of CAC_MODEL.filter((x) => x.nha !== 'local')) {
+    // Chỉ model đi ra mạng; QUAN mang `tenApi` là repo Hugging Face nhưng chạy trên máy.
+    for (const m of CAC_MODEL.filter((x) => x.nha === 'openai' || x.nha === 'gemini')) {
       expect(m.tenApi).toBeTruthy();
       expect(['openai', 'gemini']).toContain(m.nha);
+    }
+  });
+
+  it('model chạy trên máy không bao giờ bị xếp nhầm vào nhóm cloud', () => {
+    for (const m of CAC_MODEL.filter((x) => x.nha === 'local' || x.nha === 'quan')) {
+      expect(['openai', 'gemini']).not.toContain(m.nha);
     }
   });
 
@@ -35,6 +42,23 @@ describe('danh sách model STT', () => {
     expect(gioiThieuModel(timModel('local'))).toMatch(/offline/i);
     const gpt = CAC_MODEL.find((m) => m.nha === 'openai') as ModelSTT;
     expect(gioiThieuModel(gpt)).toMatch(/key/i);
+  });
+});
+
+describe('danh sách Gemini — chỉ model còn sống (registry CLAUDE.md, kiểm 2026-10-12)', () => {
+  const ten = CAC_MODEL.filter((m) => m.nha === 'gemini').map((m) => m.tenApi);
+
+  it('KHÔNG còn model Google đã khai tử — gọi vào là 404, không phải chậm', () => {
+    expect(ten).not.toContain('gemini-3.5-flash');
+    expect(ten).not.toContain('gemini-3.7-flash');
+  });
+
+  it('có Flash đời mới nhất đang stable', () => {
+    expect(ten).toContain('gemini-3.8-flash');
+  });
+
+  it('giữ bản lite đã đo nhanh nhất cho việc chuyển âm', () => {
+    expect(ten).toContain('gemini-3.1-flash-lite');
   });
 });
 

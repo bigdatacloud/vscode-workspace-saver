@@ -1,3 +1,5 @@
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { gopVeMotDong } from '../orch/bus';
@@ -13,6 +15,7 @@ import {
   type NhaCungCap,
 } from '../voice/cloud';
 import { MayGhiAm } from '../voice/ghiam';
+import { huongDanCaiQuan, MayQuan, MODEL_QUAN } from '../voice/quan';
 import { canBatWordWrap } from '../voice/wrap';
 
 /**
@@ -58,11 +61,13 @@ const KHOA_CAI_DAT_MODEL = 'aiWorkspace.voice.model';
 const KHOA_CAI_DAT_HOI = 'aiWorkspace.voice.askOnStart';
 const KHOA_CAI_DAT_NGON_NGU = 'aiWorkspace.voice.language';
 export const LENH_DAT_KEY = 'aiWorkspace.voiceSetApiKey';
-/** Tên khoá trong SecretStorage theo nhà cung cấp. */
-const TEN_SECRET: Record<Exclude<NhaCungCap, 'local'>, string> = {
+/** Nhà cung cấp cần API key — QUAN và Nemotron chạy trên máy nên không có mặt ở đây. */
+type NhaCloud = 'openai' | 'gemini';
+const TEN_SECRET: Record<NhaCloud, string> = {
   openai: 'aiWorkspace.voice.openaiApiKey',
   gemini: 'aiWorkspace.voice.geminiApiKey',
 };
+const KHOA_CAI_DAT_PYTHON = 'aiWorkspace.voice.quanPython';
 const HAN_GOI_API_MS = 60_000;
 
 interface PhienCloud {
@@ -89,6 +94,8 @@ export class BoNgheGiongNoi implements vscode.Disposable {
   /** Kênh chẩn đoán: mỗi bước một dòng, để "nghe xong không ra chữ" truy được thay vì đoán. */
   private readonly kenh = vscode.window.createOutputChannel('AI Workspace — Giọng nói');
   private phienCloud: PhienCloud | null = null;
+  /** Tiến trình nhận dạng QUAN — nạp một lần rồi giữ sống tới khi đóng cửa sổ. */
+  private mayQuan: MayQuan | null = null;
 
   private ghi(dong: string): void {
     const d = `[${new Date().toLocaleTimeString('vi-VN')}] ${dong}`;
@@ -127,7 +134,8 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     }
     const model = await this.chonModel();
     if (model === null) return;
-    if (model.nha !== 'local') {
+    if (model.nha === 'quan' || model.nha === 'openai' || model.nha === 'gemini') {
+      // Cả ba đều: extension tự ghi âm → dừng → chuyển âm. Khác nhau ở bước chuyển âm thôi.
       await this.batCloud(terminal, model);
       return;
     }
@@ -169,14 +177,23 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     let nhaTruoc: NhaCungCap | null = null;
     for (const m of CAC_MODEL) {
       if (m.nha !== nhaTruoc) {
-        muc.push({ label: m.nha === 'local' ? 'Trên máy' : m.nha === 'openai' ? 'OpenAI' : 'Google Gemini', kind: vscode.QuickPickItemKind.Separator });
+        const tieuDe =
+          m.nha === 'quan' ? 'Trên máy — tiếng Việt' : m.nha === 'local' ? 'Trên máy — đa ngôn ngữ' : m.nha === 'openai' ? 'OpenAI' : 'Google Gemini';
+        muc.push({ label: tieuDe, kind: vscode.QuickPickItemKind.Separator });
         nhaTruoc = m.nha;
       }
-      const coKey = m.nha === 'local' ? true : (await this.layKey(m.nha)) !== null;
+      const laCloud = m.nha === 'openai' || m.nha === 'gemini';
+      const coKey = laCloud ? (await this.layKey(m.nha as NhaCloud)) !== null : true;
+      const canGhiAm = laCloud || m.nha === 'quan';
+      const ghiChu = [
+        laCloud && !coKey ? 'CHƯA có API key (chọn sẽ hỏi key)' : '',
+        canGhiAm && !MayGhiAm.hoTro() ? 'cần helper ghi âm, hiện chỉ có trên Windows' : '',
+        m.nha === 'quan' && this.mayQuan?.daSanSang === true ? 'model đã nạp, nói là ăn ngay' : '',
+      ].filter((x) => x !== '');
       muc.push({
         label: `${m.id === macDinh.id ? '$(check) ' : '$(circle-large-outline) '}${m.ten}`,
         description: m.id === macDinh.id ? 'mặc định' : '',
-        detail: `${m.moTa}${coKey ? '' : ' — CHƯA có API key (chọn sẽ hỏi key)'}${m.nha !== 'local' && !MayGhiAm.hoTro() ? ' — cloud chỉ chạy trên Windows' : ''}`,
+        detail: `${m.moTa}${ghiChu.length === 0 ? '' : ` — ${ghiChu.join('; ')}`}`,
         model: m,
       });
     }
@@ -212,7 +229,7 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     return m;
   }
 
-  private async layKey(nha: Exclude<NhaCungCap, 'local'>): Promise<string | null> {
+  private async layKey(nha: NhaCloud): Promise<string | null> {
     const tuSecret = await this.secrets.get(TEN_SECRET[nha]);
     if (tuSecret !== undefined && tuSecret.trim() !== '') return tuSecret.trim();
     // Biến môi trường là đường tắt cho người đã có key trong shell — nhưng chỉ khi extension host
@@ -222,7 +239,7 @@ export class BoNgheGiongNoi implements vscode.Disposable {
   }
 
   /** Hỏi nhà cung cấp rồi key; key vào SecretStorage (mã hoá bởi hệ điều hành), không vào settings. */
-  async nhapKey(nhaChon?: Exclude<NhaCungCap, 'local'>): Promise<boolean> {
+  async nhapKey(nhaChon?: NhaCloud): Promise<boolean> {
     let nha = nhaChon;
     if (nha === undefined) {
       const c = await vscode.window.showQuickPick(
@@ -251,20 +268,33 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     return true;
   }
 
-  // ------------------------------------------------------------ đường cloud
+  // --------------------------------------- đường TỰ GHI ÂM (QUAN + cloud)
 
+  /**
+   * Bật ghi âm cho các model mà extension tự cầm âm thanh: QUAN (chuyển âm bằng tiến trình
+   * Python trên máy) và cloud (gửi lên dịch vụ). Khác đường Nemotron ở chỗ không có tab nháp —
+   * VS Code không tham gia, nên bấm là ghi ngay.
+   */
   private async batCloud(terminal: vscode.Terminal, model: ModelSTT): Promise<void> {
     if (!MayGhiAm.hoTro()) {
-      void vscode.window.showWarningMessage('Đường cloud cần helper ghi âm WinMM, hiện chỉ có trên Windows. Chọn model local.');
+      void vscode.window.showWarningMessage(
+        'Đường này cần helper ghi âm WinMM, hiện chỉ có trên Windows. Chọn model "Local — Nemotron" để dùng dictation của VS Code.',
+      );
       return;
     }
-    const nha = model.nha as Exclude<NhaCungCap, 'local'>;
-    let key = await this.layKey(nha);
-    if (key === null) {
-      const co = await this.nhapKey(nha);
-      if (!co) return;
-      key = await this.layKey(nha);
-      if (key === null) return;
+    if (model.nha === 'quan') {
+      // Nạp model TRƯỚC khi mở micro: nạp mất hàng chục giây, mà micro sáng trong lúc chờ là
+      // vừa khó hiểu vừa ghi thừa một đoạn im lặng dài.
+      const san = await this.chuanBiQuan();
+      if (!san) return;
+    } else {
+      const nha = model.nha as NhaCloud;
+      const key = await this.layKey(nha);
+      if (key === null) {
+        const co = await this.nhapKey(nha);
+        if (!co) return;
+        if ((await this.layKey(nha)) === null) return;
+      }
     }
     const may = new MayGhiAm(path.join(this.duongDanExtension, 'media', 'ghi-am.ps1'));
     this.ghi(`cloud ${model.id}: bật ghi âm cho "${terminal.name}"`);
@@ -321,9 +351,13 @@ export class BoNgheGiongNoi implements vscode.Disposable {
       );
       if (!chu.ok) {
         this.ghi(`cloud lỗi: ${chu.loi}`);
-        void vscode.window.showWarningMessage(chu.loi, 'Nhập lại API key').then((t) => {
-          if (t === 'Nhập lại API key') void this.nhapKey(p.model.nha as Exclude<NhaCungCap, 'local'>);
-        });
+        if (p.model.nha === 'quan') {
+          void vscode.window.showWarningMessage(chu.loi);
+        } else {
+          void vscode.window.showWarningMessage(chu.loi, 'Nhập lại API key').then((t) => {
+            if (t === 'Nhập lại API key') void this.nhapKey(p.model.nha as NhaCloud);
+          });
+        }
         return;
       }
       const motDong = gopVeMotDong(chu.text);
@@ -345,8 +379,47 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     }
   }
 
+  /**
+   * Bảo đảm tiến trình QUAN đã nạp xong model. Hiện tiến độ vì lần đầu mất hàng chục giây (và
+   * lần đầu tiên trên máy còn phải tải trọng số về).
+   */
+  private async chuanBiQuan(): Promise<boolean> {
+    const python = this.cauHinh.get<string>(KHOA_CAI_DAT_PYTHON, 'python');
+    this.mayQuan ??= new MayQuan(python, path.join(this.duongDanExtension, 'media', 'quan-server.py'), (d) => this.ghi(d));
+    if (this.mayQuan.daSanSang) return true;
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Đang nạp model QUAN-Transcribe (lần đầu mỗi cửa sổ; lần đầu tiên trên máy còn phải tải trọng số)…',
+        },
+        () => (this.mayQuan as MayQuan).nap(),
+      );
+      return true;
+    } catch (e) {
+      const loi = e instanceof Error ? e.message : String(e);
+      this.ghi(`QUAN không nạp được: ${loi}`);
+      this.mayQuan = null;
+      // Thiếu gói thì thông điệp CHÍNH LÀ hướng dẫn cài (lớp MayQuan đã đổi), nên hiện nguyên văn
+      // trong hộp thoại có thể copy được, kèm nút mở trang model.
+      const laHuongDan = loi.startsWith('Chưa cài QUAN-Transcribe');
+      const tra = await vscode.window.showWarningMessage(
+        laHuongDan ? 'Chưa cài QUAN-Transcribe' : 'Không nạp được model QUAN',
+        { modal: true, detail: laHuongDan ? loi : `${loi}
+
+${huongDanCaiQuan(python)}` },
+        'Mở trang model',
+      );
+      if (tra === 'Mở trang model') {
+        void vscode.env.openExternal(vscode.Uri.parse(`https://huggingface.co/${MODEL_QUAN === 'quan' ? 'qnguyen3/QUAN-Transcribe-1.0' : ''}`));
+      }
+      return false;
+    }
+  }
+
   private async goiCloud(model: ModelSTT, wav: Uint8Array): Promise<{ ok: true; text: string } | { ok: false; loi: string }> {
-    const nha = model.nha as Exclude<NhaCungCap, 'local'>;
+    if (model.nha === 'quan') return this.goiQuan(wav);
+    const nha = model.nha as NhaCloud;
     const key = await this.layKey(nha);
     if (key === null) return { ok: false, loi: `Chưa có API key ${nha}.` };
     const ngonNgu = this.cauHinh.get<string>(KHOA_CAI_DAT_NGON_NGU, 'vi');
@@ -361,6 +434,26 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     const raw = await res.text();
     this.ghi(`cloud ${model.tenApi}: HTTP ${res.status} sau ${Date.now() - t0} ms`);
     return nha === 'openai' ? docKetQuaOpenAI(res.status, raw) : docKetQuaGemini(res.status, raw);
+  }
+
+  /**
+   * Chuyển âm bằng QUAN. Tiến trình Python nhận ĐƯỜNG DẪN file (không phải byte qua stdin) để
+   * giao thức giữa hai bên chỉ là chữ — đỡ hẳn một lớp đóng gói nhị phân dễ sai.
+   */
+  private async goiQuan(wav: Uint8Array): Promise<{ ok: true; text: string } | { ok: false; loi: string }> {
+    const may = this.mayQuan;
+    if (may === null) return { ok: false, loi: 'Tiến trình QUAN chưa sẵn sàng.' };
+    const f = path.join(os.tmpdir(), `ai-workspace-quan-${Date.now()}.wav`);
+    try {
+      await fs.writeFile(f, wav);
+      const kq = await may.chuyenAm(f);
+      this.ghi(`QUAN: ${kq.text.length} ký tự sau ${kq.ms} ms`);
+      return { ok: true, text: kq.text };
+    } catch (e) {
+      return { ok: false, loi: `QUAN: ${e instanceof Error ? e.message : String(e)}` };
+    } finally {
+      void fs.unlink(f).catch(() => undefined);
+    }
   }
 
   /** Mở tab nháp và bật dictation của VS Code vào đó. `null` nếu VS Code từ chối. */
@@ -555,6 +648,8 @@ export class BoNgheGiongNoi implements vscode.Disposable {
     if (this.phien !== null) void this.dung();
     this.phienCloud?.may.huy();
     this.phienCloud = null;
+    this.mayQuan?.dung();
+    this.mayQuan = null;
     this.thanh.dispose();
     this.kenh.dispose();
   }

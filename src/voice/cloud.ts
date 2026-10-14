@@ -8,7 +8,7 @@
  * Người dùng chọn, extension không chọn hộ.
  */
 
-export type NhaCungCap = 'local' | 'openai' | 'gemini';
+export type NhaCungCap = 'quan' | 'local' | 'openai' | 'gemini';
 
 export interface ModelSTT {
   /** Id lưu trong setting `aiWorkspace.voice.model`. */
@@ -22,10 +22,21 @@ export interface ModelSTT {
 }
 
 /**
- * Model Gemini lấy theo bảng đã kiểm 2026-08-17 (xem CLAUDE.md toàn cục): chỉ dùng id còn sống,
- * ưu tiên bản stable. Model OpenAI theo endpoint /v1/audio/transcriptions.
+ * Model Gemini lấy theo bảng đã kiểm 2026-10-12 (xem CLAUDE.md toàn cục): chỉ dùng id còn sống,
+ * ưu tiên bản stable. `gemini-3.5-flash` và `gemini-3.7-flash` đã nghỉ hưu — gọi vào là 404, nên
+ * bỏ khỏi danh sách thay vì để người dùng chọn rồi gặp lỗi. Model OpenAI theo endpoint
+ * /v1/audio/transcriptions.
  */
 export const CAC_MODEL: readonly ModelSTT[] = [
+  // Đứng đầu vì chuyên tiếng Việt. Không làm MẶC ĐỊNH: nó cần Python + torch và tải ~2 GB trọng
+  // số (đo 2026-10-14), nên để nó làm mặc định nghĩa là ai mở extension lần đầu cũng gặp lỗi.
+  {
+    id: 'quan',
+    nha: 'quan',
+    ten: 'QUAN-Transcribe 1.0 — tiếng Việt, trên máy',
+    tenApi: 'qnguyen3/QUAN-Transcribe-1.0',
+    moTa: 'chuyên tiếng Việt, chạy offline; cần Python + torch, lần đầu tải ~2 GB (chọn sẽ hiện hướng dẫn cài). Trả CHỮ THƯỜNG, KHÔNG dấu câu, số viết thành chữ — đó là hành vi của model',
+  },
   { id: 'local', nha: 'local', ten: 'Local — Nemotron 3.5 (VS Code)', tenApi: '', moTa: 'offline, không cần key; nạp model ~40 s một lần mỗi cửa sổ (extension tự làm nóng lúc mở)' },
   { id: 'openai:gpt-4o-mini-transcribe', nha: 'openai', ten: 'OpenAI — gpt-4o-mini-transcribe', tenApi: 'gpt-4o-mini-transcribe', moTa: 'nhanh, rẻ; cần OpenAI API key; âm thanh gửi lên OpenAI' },
   { id: 'openai:gpt-4o-transcribe', nha: 'openai', ten: 'OpenAI — gpt-4o-transcribe', tenApi: 'gpt-4o-transcribe', moTa: 'chính xác hơn mini; cần OpenAI API key; âm thanh gửi lên OpenAI' },
@@ -33,11 +44,16 @@ export const CAC_MODEL: readonly ModelSTT[] = [
   // Thứ tự Gemini theo độ trễ đo 2026-09-17 với 6 s âm thanh tiếng Việt: flash-lite ~1,6–5 s;
   // 3.5-flash ~7 s khi tắt suy nghĩ (30 s nếu không tắt); 3.7-flash hay trả 503 quá tải.
   { id: 'gemini:gemini-3.1-flash-lite', nha: 'gemini', ten: 'Gemini — gemini-3.1-flash-lite', tenApi: 'gemini-3.1-flash-lite', moTa: 'nhanh nhất (~2 s), rẻ nhất; cần Gemini API key; âm thanh gửi lên Google' },
-  { id: 'gemini:gemini-3.5-flash', nha: 'gemini', ten: 'Gemini — gemini-3.5-flash', tenApi: 'gemini-3.5-flash', moTa: 'stable, ~7 s; cần Gemini API key' },
-  { id: 'gemini:gemini-3.7-flash', nha: 'gemini', ten: 'Gemini — gemini-3.7-flash', tenApi: 'gemini-3.7-flash', moTa: 'Flash đời mới nhất, hay quá tải (503); cần Gemini API key' },
+  { id: 'gemini:gemini-3.8-flash', nha: 'gemini', ten: 'Gemini — gemini-3.8-flash', tenApi: 'gemini-3.8-flash', moTa: 'Flash đời mới nhất (10/2026), khá hơn ở câu dài; cần Gemini API key' },
+  { id: 'gemini:gemini-3.6-flash', nha: 'gemini', ten: 'Gemini — gemini-3.6-flash', tenApi: 'gemini-3.6-flash', moTa: 'bản GA trước đó, dùng khi 3.8 quá tải; cần Gemini API key' },
 ];
 
-const MAC_DINH = CAC_MODEL[0] as ModelSTT;
+/**
+ * Mặc định là model chạy được NGAY sau khi cài extension. Tra theo id chứ không lấy phần tử đầu
+ * danh sách: thứ tự hiển thị là chuyện của người dùng muốn thấy gì trước, không phải chuyện cái
+ * nào an toàn để chạy khi chưa cấu hình gì.
+ */
+const MAC_DINH = CAC_MODEL.find((m) => m.id === 'local') as ModelSTT;
 
 /** Id không có trong danh sách (setting gõ tay, model đã khai tử) rơi về local — không bao giờ ném. */
 export function timModel(id: string | undefined): ModelSTT {

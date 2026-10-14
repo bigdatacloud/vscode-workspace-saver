@@ -712,7 +712,8 @@
           <h3>Ra lệnh bằng giọng nói</h3>
           <p>
             Bấm vào terminal muốn nói, nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>. Một bảng chọn
-            hiện ra: <strong>trên máy</strong> (Nemotron của VS Code, offline) hay <strong>cloud</strong>
+            hiện ra: <strong>QUAN-Transcribe</strong> (tiếng Việt, trên máy), <strong>Nemotron</strong>
+            (của VS Code, offline, đa ngôn ngữ) hay <strong>cloud</strong>
             (OpenAI gpt-4o-mini-transcribe / gpt-4o-transcribe / whisper-1, Gemini flash-lite / 3.5 / 3.7).
             Mặc định được chọn sẵn nên <strong>Enter là đi ngay</strong>; chọn mục khác là dùng luôn và
             lưu làm mặc định. Không muốn hỏi nữa thì chọn mục cuối (hoặc setting
@@ -730,6 +731,24 @@
             trong tab nháp; nhấn <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> lần nữa (hoặc Cancel) để
             dừng: tab tự đóng, chữ vào ô nhập của terminal, bạn đọc lại rồi tự Enter — extension
             <em>không bao giờ</em> gửi Enter hộ.
+          </p>
+          <p>
+            <strong>Đường QUAN-Transcribe (tiếng Việt, trên máy).</strong> Model
+            <code>qnguyen3/QUAN-Transcribe-1.0</code> chuyên tiếng Việt, chạy offline. Nó là gói Python
+            nên extension chạy nó bằng một <strong>tiến trình Python thường trú</strong>: nạp model một
+            lần rồi giữ sống tới khi đóng cửa sổ — nếu gọi một tiến trình mới mỗi câu thì lần nào cũng
+            phải chờ nạp. Ghi âm dùng chung helper WinMM với đường cloud, nên bấm là nói ngay (sau lần
+            nạp đầu).
+          </p>
+          <p>
+            Hai điều phải biết trước khi chọn. Thứ nhất, nó <strong>nặng hơn Nemotron nhiều</strong>
+            và <strong>cần cài tay</strong>: <code>torch</code> + gói <code>quan-transcribe</code> qua
+            pip, rồi lần chạy đầu tải khoảng <strong>2 GB</strong> trọng số (encoder nền
+            <code>google/embeddinggemma-2</code> 1,5 GB + QUAN 0,4 GB + từ điển 4-gram 0,1 GB) — so với
+            755 MB của Nemotron, vốn không cần Python gì cả. Chọn nó khi chưa cài thì extension hiện
+            đúng các lệnh cần chạy, không phải vết lỗi Python. Thứ hai, nó trả <strong>chữ thường,
+            không dấu câu, số viết thành chữ</strong> — đó là hành vi của model, không phải lỗi;
+            extension không tự chế thêm dấu câu vì đó là đoán.
           </p>
           <p>
             <strong>Đường cloud.</strong> Extension tự ghi âm bằng helper Windows (WinMM, không cài gì
@@ -1584,7 +1603,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               trả lời rõ “chưa hỗ trợ” thay vì đoán.
             </li>
             <li>
-              <strong>Tầng giao diện không có test tự động.</strong> 462 test phủ các hàm thuần,
+              <strong>Tầng giao diện không có test tự động.</strong> 492 test phủ các hàm thuần,
               schema, giao thức MCP và luật an toàn — nhưng menu, cây, và hộp thoại thì chỉ có
               checklist tay trong <code>docs/manual-verification.md</code> làm lưới.
             </li>
