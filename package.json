@@ -224,6 +224,16 @@
           "default": true,
           "description": "Bấm vào một terminal đang đóng trong cây thì hỏi xác nhận trước khi kích hoạt — tránh bấm nhầm mà nối lại một phiên agent (nạp lại ngữ cảnh, tốn token). Lệnh \"Kích hoạt riêng terminal này\" ở menu chuột phải không hỏi."
         },
+        "aiWorkspace.splitLayout": {
+          "type": "string",
+          "default": "auto",
+          "description": "Bố cục mặc định khi xem các terminal song song: \"auto\" (tự tính theo số terminal đang mở) hoặc dạng <cột>x<dòng> như \"3x3\", \"4x2\" (mỗi cạnh 1–6). Bảng chọn lúc chạy lệnh ghi đè và lưu lại giá trị này."
+        },
+        "aiWorkspace.splitAskLayout": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hỏi bố cục mỗi lần xem song song. Tắt thì dùng thẳng `aiWorkspace.splitLayout` — bật lại ở đây khi muốn chọn lại."
+        },
         "aiWorkspace.voice.model": {
           "type": "string",
           "default": "local",

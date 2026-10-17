@@ -562,7 +562,7 @@
   <div class="khung">
     <div class="so-day">
       <div class="so-o"><div class="so-n">36</div><div class="so-t">lệnh</div></div>
-      <div class="so-o"><div class="so-n">570</div><div class="so-t">test tự động</div></div>
+      <div class="so-o"><div class="so-n">581</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
       <div class="so-o"><div class="so-n">0</div><div class="so-t">dependency lúc chạy</div></div>
@@ -814,9 +814,22 @@
           <h3>Xem nhiều terminal cùng lúc</h3>
           <p>
             Chuột phải workspace → <strong>Xem các terminal song song</strong>: các terminal
-            <em>đang mở</em> của workspace được xếp thành lưới trong vùng editor — 2 cái thành hai
-            cột, 4 cái thành 2×2, tối đa 9 ô. Hết muốn nhìn kiểu đó thì
-            <strong>Thôi xem song song</strong> dồn mọi tab về một nhóm.
+            <em>đang mở</em> của workspace được xếp thành lưới trong vùng editor. Hết muốn nhìn kiểu
+            đó thì <strong>Thôi xem song song</strong> dồn mọi tab về một nhóm.
+          </p>
+          <p>
+            <strong>Bạn chọn bố cục.</strong> Bảng chọn hiện ra trước: <em>Tự động</em> (theo số
+            terminal, tối đa 9 ô), <em>2 cột</em>, <em>3 cột</em>, <em>2×2</em>, <em>3×2</em>,
+            <em>3×3</em>, hoặc <em>Tuỳ chỉnh…</em> để gõ <code>&lt;cột&gt;x&lt;dòng&gt;</code> —
+            mỗi cạnh 1–6, nên 6×6 = 36 ô là trần. Bố cục vừa chọn được lưu lại
+            (<code>aiWorkspace.splitLayout</code>) nên lần sau Enter là đi ngay; mục
+            <em>Không hỏi nữa</em> tắt hẳn bảng chọn.
+          </p>
+          <p>
+            Lưới tự khai <strong>được phép rộng hơn số terminal</strong>: chọn 3×3 cho 4 terminal
+            thì 5 ô trống nằm chờ bạn kéo thêm vào — đó là chủ ý của bạn, khác hẳn chế độ tự động
+            vốn luôn khớp số terminal. Lưới hẹp hơn số terminal thì phần dư nằm chồng tab ở ô đầu,
+            và thông báo nói rõ bao nhiêu cái cùng lý do.
           </p>
           <p>
             Ba điều đáng biết. Thứ nhất, <strong>không terminal nào bị mở lại</strong>: cái đang
@@ -829,10 +842,18 @@
             bạn đi đâu cả.
           </p>
           <p>
-            Thứ tự ô theo đúng thứ tự trong cây: ô đầu là terminal trên cùng, rồi xuống dưới trong
-            cùng cột, hết cột mới sang cột phải. Nếu một terminal không chắc chắn đưa được vào ô
-            riêng, nó <em>bị bỏ qua</em> thay vì dời bừa — thiếu một ô thì bấm lại là xong, còn
-            dời nhầm tab của bạn thì không.
+            Thứ tự ô đi theo thứ tự tab trong vùng editor, thường trùng thứ tự bạn mở terminal —
+            extension <em>không</em> hứa trùng khít thứ tự trong cây. Lý do rất cụ thể: bản đầu tiên
+            cố bám thứ tự cây bằng cách gọi <code>show()</code> cho từng terminal rồi dời tab đang
+            active, mà <code>show()</code> không phải lúc nào cũng kéo được tab của nó lên active —
+            hậu quả là có terminal bị bỏ sót (ba cái đang mở mà chỉ hai cái vào lưới). Bản hiện tại
+            nhìn thẳng vào cây tab và tách cho tới khi hết, nên không cái nào bị quên; đổi lại thứ
+            tự ô là thứ tự tab.
+          </p>
+          <p>
+            Khi vẫn có terminal không vào được ô riêng, lý do nằm ở kênh Output
+            <strong>AI Workspace — Xem song song</strong>, và thông báo phân biệt rõ hai trường hợp:
+            lưới hẹp hơn số terminal (bạn chọn bố cục nhỏ) hay VS Code không tách được tab.
           </p>
 
           <h3>Nhân bản một terminal</h3>
@@ -1404,7 +1425,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Xem log điều phối</td><td>Mở khung kiểm toán, kèm lối mở file log bền</td><td>chuột phải workspace</td></tr>
                 <tr><td>Lập tổ</td><td>Nhờ agent điều phối đề xuất tổ; bạn duyệt và sửa trước khi tạo</td><td>chuột phải terminal điều phối</td></tr>
                 <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây. Terminal Claude: tên được gửi vào chính phiên bằng <code>/rename</code> nên <code>claude agents</code>, session picker và app trên điện thoại cũng đổi theo</td><td>chuột phải terminal</td></tr>
-                <tr><td>Xem các terminal song song</td><td>Xếp terminal đang mở của workspace thành lưới trong vùng editor (tối đa 9 ô)</td><td>chuột phải workspace</td></tr>
+                <tr><td>Xem các terminal song song</td><td>Hỏi bố cục (tự động / 2 cột / 3 cột / 2×2 / 3×2 / 3×3 / tuỳ chỉnh <code>&lt;cột&gt;x&lt;dòng&gt;</code>) rồi xếp terminal đang mở thành lưới trong vùng editor</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thôi xem song song</td><td>Dồn mọi tab về một nhóm</td><td>chuột phải workspace</td></tr>
                 <tr><td>Đưa workspace lên / xuống</td><td>Ghim thứ tự thủ công cho cây</td><td>chuột phải workspace</td></tr>
                 <tr><td>Bỏ ghim thứ tự workspace</td><td>Trả cây về tự sắp theo lần kích hoạt</td><td>chuột phải workspace</td></tr>
@@ -1646,7 +1667,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               trả lời rõ “chưa hỗ trợ” thay vì đoán.
             </li>
             <li>
-              <strong>Tầng giao diện gần như không có test tự động.</strong> 559 test phủ các hàm thuần,
+              <strong>Tầng giao diện gần như không có test tự động.</strong> 567 test phủ các hàm thuần,
               schema, giao thức MCP và luật an toàn — nhưng menu, cây, và hộp thoại thì chỉ có
               checklist tay trong <code>docs/manual-verification.md</code> làm lưới.
             </li>

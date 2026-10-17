@@ -22,6 +22,11 @@ async function cho(dieuKien: () => boolean, hanMs = 6000): Promise<void> {
 
 const soNhom = (): number => vscode.window.tabGroups.all.length;
 
+const soNhomCoTerminal = (): number =>
+  vscode.window.tabGroups.all.filter((g) =>
+    g.tabs.some((t) => t.input instanceof vscode.TabInputTerminal),
+  ).length;
+
 const tabTerminal = (): number =>
   vscode.window.tabGroups.all.reduce(
     (t, g) => t + g.tabs.filter((x) => x.input instanceof vscode.TabInputTerminal).length,
@@ -48,9 +53,22 @@ const moTaNhom = (): string =>
     })),
   );
 
-/** Vùng editor sạch trước mỗi ca: tab sót lại của ca khác làm số nhóm lệch. */
+/**
+ * Vùng editor sạch trước mỗi ca: tab sót lại của ca khác làm số nhóm lệch.
+ *
+ * KHÔNG dùng `closeAllEditors`: VS Code khôi phục một tab Untitled CHƯA LƯU giữa các lần
+ * chạy (state nằm trong `.vscode-test/user-data`), và lệnh đó mở hộp thoại "Save?" — trong
+ * Extension Host không ai bấm, hộp thoại chặn mọi lệnh editor sau đó, nên ca test kế tiếp
+ * thấy các lệnh dời tab "không có tác dụng". `revertAndCloseActiveEditor` bỏ nội dung chưa
+ * lưu và đóng, không hỏi gì.
+ */
 async function donBanLamViec(): Promise<void> {
-  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  for (let i = 0; i < 20; i++) {
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+    if (tabs.length === 0) break;
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await new Promise((r) => setTimeout(r, 80));
+  }
   await gopVeMotNhom();
   await cho(() => tabTerminal() === 0 && vscode.window.tabGroups.all.length === 1);
 }
@@ -80,6 +98,64 @@ suite('xem song song — xếp terminal thành lưới', () => {
       await cho(() => soNhom() === 4);
       assert.equal(soNhom(), 4, 'phải có đúng 4 nhóm editor');
       assert.ok(moiNhomMotTerminal(), `mỗi nhóm phải chứa đúng một tab terminal — thực tế: ${moTaNhom()}`);
+    } finally {
+      await donDep(ds);
+    }
+  });
+
+  test('năm terminal → năm nhóm: KHÔNG được bỏ sót cái nào', async () => {
+    // Ca này tái hiện lỗi người dùng gặp thật: ba terminal đang mở mà chỉ hai cái vào lưới.
+    const ds = [0, 1, 2, 3, 4].map((i) =>
+      vscode.window.createTerminal({ name: `nam-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    try {
+      await cho(() => tabTerminal() === 5);
+
+      const kq = await xepLuoiTerminal(ds);
+
+      await cho(() => soNhom() === 5);
+      assert.equal(kq.daXep, 5, `phải xếp đủ 5 — thực tế: ${moTaNhom()}`);
+      assert.equal(soNhom(), 5, `phải có 5 nhóm — thực tế: ${moTaNhom()}`);
+      assert.ok(moiNhomMotTerminal(), `mỗi nhóm đúng một terminal — thực tế: ${moTaNhom()}`);
+    } finally {
+      await donDep(ds);
+    }
+  });
+
+  test('bố cục tự khai 3x3 với 4 terminal → chín ô, bốn ô có terminal và năm ô để trống', async () => {
+    // Ô trống ở đây KHÔNG phải lỗi: người dùng tự khai 3x3 thì năm ô trống là chủ ý của họ
+    // (chừa chỗ kéo thêm vào), khác hẳn chế độ tự tính vốn luôn khớp số terminal.
+    const ds = [0, 1, 2, 3].map((i) =>
+      vscode.window.createTerminal({ name: `ba-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    try {
+      await cho(() => tabTerminal() === 4);
+
+      const kq = await xepLuoiTerminal(ds, { cot: 3, dong: 3 });
+
+      await cho(() => soNhom() === 9);
+      assert.equal(soNhom(), 9, `phải có 9 ô — thực tế: ${moTaNhom()}`);
+      assert.equal(kq.daXep, 4);
+      assert.equal(soNhomCoTerminal(), 4, `bốn ô có terminal — thực tế: ${moTaNhom()}`);
+    } finally {
+      await donDep(ds);
+    }
+  });
+
+  test('bố cục nhỏ hơn số terminal: 2 cột 1 dòng với 4 terminal → chỉ 2 cái vào ô riêng', async () => {
+    const ds = [0, 1, 2, 3].map((i) =>
+      vscode.window.createTerminal({ name: `hep-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    try {
+      await cho(() => tabTerminal() === 4);
+
+      const kq = await xepLuoiTerminal(ds, { cot: 2, dong: 1 });
+
+      await cho(() => soNhom() === 2);
+      assert.equal(soNhom(), 2, `phải có 2 ô — thực tế: ${moTaNhom()}`);
+      assert.equal(kq.daXep, 2);
+      assert.equal(kq.qua, 2, 'hai cái không có ô riêng phải được báo lại');
+      assert.equal(tabTerminal(), 4, 'không terminal nào bị mất, chỉ là nằm chồng tab');
     } finally {
       await donDep(ds);
     }

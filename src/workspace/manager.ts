@@ -87,8 +87,8 @@ import {
 } from '../model/store';
 import { lenhDoiTenPhienClaude } from '../agent/claude';
 import { upsertTerminal } from '../model/store';
-import { TOI_DA_O } from '../ui/luoi';
-import { gopVeMotNhom, xepLuoiTerminal } from '../ui/splitview';
+import { docCotDong, TOI_DA_CANH, TOI_DA_O } from '../ui/luoi';
+import { gopVeMotNhom, xepLuoiTerminal, type YeuCauLuoi } from '../ui/splitview';
 import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
@@ -187,6 +187,7 @@ const HAN_SO_GIAO_MS = 24 * 3_600_000;
 /** Chỉ giữ vài dòng huỷ gần nhất trong `status.json` — người điều phối cần biết, không cần lịch sử. */
 const SO_DONG_HUY = 10;
 const TEN_KENH_KIEM_TOAN = 'AI Workspace — Điều phối';
+const TEN_KENH_LUOI = 'AI Workspace — Xem song song';
 /** Log kiểm toán bền, nằm cạnh bus của workspace: `orch/<wsId>/audit.log`. */
 const TEN_FILE_KIEM_TOAN = 'audit.log';
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
@@ -2150,11 +2151,100 @@ export class WorkspaceManager implements vscode.Disposable {
       return;
     }
 
-    const kq = await xepLuoiTerminal(dangMo);
+    const chon = await this.chonBoCucLuoi(dangMo.length);
+    if (chon === null) return; // người dùng huỷ
+
+    const kq = await xepLuoiTerminal(dangMo, chon, (d) => this.kenhLuoi().appendLine(d));
+    const soO = chon === undefined ? Math.min(dangMo.length, TOI_DA_O) : chon.cot * chon.dong;
+
     const phan = [`Đã xếp ${kq.daXep} terminal của "${ws.name}" thành lưới.`];
-    if (kq.qua > 0) phan.push(`${kq.qua} cái không vào lưới (tối đa ${TOI_DA_O} ô).`);
+    if (kq.qua > 0) {
+      // Nói ĐÚNG lý do: trước đây mọi trường hợp đều bị đổ cho "tối đa 9 ô", kể cả khi thật
+      // ra VS Code không tách được tab — người dùng đọc xong vẫn không biết phải làm gì.
+      if (soO < dangMo.length) {
+        phan.push(
+          `${kq.qua} cái nằm chồng tab vì lưới chỉ có ${soO} ô — chọn bố cục rộng hơn nếu muốn mỗi cái một ô.`,
+        );
+      } else {
+        phan.push(
+          `${kq.qua} cái VS Code không tách ra được ô riêng (xem kênh "${TEN_KENH_LUOI}" trong Output).`,
+        );
+      }
+    }
     if (dong > 0) phan.push(`${dong} cái đang đóng nên không xếp — bấm vào trong cây để bật riêng.`);
     void vscode.window.showInformationMessage(phan.join(' '));
+  }
+
+  private kenhLuoiCache: vscode.OutputChannel | null = null;
+
+  /** Kênh Output riêng cho việc xếp lưới — chỗ tra khi một terminal không vào được ô nào. */
+  private kenhLuoi(): vscode.OutputChannel {
+    this.kenhLuoiCache ??= vscode.window.createOutputChannel(TEN_KENH_LUOI);
+    return this.kenhLuoiCache;
+  }
+
+  /**
+   * Bảng chọn bố cục lưới.
+   *
+   * Trả `undefined` = tự tính theo số terminal, `null` = người dùng huỷ. Mục đã lưu trong
+   * setting được chọn sẵn và đánh dấu ✓, nên Enter là đi ngay — bảng chọn này nằm giữa người
+   * dùng và việc họ muốn làm, không được bắt họ đọc lại mỗi lần.
+   */
+  private async chonBoCucLuoi(soTerminal: number): Promise<YeuCauLuoi | undefined | null> {
+    const cfg = vscode.workspace.getConfiguration('aiWorkspace');
+    const daLuu = cfg.get<string>('splitLayout', 'auto');
+    const hoi = cfg.get<boolean>('splitAskLayout', true);
+    const doc = (s: string): YeuCauLuoi | undefined =>
+      s === 'auto' ? undefined : (docCotDong(s) ?? undefined);
+    if (!hoi) return doc(daLuu);
+
+    const SAN: { id: string; nhan: string; mo: string }[] = [
+      { id: 'auto', nhan: 'Tự động', mo: `theo số terminal đang mở (${Math.min(soTerminal, TOI_DA_O)} ô)` },
+      { id: '2x1', nhan: '2 cột', mo: 'hai ô cạnh nhau' },
+      { id: '3x1', nhan: '3 cột', mo: 'ba ô cạnh nhau' },
+      { id: '2x2', nhan: '2 × 2', mo: 'bốn ô' },
+      { id: '3x2', nhan: '3 cột × 2 dòng', mo: 'sáu ô' },
+      { id: '3x3', nhan: '3 cột × 3 dòng', mo: 'chín ô' },
+    ];
+    const muc: (vscode.QuickPickItem & { id: string })[] = SAN.map((x) => ({
+      id: x.id,
+      label: `${x.id === daLuu ? '$(check) ' : ''}${x.nhan}`,
+      description: x.mo,
+    }));
+    muc.push({ id: 'tuy', label: '$(edit) Tuỳ chỉnh…', description: 'gõ số cột × số dòng, ví dụ 4x2' });
+    muc.push({
+      id: 'thoi',
+      label: '$(bell-slash) Không hỏi nữa',
+      description: `luôn dùng bố cục đang lưu (${daLuu})`,
+    });
+
+    const picked = await vscode.window.showQuickPick(muc, {
+      title: `Xem ${soTerminal} terminal song song`,
+      placeHolder: 'Chọn bố cục lưới (Enter = bố cục đang lưu)',
+      matchOnDescription: true,
+    });
+    if (picked === undefined) return null;
+
+    if (picked.id === 'thoi') {
+      await cfg.update('splitAskLayout', false, vscode.ConfigurationTarget.Global);
+      return doc(daLuu);
+    }
+    if (picked.id === 'tuy') {
+      const go = await vscode.window.showInputBox({
+        title: 'Bố cục lưới',
+        prompt: `Số cột × số dòng, ví dụ 3x3 (mỗi cạnh 1–${TOI_DA_CANH})`,
+        value: daLuu === 'auto' ? '3x3' : daLuu,
+        validateInput: (v) =>
+          docCotDong(v) === null ? `Không đọc được. Gõ dạng "3x3", "4x2" hoặc "3" (mỗi cạnh 1–${TOI_DA_CANH}).` : undefined,
+      });
+      if (go === undefined) return null;
+      const kq = docCotDong(go);
+      if (kq === null) return null;
+      await cfg.update('splitLayout', `${kq.cot}x${kq.dong}`, vscode.ConfigurationTarget.Global);
+      return kq;
+    }
+    if (picked.id !== daLuu) await cfg.update('splitLayout', picked.id, vscode.ConfigurationTarget.Global);
+    return doc(picked.id);
   }
 
   /** Thôi xem song song: dồn mọi tab về một nhóm. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boCucLuoi, phanBoCot, TOI_DA_O } from '../../src/ui/luoi';
+import { boCucLuoi, boCucTuCotDong, docCotDong, phanBoCot, TOI_DA_CANH, TOI_DA_O } from '../../src/ui/luoi';
 
 /** Tổng số ô của một bố cục — phải luôn khớp số terminal, không thừa ô trống. */
 const demO = (bc: ReturnType<typeof boCucLuoi>): number =>
@@ -78,5 +78,53 @@ describe('boCucLuoi — đối số cho lệnh vscode.setEditorLayout', () => {
 
   it('một terminal: một ô duy nhất (gộp về bố cục đơn)', () => {
     expect(boCucLuoi(1)).toEqual({ orientation: 0, groups: [{}] });
+  });
+});
+
+describe('boCucTuCotDong — người dùng tự khai số cột × số dòng', () => {
+  it('3 cột × 3 dòng = chín ô, cột nào cũng ba hàng', () => {
+    const bc = boCucTuCotDong(3, 3);
+    expect(bc.groups).toHaveLength(3);
+    expect(bc.groups.every((g) => g.groups?.length === 3)).toBe(true);
+    expect(demO(bc)).toBe(9);
+  });
+
+  it('3 cột × 1 dòng = ba cột phẳng, không lồng nhóm', () => {
+    expect(boCucTuCotDong(3, 1)).toEqual({ orientation: 0, groups: [{}, {}, {}] });
+  });
+
+  it('1 cột × 3 dòng = ba hàng chồng lên nhau', () => {
+    expect(boCucTuCotDong(1, 3)).toEqual({ orientation: 0, groups: [{ groups: [{}, {}, {}] }] });
+  });
+
+  it('số không hợp lệ bị kéo về trong khoảng cho phép thay vì dựng lưới rỗng', () => {
+    expect(demO(boCucTuCotDong(0, 0))).toBe(1);
+    expect(demO(boCucTuCotDong(-2, 99))).toBe(TOI_DA_CANH);
+  });
+
+  it('cạnh tối đa đủ rộng cho 6x6 nhưng không hơn — quá nữa thì mỗi ô không đọc nổi', () => {
+    expect(TOI_DA_CANH).toBe(6);
+    expect(demO(boCucTuCotDong(TOI_DA_CANH, TOI_DA_CANH))).toBe(36);
+  });
+});
+
+describe('docCotDong — đọc chuỗi người dùng gõ', () => {
+  it('chấp nhận các cách viết thường gặp', () => {
+    expect(docCotDong('3x3')).toEqual({ cot: 3, dong: 3 });
+    expect(docCotDong('3 X 2')).toEqual({ cot: 3, dong: 2 });
+    expect(docCotDong(' 2*4 ')).toEqual({ cot: 2, dong: 4 });
+    expect(docCotDong('2,3')).toEqual({ cot: 2, dong: 3 });
+  });
+
+  it('một số duy nhất = số cột, một dòng', () => {
+    expect(docCotDong('3')).toEqual({ cot: 3, dong: 1 });
+  });
+
+  it('rác thì trả null để ô nhập báo lỗi ngay, không dựng lưới bừa', () => {
+    expect(docCotDong('')).toBeNull();
+    expect(docCotDong('ba cột')).toBeNull();
+    expect(docCotDong('3x')).toBeNull();
+    expect(docCotDong('0x3')).toBeNull();
+    expect(docCotDong('7x7')).toBeNull();
   });
 });

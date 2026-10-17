@@ -193,7 +193,7 @@ extension refuses any dispatch that does not come from the orchestrator terminal
 | AI Workspace: Show workspace info | `aiWorkspace.showWorkspaceInfo` | Workspace context menu — id, last activation, owning window, terminal location, store file path and every terminal with its cwd/start command/session; "Copy info" / "Open store file" |
 | AI Workspace: Workspace settings | `aiWorkspace.workspaceSettings` | Workspace context menu — per-workspace terminal location (follow global / editor area / bottom panel) |
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
-| AI Workspace: View terminals side by side | `aiWorkspace.viewSplit` | Workspace context menu. Arranges the workspace's OPEN terminals into an editor-area grid (2 → two columns, 4 → 2×2, max 9 cells). Terminals living in the panel are *moved* into the editor area, never restarted, so agent sessions survive. Closed terminals are left alone — starting an agent session reloads its context and costs tokens. |
+| AI Workspace: View terminals side by side | `aiWorkspace.viewSplit` | Workspace context menu. Asks for a layout first — Auto (by terminal count, max 9 cells), 2 columns, 3 columns, 2×2, 3×2, 3×3, or a custom `<cols>x<rows>` (each side 1–6) — then arranges the workspace's OPEN terminals into that editor-area grid. The choice is stored in `aiWorkspace.splitLayout`; `aiWorkspace.splitAskLayout` turns the picker off. A custom grid may be *larger* than the terminal count (empty cells are then deliberate). Terminals living in the panel are *moved* into the editor area, never restarted, so agent sessions survive. Closed terminals are left alone — starting an agent session reloads its context and costs tokens. |
 | AI Workspace: Stop side-by-side view | `aiWorkspace.viewSplitOff` | Workspace context menu. Merges every tab back into one group. |
 | AI Workspace: Move workspace up / down | `aiWorkspace.moveWorkspaceUp` / `…Down` | Workspace context menu. Pins the manual order. |
 | AI Workspace: Unpin workspace order | `aiWorkspace.unpinWorkspaceOrder` | Workspace context menu. Back to auto-sorting by last activation. |
@@ -302,7 +302,7 @@ applies to both new and restored terminals. For terminals you open yourself with
 
 ```bash
 npm install
-npm test              # 559 unit/integration tests (vitest) — pure core, no vscode API
+npm test              # 567 unit/integration tests (vitest) — pure core, no vscode API
 npm run test:vscode   # 6 smoke tests running inside a real Extension Host
 npm run typecheck     # tsc --noEmit
 npm run build         # bundle with esbuild into dist/extension.js

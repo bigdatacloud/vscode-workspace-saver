@@ -796,3 +796,17 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Đổi tên terminal Claude đang ĐÓNG → không gõ gì; kích hoạt lại thì phiên mang tên mới (`-n`)
 - [ ] Đổi tên terminal shell thường → KHÔNG có `/rename` nào bị gõ vào shell
 - [ ] Huỷ hộp nhập tên → không có gì thay đổi
+
+## Bố cục lưới tự khai (bổ sung 17/10/2026)
+
+- [ ] Bấm "Xem các terminal song song" → bảng chọn hiện; mục đang lưu có dấu ✓; Enter đi ngay
+- [ ] Chọn **3 cột** với 3 terminal đang mở → đúng ba cột, mỗi cột một terminal
+- [ ] Chọn **3×3** với 4 terminal → **chín ô**, bốn ô có terminal, năm ô trống (đúng ý, không phải lỗi)
+- [ ] Chọn **2 cột** với 5 terminal → hai ô; thông báo nói "nằm chồng tab vì lưới chỉ có 2 ô",
+      KHÔNG đổ cho "tối đa 9 ô"
+- [ ] **Tuỳ chỉnh…** → gõ `4x2` chạy đúng; gõ `7x7` hoặc `abc` → ô nhập báo lỗi ngay, không đóng
+- [ ] Bố cục vừa chọn được lưu: mở lại bảng chọn thấy ✓ ở đúng mục đó; `aiWorkspace.splitLayout` đổi theo
+- [ ] "Không hỏi nữa" → lần sau chạy thẳng, không hiện bảng; bật lại bằng `aiWorkspace.splitAskLayout`
+- [ ] Huỷ bảng chọn (Esc) → KHÔNG đụng gì tới bố cục editor
+- [ ] 4 terminal đang chạy agent → cả 4 vào 4 ô (đây là ca người dùng báo hỏng ngày 17/10)
+- [ ] Kênh Output "AI Workspace — Xem song song" có dòng `[luoi] dựng N ô…` và `[luoi] kết quả…`

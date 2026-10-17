@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { boCucLuoi, TOI_DA_O } from './luoi';
+import { boCucLuoi, boCucTuCotDong, TOI_DA_O } from './luoi';
 
 /**
  * Xem nhiều terminal cùng lúc: xếp chúng thành lưới trong vùng editor.
@@ -36,50 +36,11 @@ async function cho(dieuKien: () => boolean): Promise<void> {
   }
 }
 
-/**
- * Tab đang active có đúng là tab của terminal này không.
- *
- * Phải kiểm tới mức TAB chứ không dừng ở `activeTerminal`: lệnh dời tab tác động lên tab
- * đang active, nên nếu nhóm đó đang hiện một file thì cú dời ném file của người dùng sang ô
- * khác. Đúng chuyện này đã xảy ra trong test — một tab Untitled bị kéo vào lưới.
- *
- * KHÔNG so tên tab: nhãn tab terminal do VS Code tự đặt (có thể kèm tên shell, hoặc còn rỗng
- * khi terminal chưa khởi động xong), nên so tên sinh ra toàn báo động giả và terminal bị bỏ
- * qua oan. Cặp "terminal đang focus là `t`" + "tab đang active là MỘT tab terminal" đã đủ:
- * VS Code đồng bộ hai thứ đó với nhau. Nếu lệch, cái giá là ô trong lưới xếp sai thứ tự —
- * còn thứ phải chặn bằng mọi giá, là dời nhầm tab KHÔNG PHẢI terminal, thì vẫn chặn được.
- */
-function tabDungLaCua(t: vscode.Terminal): boolean {
-  const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-  return vscode.window.activeTerminal === t && tab?.input instanceof vscode.TabInputTerminal;
-}
-
-/**
- * Hiện terminal rồi CHỜ tới khi tab của nó thật sự là tab đang active.
- *
- * Bắt buộc phải chờ: `show()` chỉ gửi yêu cầu, còn các lệnh dời tab bên dưới tác động lên
- * tab ĐANG active — bắn lệnh ngay sau `show()` là dời nhầm tab.
- *
- * Trả `false` nếu chờ mãi không được; bên gọi phải bỏ qua terminal đó. Thiếu một ô trong
- * lưới là chuyện nhìn thấy ngay và bấm lại được; dời nhầm tab của người dùng thì không.
- */
-async function hienVaCho(t: vscode.Terminal): Promise<boolean> {
-  t.show(true);
-  await cho(() => vscode.window.activeTerminal === t);
-  // `activeTerminal` đổi sớm hơn tab trong vùng editor: đo được cảnh focus đã sang terminal
-  // mới mà `activeTabGroup` vẫn còn trỏ nhóm cũ, và lệnh dời tab ngay lúc đó dời nhầm tab.
-  await nghi(NHIP_UI_MS);
-  if (tabDungLaCua(t)) return true;
-  // Gọi lại show(): lần đầu có thể rơi trúng lúc VS Code đang dở một thao tác bố cục khác.
-  await cho(() => {
-    t.show(true);
-    return tabDungLaCua(t);
-  });
-  return tabDungLaCua(t);
-}
-
 const nghi = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-const NHIP_UI_MS = 300;
+/** Nhịp để workbench kịp áp một thao tác bố cục trước khi ta ra lệnh tiếp. */
+const NHIP_UI_MS = 220;
+/** Nhịp giữa hai lệnh liên tiếp trong cùng một bước — ngắn hơn, gọi rất nhiều lần. */
+const NHIP_NHO_MS = 90;
 
 const soNhom = (): number => vscode.window.tabGroups.all.length;
 
@@ -115,65 +76,125 @@ export async function gopVeMotNhom(): Promise<void> {
   await chay('workbench.action.editorLayoutSingle');
 }
 
-/**
- * Xếp các terminal thành lưới, theo đúng thứ tự truyền vào: ô 1 là cái đầu tiên, rồi xuống
- * dưới trong cùng cột, hết cột mới sang cột phải.
- *
- * Thứ tự thao tác là điều quan trọng nhất ở đây, và nó đi ngược trực giác: **rải ra từng
- * nhóm trước, dựng lưới sau**. Cách thuận tay hơn — dựng sẵn N ô rồi dời tab vào — không
- * chạy được: đo trên VS Code 1.142 thì mỗi lần dời tab, một ô RỖNG lại bị đóng, nên lưới cứ
- * teo dần trong lúc ta đang rải (4 ô → 3 → 2). Ngược lại, dời tab sang "nhóm kế tiếp" khi
- * đang ở nhóm cuối thì VS Code TẠO nhóm mới — xây dần theo cách đó thì mọi nhóm luôn có tab
- * nên không cái nào bị đóng, và `setEditorLayout` ở bước cuối chỉ việc sắp N nhóm sẵn có
- * thành lưới.
- *
- * Terminal đầu tiên ở lại nhóm 1 cùng mọi tab file đang mở — chừa lại ít nhất một tab ở đó
- * vì cùng lý do trên.
- */
-export async function xepLuoiTerminal(ds: readonly vscode.Terminal[]): Promise<KetQuaXepLuoi> {
-  const lay = ds.slice(0, TOI_DA_O);
-  if (lay.length === 0) return { daXep: 0, qua: ds.length };
+/** Bố cục người dùng chọn; vắng mặt = tự tính theo số terminal. */
+export interface YeuCauLuoi {
+  cot: number;
+  dong: number;
+}
 
-  for (const t of lay) {
+/** Số tab terminal trong một nhóm. */
+const demTermTrongNhom = (g: vscode.TabGroup): number =>
+  g.tabs.filter((t) => t.input instanceof vscode.TabInputTerminal).length;
+
+/** Nhóm đầu tiên còn chứa nhiều hơn một terminal — chính là nhóm cần tách tiếp. */
+const nhomConDongTerminal = (): vscode.TabGroup | undefined =>
+  vscode.window.tabGroups.all.find((g) => demTermTrongNhom(g) > 1);
+
+/**
+ * Đưa focus vào một nhóm theo chỉ số (0-based), bằng cách đi từ nhóm đầu sang phải.
+ *
+ * Không có lệnh "focus nhóm thứ N" nhận tham số, và `focusFirstEditorGroup` +
+ * `focusNextGroup` thì luôn có.
+ */
+async function focusNhom(i: number): Promise<void> {
+  await chay('workbench.action.focusFirstEditorGroup');
+  for (let b = 0; b < i; b++) await chay('workbench.action.focusNextGroup');
+}
+
+/**
+ * Xoay tab đang active trong nhóm cho tới khi gặp một tab TERMINAL.
+ *
+ * Trả `false` nếu nhóm không có tab terminal nào. Cần bước này vì lệnh dời tab tác động lên
+ * tab đang active: nếu nhóm đang hiện một file thì cú dời sẽ ném file của người dùng sang ô
+ * khác — chuyện đã xảy ra thật trong test.
+ */
+async function xoayToiTabTerminal(g: vscode.TabGroup): Promise<boolean> {
+  if (demTermTrongNhom(g) === 0) return false;
+  for (let i = 0; i < g.tabs.length + 1; i++) {
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    if (tab?.input instanceof vscode.TabInputTerminal) return true;
+    await chay('workbench.action.nextEditorInGroup');
+    await nghi(NHIP_NHO_MS);
+  }
+  return vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal;
+}
+
+/**
+ * Xếp các terminal thành lưới.
+ *
+ * Ba điều học được khi chạy thật trên VS Code 1.142, cả ba đều đi ngược trực giác:
+ *
+ * 1. **Nhóm rỗng chỉ bị đóng khi tab CUỐI CÙNG của nó rời đi.** `setEditorLayout` dựng được
+ *    các ô rỗng và chúng tồn tại yên ổn — nên dựng lưới trước rồi rải tab vào là được, miễn
+ *    là nhóm nguồn luôn còn ít nhất một tab. Bản trước hiểu nhầm điều này (đo trên một
+ *    terminal duy nhất) và đi đường vòng "tạo nhóm mới bằng cách dời sang nhóm kế tiếp", mà
+ *    đường đó lại không phải lúc nào cũng tạo được nhóm — đúng lỗi người dùng gặp: ba
+ *    terminal đang mở mà chỉ hai cái vào lưới.
+ *
+ * 2. **Rải từ gần ra xa.** Tab đi tới ô thứ k bằng k lần "sang nhóm kế tiếp"; các ô nó đi
+ *    ngang qua đều đã có tab (vì ta điền ô 2 trước ô 3), nên không ô nào rỗng ra giữa chừng.
+ *
+ * 3. **Chọn tab bằng cách xoay trong nhóm, không bằng `terminal.show()`.** `show()` không
+ *    phải lúc nào cũng kéo được tab của nó lên active, và lệnh dời thì tác động vào tab đang
+ *    active — dựa vào `show()` là lý do bản trước bỏ sót terminal. Cái giá: thứ tự ô theo
+ *    thứ tự tab chứ không chắc theo thứ tự cây.
+ *
+ * `yeuCau` là lưới người dùng tự khai (3×3…); vắng mặt thì tự tính theo số terminal. Số ô có
+ * thể NHIỀU hơn số terminal khi người dùng tự khai — ô trống lúc đó là chủ ý của họ.
+ */
+export async function xepLuoiTerminal(
+  ds: readonly vscode.Terminal[],
+  yeuCau?: YeuCauLuoi,
+  ghiLog: (d: string) => void = () => undefined,
+): Promise<KetQuaXepLuoi> {
+  if (ds.length === 0) return { daXep: 0, qua: 0 };
+  const soO =
+    yeuCau === undefined
+      ? Math.max(1, Math.min(ds.length, TOI_DA_O))
+      : Math.max(1, yeuCau.cot * yeuCau.dong);
+
+  for (const t of ds) {
     if (!dangOPanel(t)) continue;
-    // Ở panel thì chưa có tab nào để so, chỉ cần nó là terminal đang focus.
     t.show(true);
     await cho(() => vscode.window.activeTerminal === t);
     await nghi(NHIP_UI_MS);
     await chay('workbench.action.terminal.moveToEditor');
+    await nghi(NHIP_UI_MS);
   }
 
   await gopVeMotNhom();
   await cho(() => soNhom() === 1);
-  if (lay.length === 1) {
-    await hienVaCho(lay[0] as vscode.Terminal);
-    return { daXep: 1, qua: ds.length - 1 };
+
+  const bc = yeuCau === undefined ? boCucLuoi(soO) : boCucTuCotDong(yeuCau.cot, yeuCau.dong);
+  await chay('vscode.setEditorLayout', bc);
+  await cho(() => soNhom() >= soO);
+  ghiLog(`[luoi] dựng ${soNhom()} ô cho ${ds.length} terminal`);
+
+  for (let k = 1; k < soO; k++) {
+    await focusNhom(0);
+    await nghi(NHIP_NHO_MS);
+    const nhom1 = vscode.window.tabGroups.all[0];
+    if (nhom1 === undefined) break;
+    // Dời nốt tab cuối của nhóm 1 là làm nó rỗng → VS Code đóng nhóm → lưới mất một ô.
+    if (nhom1.tabs.length <= 1 || demTermTrongNhom(nhom1) <= 1) {
+      ghiLog(`[luoi] hết terminal để rải ở ô ${k + 1} (nhóm 1 còn ${nhom1.tabs.length} tab)`);
+      break;
+    }
+    if (!(await xoayToiTabTerminal(nhom1))) break;
+    const truoc = soNhomCoTerminal();
+    for (let b = 0; b < k; b++) {
+      await chay('workbench.action.moveEditorToNextGroup');
+      await nghi(NHIP_NHO_MS);
+    }
+    await cho(() => soNhomCoTerminal() > truoc);
+    if (soNhomCoTerminal() === truoc) {
+      ghiLog(`[luoi] ô ${k + 1}: dời tab không ăn thua, dừng lại`);
+      break;
+    }
   }
 
-  let daRa = 1; // terminal đầu tiên ở lại nhóm 1
-  for (let i = 1; i < lay.length; i++) {
-    // Kéo focus về nhóm 1 TRƯỚC: mọi tab chưa rải đều nằm ở đó, và `show()` của một terminal
-    // ở nhóm khác với nhóm đang focus không phải lúc nào cũng kéo được focus sang.
-    await chay('workbench.action.focusFirstEditorGroup');
-    await nghi(NHIP_UI_MS);
-    // Không chắc tab đang active là của nó thì BỎ QUA: dời đại là ném tab file của người
-    // dùng sang ô khác.
-    if (!(await hienVaCho(lay[i] as vscode.Terminal))) continue;
-    // Sang nhóm cuối rồi "sang nhóm kế tiếp" một lần nữa: bước thứ hai là bước tạo ra nhóm
-    // mới. Không gộp được thành một lệnh vì không có lệnh "dời sang nhóm mới ở cuối".
-    const truoc = soNhom();
-    await chay('workbench.action.moveEditorToLastGroup');
-    await nghi(NHIP_UI_MS);
-    await chay('workbench.action.moveEditorToNextGroup');
-    await cho(() => soNhom() > truoc);
-    daRa += 1;
-  }
-
-  // Đếm ô THẬT SỰ có terminal thay vì tin vào số lần đã dời: bố cục cập nhật không đồng bộ,
-  // và một ô trống trong lưới là chỗ người dùng tưởng có terminal mà không có.
-  await cho(() => soNhomCoTerminal() >= daRa);
-  const soO = Math.max(1, Math.min(lay.length, soNhomCoTerminal()));
-  await chay('vscode.setEditorLayout', boCucLuoi(soO));
-  await hienVaCho(lay[0] as vscode.Terminal);
-  return { daXep: soO, qua: ds.length - soO };
+  const coTerm = soNhomCoTerminal();
+  ghiLog(`[luoi] kết quả: ${coTerm} ô có terminal / ${soNhom()} ô`);
+  const daXep = Math.min(coTerm, ds.length);
+  return { daXep, qua: ds.length - daXep };
 }
