@@ -3,25 +3,21 @@ import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
 import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../../src/terminal/manager';
 
-const EXPECTED_COMMANDS = [
-  'aiWorkspace.createWorkspace',
-  'aiWorkspace.activateWorkspace',
-  'aiWorkspace.closeWorkspace',
-  'aiWorkspace.renameWorkspace',
-  'aiWorkspace.deleteWorkspace',
-  'aiWorkspace.newClaudeTerminal',
-  'aiWorkspace.newPlainTerminal',
-  'aiWorkspace.newCodexTerminal',
-  'aiWorkspace.workspaceSettings',
-  'aiWorkspace.showTerminalPath',
-  'aiWorkspace.showWorkspaceInfo',
-  'aiWorkspace.setStartCommand',
-  'aiWorkspace.removeTerminal',
-  'aiWorkspace.focusTerminal',
-  'aiWorkspace.addOpenTerminalToWorkspace',
-  'aiWorkspace.assignClaudeSession',
-  'aiWorkspace.renameTerminal',
-];
+/**
+ * Mọi lệnh KHAI trong package.json phải thật sự được đăng ký.
+ *
+ * Đọc từ manifest chứ không chép tay một danh sách: danh sách chép tay không bao giờ nhắc ai
+ * cập nhật nó, nên lệnh mới thêm vào package.json mà quên `registerCommand` vẫn qua test —
+ * và người dùng là người phát hiện, bằng một mục menu bấm vào báo "command not found".
+ */
+function lenhKhaiTrongManifest(): string[] {
+  const ext = vscode.extensions.getExtension('bigdatacloud.ai-workspace-session-manager');
+  assert.ok(ext, 'không tìm thấy extension trong Extension Host');
+  const pkg = ext.packageJSON as { contributes?: { commands?: { command: string }[] } };
+  const ds = (pkg.contributes?.commands ?? []).map((c) => c.command);
+  assert.ok(ds.length > 0, 'manifest không khai lệnh nào — đọc sai chỗ');
+  return ds;
+}
 
 /**
  * `vscode.Terminal.dispose()` không đảm bảo phản ánh ngay vào `vscode.window.terminals`
@@ -50,9 +46,9 @@ suite('AI Workspace extension', () => {
 
   test('đăng ký đủ lệnh và activate() đã chạy xong', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const command of EXPECTED_COMMANDS) {
-      assert.ok(all.includes(command), `thiếu lệnh ${command}`);
-    }
+    const khai = lenhKhaiTrongManifest();
+    const thieu = khai.filter((c) => !all.includes(c));
+    assert.deepStrictEqual(thieu, [], `lệnh khai trong package.json mà chưa đăng ký: ${thieu.join(', ')}`);
     // Khai báo trong package.json thôi chưa đủ: chạy thật một lệnh để chứng minh
     // activate() đã đăng ký handler. Cố tình chỉ dùng lệnh KHÔNG mở hộp thoại nào:
     // mọi showInputBox/showWarningMessage trong Extension Host headless sẽ không có ai
