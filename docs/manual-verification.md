@@ -810,3 +810,18 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Huỷ bảng chọn (Esc) → KHÔNG đụng gì tới bố cục editor
 - [ ] 4 terminal đang chạy agent → cả 4 vào 4 ô (đây là ca người dùng báo hỏng ngày 17/10)
 - [ ] Kênh Output "AI Workspace — Xem song song" có dòng `[luoi] dựng N ô…` và `[luoi] kết quả…`
+
+## Hàng rào một hội thoại một tiến trình (kích hoạt workspace)
+
+- [ ] Hai workspace cùng trỏ một `claudeSessionId`, cái thứ nhất đang mở → kích hoạt cái thứ hai
+      thì hiện hộp thoại nói rõ terminal nào đang giữ hội thoại và thuộc workspace nào
+- [ ] Bấm **Chuyển "X" sang workspace này** → terminal đang chạy chuyển sang workspace hiện tại,
+      mục trùng bị bỏ, KHÔNG có terminal thứ hai nào mở ra, hội thoại không đứt
+- [ ] Bấm **Chỉ hiện "X"** → nhảy tới terminal đang chạy, không mở thêm gì
+- [ ] Bấm **Vẫn mở phiên thứ hai** → hành vi cũ (resume), dùng khi biết rõ mình làm gì
+- [ ] Esc / đóng hộp thoại → không mở gì, báo cáo ghi entry đó bị bỏ qua
+- [ ] Phiên đang chạy ở **cửa sổ VS Code khác**: hộp thoại nói "không với tới terminal đó được",
+      chỉ có [Vẫn mở phiên thứ hai] và Esc; mặc định là KHÔNG mở
+- [ ] Sau khi dùng hàng rào, `claude agents --json` KHÔNG còn hai pid cùng một `sessionId`
+- [ ] Kích hoạt một workspace bình thường (hội thoại chưa chạy ở đâu) → không hỏi gì thêm
+- [ ] Registry đọc lỗi (tắt mạng / `claude` không chạy được) → không chặn oan, mở như cũ

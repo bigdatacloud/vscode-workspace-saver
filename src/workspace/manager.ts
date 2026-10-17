@@ -86,6 +86,7 @@ import {
   type ShardResult,
 } from '../model/store';
 import { lenhDoiTenPhienClaude } from '../agent/claude';
+import { phanXuTrungPhien, type PhanXuPhien } from './trungphien';
 import { upsertTerminal } from '../model/store';
 import { docCotDong, TOI_DA_CANH, TOI_DA_O } from '../ui/luoi';
 import { gopVeMotNhom, xepLuoiTerminal, type YeuCauLuoi } from '../ui/splitview';
@@ -989,6 +990,97 @@ export class WorkspaceManager implements vscode.Disposable {
    * @returns id các entry đã nối lại (để caller nhả ra nếu phải bỏ dở) và số hội thoại đang
    *   chạy nhiều tiến trình.
    */
+  /**
+   * sessionId → id terminal mà CỬA SỔ NÀY đang giữ và đang chạy hội thoại đó.
+   *
+   * Quét toàn store chứ không riêng workspace đang mở: ca đã gặp thật là hai workspace khác
+   * nhau cùng trỏ một `claudeSessionId` — kích hoạt cái thứ hai mà chỉ nhìn trong phạm vi của
+   * nó thì không thấy ai đang giữ, và thế là resume chồng.
+   */
+  private chuTheoSession(): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const w of this.store.workspaces) {
+      for (const t of w.terminals) {
+        if (t.claudeSessionId === undefined || !this.terminals.has(t.id)) continue;
+        if (!m.has(t.claudeSessionId)) m.set(t.claudeSessionId, t.id);
+      }
+    }
+    return m;
+  }
+
+  private timTheoTerminalId(terminalId: string): { ws: Workspace; entry: TerminalEntry } | null {
+    for (const w of this.store.workspaces) {
+      const entry = w.terminals.find((t) => t.id === terminalId);
+      if (entry !== undefined) return { ws: w, entry };
+    }
+    return null;
+  }
+
+  /**
+   * Hỏi người dùng khi hội thoại sắp resume đã có người chạy.
+   *
+   * Ưu tiên theo đúng thứ tự thiệt hại: dùng lại terminal đang chạy (không mất gì) → bỏ qua
+   * (mất tiện, không mất dữ liệu) → mở phiên thứ hai (có thể mất lịch sử hội thoại). Nút cuối
+   * vẫn để đó vì đôi khi người dùng biết rõ hơn ta, nhưng nó không bao giờ là mặc định.
+   */
+  private async hoiTrungPhien(
+    wsId: string,
+    entry: TerminalEntry,
+    phanXu: PhanXuPhien,
+  ): Promise<'daDung' | 'boQua' | 'vanMo'> {
+    const NUT_MO = 'Vẫn mở phiên thứ hai';
+    if (phanXu.loai === 'ngoai') {
+      const tra = await vscode.window.showWarningMessage(
+        `Hội thoại của "${entry.name}" đang chạy ở nơi khác (${phanXu.soTienTrinh} tiến trình).`,
+        {
+          modal: true,
+          detail:
+            'Cửa sổ VS Code này không với tới terminal đó được (có thể nó ở cửa sổ khác, hoặc ngoài VS Code), nên không nhận nuôi được. Mở lại ở đây sẽ thành hai tiến trình cùng ghi một file hội thoại — lịch sử bị xé đôi thì không khôi phục được.',
+        },
+        NUT_MO,
+      );
+      return tra === NUT_MO ? 'vanMo' : 'boQua';
+    }
+
+    // 'mo' không bao giờ tới được đây (activate chỉ hỏi khi khác 'mo'), nhưng để TS thu hẹp
+    // kiểu — và nếu một ngày nào đó nó tới thật thì mở như cũ là lựa chọn không gây hại.
+    if (phanXu.loai !== 'daCoChu') return 'vanMo';
+    const chu = this.timTheoTerminalId(phanXu.terminalId);
+    const terminal = this.terminals.get(phanXu.terminalId);
+    // Dữ liệu lệch (terminal vừa đóng giữa chừng) thì đừng chặn người dùng: mở như cũ.
+    if (chu === null || terminal === undefined) return 'vanMo';
+
+    const cungWs = chu.ws.id === wsId;
+    const NUT_CHUYEN = `Chuyển "${chu.entry.name}" sang workspace này`;
+    const NUT_HIEN = `Chỉ hiện "${chu.entry.name}"`;
+    const nut = cungWs ? [NUT_HIEN, NUT_MO] : [NUT_CHUYEN, NUT_HIEN, NUT_MO];
+    const tra = await vscode.window.showWarningMessage(
+      `Hội thoại của "${entry.name}" đang chạy sẵn ở terminal "${chu.entry.name}"${cungWs ? ' trong chính workspace này' : ` thuộc workspace "${chu.ws.name}"`}.`,
+      {
+        modal: true,
+        detail: cungWs
+          ? 'Mở lại ở đây sẽ thành hai tiến trình cùng ghi một file hội thoại.'
+          : `Chuyển sang đây thì mục trùng "${entry.name}" ở workspace này bị bỏ (terminal và hội thoại giữ nguyên). Mở lại thay vì dùng nó sẽ thành hai tiến trình cùng ghi một file hội thoại.`,
+      },
+      ...nut,
+    );
+    if (tra === NUT_MO) return 'vanMo';
+    if (tra === undefined) return 'boQua';
+    if (tra === NUT_CHUYEN) {
+      await this.thaTerminal([chu.entry.id], wsId, null);
+      const wsNow = findWorkspace(this.store, wsId);
+      if (wsNow) {
+        removeTerminalEntry(wsNow, entry.id);
+        this.touch(wsId);
+        this.scheduleSave();
+        this.flush();
+      }
+    }
+    terminal.show(false);
+    this.onChanged.fire();
+    return 'daDung';
+  }
+
   private async noiLaiTerminalHoiSinh(
     ws: Workspace,
   ): Promise<{ ids: string[]; boQua: string[]; trung: number; thua: vscode.Terminal[] }> {
@@ -1311,6 +1403,12 @@ export class WorkspaceManager implements vscode.Disposable {
         // một bộ dò với lệnh tạo terminal nên vẫn giữ bất biến một session/một entry.
         void this.khamPhaSessionCodex(ws.id, entry.id, entry.cwd, startedAt, mode !== 'new');
       },
+      // Hàng rào một-hội-thoại-một-tiến-trình cho nhánh `--resume`. Nhánh `-c` đã có hàng rào
+      // riêng ngay bên dưới; thiếu cái này thì mỗi lần kích hoạt lại một workspace mà terminal
+      // cũ nằm ở cửa sổ VS Code khác là thêm một tiến trình bám cùng file hội thoại.
+      phanXuPhien: (entry) =>
+        phanXuTrungPhien(entry.claudeSessionId, this.phienLucKhoiPhuc, this.chuTheoSession()),
+      xuLyTrungPhien: (entry, phanXu) => this.hoiTrungPhien(ws.id, entry, phanXu),
       coPhienDangChayNgoai: (cwd) => {
         // Không đọc nổi registry ở bước nối lại = không biết → phải coi như CÓ (xem ghi chú
         // ở ActivatePorts): thà mở phiên mới còn hơn `-c` chui vào hội thoại đang chạy dở.

@@ -216,3 +216,71 @@ describe('activateWorkspace — không bao giờ nối `-c` vào hội thoại �
     expect(calls.indexOf('minted')).toBeLessThan(calls.indexOf(`send:${claudeA.id}`));
   });
 });
+
+describe('activateWorkspace — một hội thoại chỉ một tiến trình', () => {
+  /**
+   * Hàng rào thiếu suốt từ đầu: nhánh `--resume` không hỏi "hội thoại này có ai đang chạy
+   * không". Đo trên máy thật 17/10/2026: bốn hội thoại đang có 2–3 tiến trình cùng ghi một
+   * file phiên.
+   */
+  it('phiên đã có terminal trong cửa sổ này → KHÔNG resume, giao cho lớp UI nhận nuôi', async () => {
+    const xuLy = vi.fn(async () => 'daDung' as const);
+    const { ports, sent, calls } = makePorts({
+      phanXuPhien: () => ({ loai: 'daCoChu', terminalId: 'term-cu' }),
+      xuLyTrungPhien: xuLy,
+    });
+
+    const r = await activateWorkspace(ws([claudeResume]), ports);
+
+    expect(sent.get(claudeResume.id)).toBeUndefined();
+    expect(calls).not.toContain(`create:${claudeResume.id}`);
+    expect(r.opened).toEqual([claudeResume.id]); // vẫn tính là đã mở: terminal cũ đang chạy
+    expect(xuLy).toHaveBeenCalledWith(claudeResume, { loai: 'daCoChu', terminalId: 'term-cu' });
+  });
+
+  it('phiên đang chạy ở cửa sổ khác và người dùng chọn bỏ qua → không tạo terminal nào', async () => {
+    const { ports, sent, calls } = makePorts({
+      phanXuPhien: () => ({ loai: 'ngoai', soTienTrinh: 2 }),
+      xuLyTrungPhien: async () => 'boQua' as const,
+    });
+
+    const r = await activateWorkspace(ws([claudeResume]), ports);
+
+    expect(calls).not.toContain(`create:${claudeResume.id}`);
+    expect(sent.get(claudeResume.id)).toBeUndefined();
+    expect(r.opened).toEqual([]);
+    expect(r.failed[0]?.reason).toMatch(/đang chạy/i);
+  });
+
+  it('người dùng vẫn muốn mở dù trùng → resume như cũ (lối thoát, không phải mặc định)', async () => {
+    const { ports, sent } = makePorts({
+      phanXuPhien: () => ({ loai: 'ngoai', soTienTrinh: 1 }),
+      xuLyTrungPhien: async () => 'van Mo' as never,
+    });
+
+    // Giá trị lạ cũng phải an toàn: chỉ 'boQua' và 'daDung' mới chặn, còn lại mở như cũ.
+    const r = await activateWorkspace(ws([claudeResume]), ports);
+
+    expect(sent.get(claudeResume.id)).toEqual([`LAUNCH resume ${U('5')} AS peer-b`]);
+    expect(r.opened).toEqual([claudeResume.id]);
+  });
+
+  it('entry CHƯA có sessionId thì không hỏi gì — không có hội thoại nào để mà trùng', async () => {
+    const xuLy = vi.fn(async () => 'boQua' as const);
+    const { ports } = makePorts({
+      phanXuPhien: () => ({ loai: 'ngoai', soTienTrinh: 9 }),
+      xuLyTrungPhien: xuLy,
+    });
+
+    await activateWorkspace(ws([claudeNew]), ports);
+
+    expect(xuLy).not.toHaveBeenCalled();
+  });
+
+  it('cổng không được cấp (bản cũ gọi vào) → hành vi y như trước, không ai bị chặn', async () => {
+    const { ports, sent } = makePorts();
+    const r = await activateWorkspace(ws([claudeResume]), ports);
+    expect(sent.get(claudeResume.id)).toEqual([`LAUNCH resume ${U('5')} AS peer-b`]);
+    expect(r.opened).toEqual([claudeResume.id]);
+  });
+});

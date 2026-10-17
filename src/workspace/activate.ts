@@ -1,6 +1,7 @@
 import type { AgentAdapter, CoTheThem } from '../agent/types';
 import { normalizeCwd } from '../claude/match';
 import type { TerminalEntry, Workspace } from '../model/schema';
+import type { PhanXuPhien } from './trungphien';
 
 export interface ActivateTerminalHandle { sendText(text: string): void; }
 
@@ -43,6 +44,21 @@ export interface ActivatePorts {
    * luồng nối-lại-terminal sinh ra để chặn.
    */
   coPhienDangChayNgoai(cwd: string): boolean;
+  /**
+   * Hội thoại của entry này có đang được ai chạy không (xem `trungphien.ts`).
+   *
+   * Không cấp cổng = không kiểm tra, y như trước. Giữ optional vì luồng `moThemEntry` và các
+   * đường gọi cũ không phải cái nào cũng có dữ liệu registry trong tay.
+   */
+  phanXuPhien?(entry: TerminalEntry): PhanXuPhien;
+  /**
+   * Hỏi người dùng phải làm gì khi hội thoại đã có người chạy.
+   *
+   * `'daDung'` = lớp UI đã lo xong (nhận nuôi terminal đang chạy, có thể đã kéo nó sang
+   * workspace này) nên KHÔNG được mở thêm gì; `'boQua'` = không mở; bất cứ giá trị nào khác
+   * nghĩa là người dùng chấp nhận rủi ro và muốn mở như cũ.
+   */
+  xuLyTrungPhien?(entry: TerminalEntry, phanXu: PhanXuPhien): Promise<'daDung' | 'boQua' | 'vanMo'>;
   onMinted(terminalId: string, sessionId: string): Promise<void>;
   warn(message: string): void;
 }
@@ -91,6 +107,31 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
         report.failed.push({ id: currentEntry.id, reason: `Thư mục không còn: ${currentEntry.cwd}` });
         continue;
       }
+      // Hàng rào một-hội-thoại-một-tiến-trình. Phải đứng TRƯỚC createTerminal: hỏi xong mới
+      // biết có mở hay không, mà tạo terminal rồi bỏ thì người dùng lãnh một tab rỗng.
+      if (currentEntry.kind === 'claude' && currentEntry.claudeSessionId !== undefined && ports.phanXuPhien) {
+        const phanXu = ports.phanXuPhien(currentEntry);
+        if (phanXu.loai !== 'mo') {
+          const quyet = (await ports.xuLyTrungPhien?.(currentEntry, phanXu)) ?? 'vanMo';
+          if (quyet === 'daDung') {
+            // Terminal cũ đang chạy đúng hội thoại này: coi như đã mở, vì với người dùng thì
+            // đúng là nó đang mở.
+            report.opened.push(currentEntry.id);
+            continue;
+          }
+          if (quyet === 'boQua') {
+            report.failed.push({
+              id: currentEntry.id,
+              reason:
+                phanXu.loai === 'ngoai'
+                  ? `Hội thoại đang chạy ở nơi khác (${phanXu.soTienTrinh} tiến trình) nên không mở thêm.`
+                  : 'Hội thoại đang chạy ở một terminal khác của cửa sổ này.',
+            });
+            continue;
+          }
+        }
+      }
+
       const startedAt = Date.now();
       const handle = ports.createTerminal(currentEntry);
       if (currentEntry.kind === 'claude') {
