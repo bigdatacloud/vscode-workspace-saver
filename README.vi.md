@@ -131,15 +131,39 @@ nhánh git thật trên máy bạn, và một đề xuất hai chục người g
 hiểu sai việc. Tổ chỉ gồm `worker` — tổ do một người điều phối lập mà lại sinh thêm người điều
 phối là đúng cái vòng đệ quy mà độ sâu 1 sinh ra để chặn.
 
-Trong cây còn **kéo thả** được: thả một terminal lên terminal khác để chèn nó vào TRƯỚC cái đó,
-hoặc thả lên dòng workspace để chuyển sang workspace ấy. Chọn nhiều rồi kéo cả nhóm cũng được.
-Chuyển giữa hai workspace để lại bia mộ ở workspace nguồn nên thao tác bền qua khởi động lại;
-vai chỉ được giữ khi workspace đích có vai TRÙNG TÊN, còn lại thì bỏ vai kèm thông báo chứ
-không âm thầm nhân bản định nghĩa vai sang đó.
+### Sắp xếp cây và xem song song
+
+Trong cây **kéo thả** được cả hai cấp:
+
+- **Terminal**: thả lên terminal khác để chèn nó vào TRƯỚC cái đó — kể cả terminal của
+  workspace KHÁC, nên kéo sang workspace khác và thả đúng vị trí mong muốn là một thao tác.
+  Thả lên dòng workspace thì xuống cuối workspace ấy. Chọn nhiều rồi kéo cả nhóm cũng được,
+  thứ tự tương đối giữa chúng được giữ. Chuyển giữa hai workspace để lại bia mộ ở workspace
+  nguồn nên thao tác bền qua khởi động lại; vai chỉ được giữ khi workspace đích có vai TRÙNG
+  TÊN, còn lại thì bỏ vai kèm thông báo chứ không âm thầm nhân bản định nghĩa vai sang đó.
+- **Workspace**: thả lên workspace khác để xếp nó lên trước. Thứ tự workspace vốn tự sắp theo
+  lần kích hoạt gần nhất; kéo tay là **ghim** — workspace đã ghim (hiện chữ `đã ghim thứ tự`)
+  đứng trên và không tụt xuống khi cái khác được dùng, phần còn lại nằm dưới và vẫn tự sắp.
+  Ghim cả phần nằm trên chỗ vừa thả, vì để một cái đứng yên thì mọi cái trên nó cũng phải cố
+  định. Lệnh **Bỏ ghim thứ tự** trả cây về tự sắp.
+
+Không thích kéo thả thì menu chuột phải có **↑ / ↓** cho cả workspace lẫn terminal.
+
+**Xem các terminal song song** (chuột phải workspace → *Xem các terminal song song*): xếp các
+terminal ĐANG MỞ của workspace thành lưới trong vùng editor (2 cái → hai cột, 4 → 2×2, tối đa
+9 ô). Terminal đang nằm ở panel được *dời* sang vùng editor chứ không mở lại, nên phiên agent
+không bị giết. Terminal đang đóng thì KHÔNG tự bật — bật một phiên agent là nạp lại ngữ cảnh,
+tốn token, nên việc đó để bạn chủ động. Tab file đang mở ở lại ô đầu tiên: vùng editor là của
+chung, extension không đuổi tab của bạn đi đâu. Lệnh ngược: *Thôi xem song song*.
 | AI Workspace: Tạo terminal Claude mới | `aiWorkspace.newClaudeTerminal` | Palette / context menu workspace — hỏi đường dẫn, rồi tên worktree (để trống thì làm thẳng trên đường dẫn đó; worktree được tạo CẠNH repo ở `<repo>-worktrees/<tên>`, không nằm trong repo), rồi duyệt biến thể lệnh bằng phím mũi tên (phiên mới / `-c` / `-r`, kèm bản `--dangerously-skip-permissions`); terminal mở ngay tại đó, tên đặt theo thư mục |
 | AI Workspace: Tạo terminal Codex mới | `aiWorkspace.newCodexTerminal` | Palette / context menu workspace — hỏi MỘT đường dẫn rồi chọn cách chạy (`codex`, `codex resume --last`, `codex resume`, kèm các biến thể `--yolo`); id phiên được dò từ `~/.codex/sessions`, lần mở lại cho chọn đúng id / phiên cuối / bộ chọn / phiên mới |
 | AI Workspace: Tạo terminal mới | `aiWorkspace.newPlainTerminal` | **Nút "+" ngay trên dòng workspace** (hiện khi rê chuột) / palette / context menu workspace — hỏi MỘT đường dẫn, mở terminal thường tại đó (đã vào workspace, app chạy được auto-capture như thường) |
-| AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây |
+| AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây. Terminal Claude: tên được gửi vào chính phiên bằng `/rename`, nên `claude agents`, session picker và app Claude Code trên điện thoại cũng đổi theo |
+| AI Workspace: Xem các terminal song song | `aiWorkspace.viewSplit` | Context menu workspace — xếp terminal đang mở thành lưới trong vùng editor |
+| AI Workspace: Thôi xem song song | `aiWorkspace.viewSplitOff` | Context menu workspace — dồn mọi tab về một nhóm |
+| AI Workspace: Đưa workspace lên trên / xuống dưới | `aiWorkspace.moveWorkspaceUp` / `…Down` | Context menu workspace — ghim thứ tự thủ công |
+| AI Workspace: Bỏ ghim thứ tự workspace | `aiWorkspace.unpinWorkspaceOrder` | Context menu workspace — về tự sắp theo lần dùng |
+| AI Workspace: Đưa terminal lên trên / xuống dưới | `aiWorkspace.moveTerminalUp` / `…Down` | Context menu terminal item |
 | AI Workspace: Xem đường dẫn terminal | `aiWorkspace.showTerminalPath` | Context menu terminal item — hiện đầy đủ cwd kèm nút "Sao chép đường dẫn" / "Mở thư mục" (hover vào item cũng thấy đường dẫn) |
 | AI Workspace: Đặt lệnh khởi động cho terminal | `aiWorkspace.setStartCommand` | Context menu terminal `plain` |
 | AI Workspace: Bỏ terminal khỏi workspace | `aiWorkspace.removeTerminal` | Context menu terminal — terminal còn mở thì hỏi đóng luôn / chỉ bỏ / hủy |
@@ -235,7 +259,7 @@ bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn củ
 
 ```bash
 npm install
-npm test              # 492 unit/integration test (vitest) — pure core, không đụng vscode API
+npm test              # 559 unit/integration test (vitest) — pure core, không đụng vscode API
 npm run test:vscode   # 6 smoke test chạy trong Extension Host thật
 npm run typecheck     # tsc --noEmit
 npm run build         # bundle bằng esbuild ra dist/extension.js

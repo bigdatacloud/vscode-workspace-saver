@@ -561,8 +561,8 @@
 
   <div class="khung">
     <div class="so-day">
-      <div class="so-o"><div class="so-n">29</div><div class="so-t">lệnh</div></div>
-      <div class="so-o"><div class="so-n">462</div><div class="so-t">test tự động</div></div>
+      <div class="so-o"><div class="so-n">36</div><div class="so-t">lệnh</div></div>
+      <div class="so-o"><div class="so-n">570</div><div class="so-t">test tự động</div></div>
       <div class="so-o"><div class="so-n">2</div><div class="so-t">agent hỗ trợ</div></div>
       <div class="so-o"><div class="so-n">7</div><div class="so-t">tool điều phối</div></div>
       <div class="so-o"><div class="so-n">0</div><div class="so-t">dependency lúc chạy</div></div>
@@ -811,6 +811,30 @@
             từ lúc khởi chạy — phải mở lại mới khớp hẳn. Sự lệch đó được hiện ra chứ không bị giấu.
           </p>
 
+          <h3>Xem nhiều terminal cùng lúc</h3>
+          <p>
+            Chuột phải workspace → <strong>Xem các terminal song song</strong>: các terminal
+            <em>đang mở</em> của workspace được xếp thành lưới trong vùng editor — 2 cái thành hai
+            cột, 4 cái thành 2×2, tối đa 9 ô. Hết muốn nhìn kiểu đó thì
+            <strong>Thôi xem song song</strong> dồn mọi tab về một nhóm.
+          </p>
+          <p>
+            Ba điều đáng biết. Thứ nhất, <strong>không terminal nào bị mở lại</strong>: cái đang
+            nằm ở panel dưới được <em>dời</em> sang vùng editor bằng lệnh của VS Code, tiến trình
+            giữ nguyên, nên phiên agent không bị giết. Thứ hai, terminal <strong>đang đóng thì
+            không tự bật</strong> — bật một phiên agent là nối lại hội thoại và nạp lại ngữ cảnh,
+            tốn token và không rút lại được; một thao tác chỉ để <em>nhìn</em> không được phép trả
+            cái giá đó, nên extension báo số lượng và để bạn tự bấm. Thứ ba, <strong>tab file đang
+            mở ở lại ô đầu tiên</strong>: vùng editor là của chung, extension không đuổi tab của
+            bạn đi đâu cả.
+          </p>
+          <p>
+            Thứ tự ô theo đúng thứ tự trong cây: ô đầu là terminal trên cùng, rồi xuống dưới trong
+            cùng cột, hết cột mới sang cột phải. Nếu một terminal không chắc chắn đưa được vào ô
+            riêng, nó <em>bị bỏ qua</em> thay vì dời bừa — thiếu một ô thì bấm lại là xong, còn
+            dời nhầm tab của bạn thì không.
+          </p>
+
           <h3>Nhân bản một terminal</h3>
           <p>
             Chuột phải một terminal → <strong>Nhân bản terminal ra worktree riêng</strong>. Bản sao
@@ -835,9 +859,23 @@
           <h3>Sắp xếp và chuyển terminal</h3>
           <p>
             <strong>Kéo thả</strong> trong cây: thả một terminal lên terminal khác để chèn nó vào
-            <em>trước</em> cái đó; thả lên dòng workspace để chuyển sang workspace ấy, xuống cuối
-            danh sách. Chọn nhiều bằng <kbd>Ctrl</kbd>+click rồi kéo cả nhóm cũng được — thứ tự
-            tương đối giữa chúng được giữ nguyên.
+            <em>trước</em> cái đó — kể cả terminal của <strong>workspace khác</strong>, nên "chuyển
+            sang workspace kia và đặt đúng chỗ" là một cử chỉ duy nhất. Thả lên dòng workspace thì
+            xuống cuối workspace ấy. Chọn nhiều bằng <kbd>Ctrl</kbd>+click rồi kéo cả nhóm cũng
+            được — thứ tự tương đối giữa chúng được giữ nguyên.
+          </p>
+          <p>
+            <strong>Workspace cũng kéo được.</strong> Thứ tự workspace vốn tự sắp theo lần kích
+            hoạt gần nhất; kéo tay là <strong>ghim</strong>. Workspace đã ghim hiện chữ
+            <em>đã ghim thứ tự</em>, đứng trên và không tụt xuống khi cái khác được dùng; phần còn
+            lại nằm dưới và vẫn tự sắp. Ghim ăn cả phần nằm <em>trên</em> chỗ vừa thả — để một cái
+            đứng yên thì mọi cái phía trên nó cũng phải cố định, không thì lần kích hoạt kế tiếp
+            của một workspace khác lại đẩy nó đi chỗ khác. Chuột phải →
+            <strong>Bỏ ghim thứ tự</strong> để trả cây về tự sắp.
+          </p>
+          <p>
+            Không thích kéo thả (touchpad, hoặc quen bàn phím) thì menu chuột phải có
+            <strong>↑ / ↓</strong> cho cả workspace lẫn terminal.
           </p>
           <p>
             Hoặc chuột phải terminal → <strong>Chuyển terminal sang workspace khác</strong> nếu
@@ -1365,7 +1403,12 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Chuyển terminal sang workspace khác</td><td>Terminal đang chạy không bị đóng</td><td>chuột phải terminal</td></tr>
                 <tr><td>Xem log điều phối</td><td>Mở khung kiểm toán, kèm lối mở file log bền</td><td>chuột phải workspace</td></tr>
                 <tr><td>Lập tổ</td><td>Nhờ agent điều phối đề xuất tổ; bạn duyệt và sửa trước khi tạo</td><td>chuột phải terminal điều phối</td></tr>
-                <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây</td><td>chuột phải terminal</td></tr>
+                <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây. Terminal Claude: tên được gửi vào chính phiên bằng <code>/rename</code> nên <code>claude agents</code>, session picker và app trên điện thoại cũng đổi theo</td><td>chuột phải terminal</td></tr>
+                <tr><td>Xem các terminal song song</td><td>Xếp terminal đang mở của workspace thành lưới trong vùng editor (tối đa 9 ô)</td><td>chuột phải workspace</td></tr>
+                <tr><td>Thôi xem song song</td><td>Dồn mọi tab về một nhóm</td><td>chuột phải workspace</td></tr>
+                <tr><td>Đưa workspace lên / xuống</td><td>Ghim thứ tự thủ công cho cây</td><td>chuột phải workspace</td></tr>
+                <tr><td>Bỏ ghim thứ tự workspace</td><td>Trả cây về tự sắp theo lần kích hoạt</td><td>chuột phải workspace</td></tr>
+                <tr><td>Đưa terminal lên / xuống</td><td>Đổi chỗ với hàng xóm trong workspace</td><td>chuột phải terminal</td></tr>
                 <tr><td>Xem đường dẫn terminal</td><td>Kèm nút sao chép và mở thư mục</td><td>chuột phải terminal</td></tr>
                 <tr><td>Đặt lệnh khởi động</td><td>Cho terminal shell thường</td><td>chuột phải terminal</td></tr>
                 <tr><td>Bỏ terminal khỏi workspace</td><td>Hỏi đóng luôn hay chỉ bỏ</td><td>chuột phải terminal</td></tr>
@@ -1603,7 +1646,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
               trả lời rõ “chưa hỗ trợ” thay vì đoán.
             </li>
             <li>
-              <strong>Tầng giao diện không có test tự động.</strong> 492 test phủ các hàm thuần,
+              <strong>Tầng giao diện gần như không có test tự động.</strong> 559 test phủ các hàm thuần,
               schema, giao thức MCP và luật an toàn — nhưng menu, cây, và hộp thoại thì chỉ có
               checklist tay trong <code>docs/manual-verification.md</code> làm lưới.
             </li>

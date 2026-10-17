@@ -25,6 +25,31 @@ export const realCommandRunner: CommandRunner = {
 
 export const CLAUDE_BIN = 'claude';
 
+/** Tên phiên dài hơn mức này thì cắt: nó là nhãn trong danh sách phiên, không phải mô tả. */
+const DAI_TOI_DA_TEN_PHIEN = 120;
+
+/**
+ * Slash command đổi tên phiên Claude đang chạy, hoặc `null` nếu tên không dùng được.
+ *
+ * Vì sao phải gõ vào phiên thay vì gọi CLI: `claude` không có lệnh đổi tên phiên (đã soát
+ * `claude --help` và `claude agents --help` trên 2.x) — `/rename` bên trong phiên là đường
+ * duy nhất, và nó ghi `customTitle` của phiên, tức đúng cái tên hiện ở session picker và
+ * trên app Claude Code điện thoại.
+ *
+ * `/rename` KHÔNG kèm tên thì Claude tự nghĩ ra một cái tên; vì vậy tên rỗng phải trả `null`
+ * chứ không được gửi lệnh trần.
+ */
+export function lenhDoiTenPhienClaude(ten: string): string | null {
+  const motDong = ten
+    .split(/[\r\n]+/)
+    .map((d) => d.trim())
+    .filter((d) => d !== '')
+    .join(' ')
+    .replace(/\s+/g, ' ');
+  if (motDong === '') return null;
+  return `/rename ${motDong.slice(0, DAI_TOI_DA_TEN_PHIEN)}`;
+}
+
 export class ClaudeCodeAdapter implements AgentAdapter {
   readonly id = 'claude';
 

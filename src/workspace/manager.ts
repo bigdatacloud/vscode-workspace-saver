@@ -59,7 +59,7 @@ import {
 import { moTaKichHoat, phamViKichHoat } from './kichhoat';
 import { dungEntryNhanBan, duocNhanBan, lenhCodexChoBanSao, vaiChoTenWorktree } from './nhanban';
 import { chonWorkspaceNhan } from './receiving';
-import { chuyenViTri, vaiTuongUng } from './sapxep';
+import { chuyenViTri, doiChoHangXom, ghimSauKhiKeo, sapXepWorkspace, vaiTuongUng } from './sapxep';
 import { docBangTienTrinh } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
 import {
@@ -85,7 +85,10 @@ import {
   type KetQuaChuyen,
   type ShardResult,
 } from '../model/store';
+import { lenhDoiTenPhienClaude } from '../agent/claude';
 import { upsertTerminal } from '../model/store';
+import { TOI_DA_O } from '../ui/luoi';
+import { gopVeMotNhom, xepLuoiTerminal } from '../ui/splitview';
 import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
@@ -133,6 +136,8 @@ export interface WorkspaceView {
    */
   isReceiving: boolean;
   lastActiveAt: string | null;
+  /** Người dùng đã tự đặt vị trí cho nó trong cây (xem `sapXepWorkspace`). */
+  daGhim?: boolean;
 }
 
 export interface TerminalView {
@@ -506,21 +511,15 @@ export class WorkspaceManager implements vscode.Disposable {
 
   workspaceViews(): WorkspaceView[] {
     const nhan = this.wsNhan();
-    return [...this.store.workspaces]
-      .sort((a, b) => {
-        if (a.lastActiveAt === b.lastActiveAt) return a.name.localeCompare(b.name);
-        if (a.lastActiveAt === null) return 1;
-        if (b.lastActiveAt === null) return -1;
-        return b.lastActiveAt.localeCompare(a.lastActiveAt);
-      })
-      .map((ws) => ({
-        id: ws.id,
-        name: ws.name,
-        terminalCount: ws.terminals.length,
-        isActive: this.laDangMo(ws.id),
-        isReceiving: ws.id === nhan,
-        lastActiveAt: ws.lastActiveAt,
-      }));
+    return sapXepWorkspace(this.store.workspaces).map((ws) => ({
+      id: ws.id,
+      name: ws.name,
+      terminalCount: ws.terminals.length,
+      isActive: this.laDangMo(ws.id),
+      isReceiving: ws.id === nhan,
+      lastActiveAt: ws.lastActiveAt,
+      ...(ws.order === undefined ? {} : { daGhim: true }),
+    }));
   }
 
   terminalViews(workspaceId: string): TerminalView[] {
@@ -2123,6 +2122,122 @@ export class WorkspaceManager implements vscode.Disposable {
         `Đã chuyển ${daChuyen.size} terminal sang "${dich.name}".`,
       );
     }
+  }
+
+  // --------------------------------------------------- xem song song
+
+  /**
+   * Xếp các terminal ĐANG MỞ của workspace thành lưới để nhìn cùng lúc.
+   *
+   * Chỉ cái đang mở: bật một terminal đang đóng nghĩa là nối lại phiên agent — nạp lại ngữ
+   * cảnh, tốn token, không rút lại được. Một thao tác chỉ để NHÌN không được phép làm thế,
+   * nên cái nào đang đóng thì báo số lượng và để người dùng tự bật.
+   */
+  async xemSongSong(workspaceId: string): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return;
+    const dangMo = ws.terminals
+      .map((e) => this.terminals.get(e.id))
+      .filter((t): t is vscode.Terminal => t !== undefined);
+    const dong = ws.terminals.length - dangMo.length;
+
+    if (dangMo.length === 0) {
+      void vscode.window.showWarningMessage(
+        ws.terminals.length === 0
+          ? `Workspace "${ws.name}" chưa có terminal nào.`
+          : `Không terminal nào của "${ws.name}" đang mở. Kích hoạt workspace (hoặc bấm từng cái trong cây) rồi xem song song.`,
+      );
+      return;
+    }
+
+    const kq = await xepLuoiTerminal(dangMo);
+    const phan = [`Đã xếp ${kq.daXep} terminal của "${ws.name}" thành lưới.`];
+    if (kq.qua > 0) phan.push(`${kq.qua} cái không vào lưới (tối đa ${TOI_DA_O} ô).`);
+    if (dong > 0) phan.push(`${dong} cái đang đóng nên không xếp — bấm vào trong cây để bật riêng.`);
+    void vscode.window.showInformationMessage(phan.join(' '));
+  }
+
+  /** Thôi xem song song: dồn mọi tab về một nhóm. */
+  async thoiXemSongSong(): Promise<void> {
+    await gopVeMotNhom();
+  }
+
+  // --------------------------------------------------- thứ tự trong cây
+
+  /**
+   * Kéo thả WORKSPACE trong cây: đưa các workspace đang kéo tới trước `idDich`.
+   *
+   * Thứ tự workspace vốn tự sắp theo lần kích hoạt. Kéo tay là lời phát biểu ngược lại, nên
+   * nó GHIM — xem `ghimSauKhiKeo` để biết vì sao ghim cả phần nằm trên chứ không chỉ mỗi cái
+   * vừa kéo.
+   */
+  async thaWorkspace(idKeo: readonly string[], idDich: string | null): Promise<void> {
+    const hienTai = this.workspaceViews().map((v) => v.id);
+    this.apThuTuGhim(ghimSauKhiKeo(hienTai, idKeo, idDich).ghim);
+    return Promise.resolve();
+  }
+
+  /** Nút ↑ / ↓ trên một workspace — cùng luật ghim với kéo thả. */
+  async doiChoWorkspace(id: string, huong: 'len' | 'xuong'): Promise<void> {
+    const hienTai = this.workspaceViews().map((v) => v.id);
+    const moi = doiChoHangXom(hienTai, id, huong);
+    // Ở biên thì không đổi gì — và cũng không ghim ai: người dùng không phát biểu được gì
+    // mới bằng một cú bấm không có tác dụng.
+    if (moi.every((x, i) => x === hienTai[i])) return Promise.resolve();
+    this.apThuTuGhim(moi.slice(0, moi.indexOf(id) + 1));
+    return Promise.resolve();
+  }
+
+  /** Trả cây về thứ tự tự động (theo lần kích hoạt gần nhất). */
+  async boGhimThuTu(): Promise<void> {
+    const coGhim = this.store.workspaces.some((w) => w.order !== undefined);
+    this.apThuTuGhim([]);
+    void vscode.window.showInformationMessage(
+      coGhim
+        ? 'Đã bỏ ghim: cây sắp lại theo lần kích hoạt gần nhất.'
+        : 'Chưa workspace nào được ghim — cây vẫn đang tự sắp theo lần kích hoạt.',
+    );
+    return Promise.resolve();
+  }
+
+  /**
+   * Gán `order` theo đúng chỉ số trong `ghim`, và XOÁ `order` của mọi workspace khác.
+   *
+   * Xoá là phần quan trọng: một workspace từng ghim mà nay nằm dưới vùng ghim thì phải được
+   * trả về nhóm tự sắp, nếu không nó vẫn bám trên đầu bằng số thứ tự cũ.
+   */
+  private apThuTuGhim(ghim: readonly string[]): void {
+    const bang = new Map(ghim.map((id, i) => [id, i]));
+    let doi = false;
+    for (const ws of this.store.workspaces) {
+      const moi = bang.get(ws.id);
+      if (moi === ws.order) continue;
+      if (moi === undefined) delete ws.order;
+      else ws.order = moi;
+      this.touch(ws.id);
+      doi = true;
+    }
+    if (!doi) return;
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+  }
+
+  /** Nút ↑ / ↓ trên một terminal — thứ tự terminal là thứ tự mảng, không cần ghim gì. */
+  async doiChoTerminal(workspaceId: string, terminalId: string, huong: 'len' | 'xuong'): Promise<void> {
+    const ws = findWorkspace(this.store, workspaceId);
+    if (!ws) return Promise.resolve();
+    const thuTu = doiChoHangXom(ws.terminals.map((t) => t.id), terminalId, huong);
+    const bang = new Map(ws.terminals.map((t) => [t.id, t]));
+    const moi = thuTu.map((id) => bang.get(id)).filter((t): t is TerminalEntry => t !== undefined);
+    if (moi.length !== ws.terminals.length) return Promise.resolve();
+    if (moi.every((t, i) => t === ws.terminals[i])) return Promise.resolve();
+    ws.terminals = moi;
+    this.touch(ws.id);
+    this.scheduleSave();
+    this.flush();
+    this.onChanged.fire();
+    return Promise.resolve();
   }
 
   // ------------------------------------------------------------- lập tổ
@@ -3956,7 +4071,8 @@ export class WorkspaceManager implements vscode.Disposable {
 
     const entryNow = this.findEntry(workspaceId, terminalId);
     if (!entryNow) return;
-    entryNow.name = ten.trim();
+    const tenMoi = ten.trim();
+    entryNow.name = tenMoi;
     this.touch(workspaceId);
     this.scheduleSave();
 
@@ -3964,8 +4080,24 @@ export class WorkspaceManager implements vscode.Disposable {
     if (terminal) {
       terminal.show(false);
       await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', {
-        name: ten.trim(),
+        name: tenMoi,
       });
+    }
+
+    // Đổi tên ở đây phải tới được cả PHIÊN Claude, không chỉ cái nhãn trong cây: cùng một
+    // phiên còn hiện trong `claude agents`, trong session picker và trên app điện thoại, mà
+    // những chỗ đó đọc tên của phiên chứ không đọc file của extension.
+    if (entryNow.kind === 'claude') {
+      // Đặt trước cả khi gõ được lệnh: terminal đang đóng thì lần khởi chạy sau `-n` phải
+      // mang tên mới, không thì tên cũ quay lại.
+      entryNow.claudeName = tenMoi;
+      const lenh = lenhDoiTenPhienClaude(tenMoi);
+      if (terminal && lenh !== null) {
+        terminal.sendText(lenh, true);
+        void vscode.window.showInformationMessage(
+          `Đã đổi tên và gửi /rename vào phiên Claude. Nếu máy đang có phiên khác trùng tên, Claude sẽ tự thêm hậu tố — cây sẽ hiện tên thật ở lượt làm mới sau.`,
+        );
+      }
     }
     this.onChanged.fire();
   }

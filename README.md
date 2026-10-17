@@ -131,7 +131,12 @@ Claude terminal named after the worktree. Capped at 6 members, workers only — 
 more orchestrators is the recursion depth-1 exists to prevent.
 
 Terminals can also be **dragged** inside the tree: drop one onto another terminal to insert it
-before that one, or onto a workspace row to move it there. Multi-select works. Moving a terminal
+before that one — including a terminal belonging to a *different* workspace, so moving across
+workspaces and landing at an exact position is one gesture. Dropping onto a workspace row
+appends to the end of it. Workspaces are draggable too: dropping one onto another **pins** the
+manual order (pinned workspaces stay on top and show `đã ghim thứ tự`; the rest keep
+auto-sorting by last activation, and *Unpin workspace order* goes back to that). Multi-select
+works. Moving a terminal
 between workspaces leaves a tombstone in the source, so the move survives a restart; a role is
 kept only if the target workspace has a role with the same name, and is otherwise dropped with a
 notice rather than silently duplicating the role definition.
@@ -188,6 +193,11 @@ extension refuses any dispatch that does not come from the orchestrator terminal
 | AI Workspace: Show workspace info | `aiWorkspace.showWorkspaceInfo` | Workspace context menu — id, last activation, owning window, terminal location, store file path and every terminal with its cwd/start command/session; "Copy info" / "Open store file" |
 | AI Workspace: Workspace settings | `aiWorkspace.workspaceSettings` | Workspace context menu — per-workspace terminal location (follow global / editor area / bottom panel) |
 | AI Workspace: Rename workspace | `aiWorkspace.renameWorkspace` | Workspace context menu |
+| AI Workspace: View terminals side by side | `aiWorkspace.viewSplit` | Workspace context menu. Arranges the workspace's OPEN terminals into an editor-area grid (2 → two columns, 4 → 2×2, max 9 cells). Terminals living in the panel are *moved* into the editor area, never restarted, so agent sessions survive. Closed terminals are left alone — starting an agent session reloads its context and costs tokens. |
+| AI Workspace: Stop side-by-side view | `aiWorkspace.viewSplitOff` | Workspace context menu. Merges every tab back into one group. |
+| AI Workspace: Move workspace up / down | `aiWorkspace.moveWorkspaceUp` / `…Down` | Workspace context menu. Pins the manual order. |
+| AI Workspace: Unpin workspace order | `aiWorkspace.unpinWorkspaceOrder` | Workspace context menu. Back to auto-sorting by last activation. |
+| AI Workspace: Move terminal up / down | `aiWorkspace.moveTerminalUp` / `…Down` | Terminal context menu. |
 | AI Workspace: Delete workspace | `aiWorkspace.deleteWorkspace` | Workspace context menu (with confirmation modal) |
 | AI Workspace: New Claude terminal | `aiWorkspace.newClaudeTerminal` | Palette / workspace context menu — asks for a path, then a worktree name (leave empty to work in the path itself; the worktree is created next to the repo as `<repo>-worktrees/<name>`, never inside it), then arrow-key through command variants (new session / `-c` / `-r`, each with a `--dangerously-skip-permissions` twin); the terminal opens there immediately, named after the folder |
 | AI Workspace: New Codex terminal | `aiWorkspace.newCodexTerminal` | Palette / workspace context menu — asks for ONE path, then how to run (`codex`, `codex resume --last`, `codex resume`, plus `--yolo` variants); the session id is discovered from `~/.codex/sessions`, and reopen offers exact id / last / picker / new |
@@ -292,7 +302,7 @@ applies to both new and restored terminals. For terminals you open yourself with
 
 ```bash
 npm install
-npm test              # 492 unit/integration tests (vitest) — pure core, no vscode API
+npm test              # 559 unit/integration tests (vitest) — pure core, no vscode API
 npm run test:vscode   # 6 smoke tests running inside a real Extension Host
 npm run typecheck     # tsc --noEmit
 npm run build         # bundle with esbuild into dist/extension.js

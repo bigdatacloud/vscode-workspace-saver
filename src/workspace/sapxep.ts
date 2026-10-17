@@ -31,6 +31,93 @@ export function chuyenViTri<T extends { id: string }>(
   return [...conLai.slice(0, viTri), ...dangKeo, ...conLai.slice(viTri)];
 }
 
+/** Đủ để sắp xếp một workspace trong cây; phần còn lại của `Workspace` không liên quan. */
+export interface MucSapXep {
+  id: string;
+  name: string;
+  lastActiveAt: string | null;
+  /** Có mặt = người dùng đã tự đặt vị trí cho nó (ghim). Vắng mặt = để tự sắp. */
+  order?: number;
+}
+
+/**
+ * Thứ tự workspace trong cây: phần GHIM TAY nằm trên theo đúng số thứ tự đã ghim, phần còn
+ * lại nằm dưới và vẫn tự sắp theo lần kích hoạt gần nhất.
+ *
+ * Vì sao lai chứ không thủ công hẳn: đa số workspace không đáng để ai đi sắp tay, mà cách tự
+ * sắp cũ (mới dùng lên đầu) đúng với chúng. Chỉ vài cái quan trọng cần đứng yên một chỗ —
+ * ghim đúng mấy cái đó, số còn lại không phải quản.
+ *
+ * `order` trùng nhau là chuyện có thật (hai cửa sổ VS Code ghi shard lệch nhau), nên vẫn
+ * tie-break theo tên để thứ tự không nhảy loạn giữa hai lần vẽ cây.
+ */
+export function sapXepWorkspace<T extends MucSapXep>(ds: readonly T[]): T[] {
+  return [...ds].sort((a, b) => {
+    const ga = a.order ?? null;
+    const gb = b.order ?? null;
+    if (ga !== null && gb !== null && ga !== gb) return ga - gb;
+    if (ga !== null && gb === null) return -1;
+    if (ga === null && gb !== null) return 1;
+    if (ga === null && gb === null && a.lastActiveAt !== b.lastActiveAt) {
+      if (a.lastActiveAt === null) return 1;
+      if (b.lastActiveAt === null) return -1;
+      return b.lastActiveAt.localeCompare(a.lastActiveAt);
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export interface KetQuaGhim {
+  /** Thứ tự hiển thị mới, đủ cả danh sách. */
+  thuTu: string[];
+  /** Những id phải ghim (gán `order` theo đúng chỉ số trong mảng này); id khác phải BỎ ghim. */
+  ghim: string[];
+}
+
+/**
+ * Kéo thả workspace: tính thứ tự mới và xem phải ghim tới đâu.
+ *
+ * Quy tắc: ghim từ đầu danh sách tới mục bị kéo nằm dưới cùng. Chỉ ghim mình mục bị kéo là
+ * không đủ — để nó nằm đúng sau một mục đang tự sắp thì mục kia cũng phải cố định, nếu không
+ * lần kích hoạt kế tiếp của một workspace khác sẽ đẩy nó đi chỗ khác. Phần nằm dưới vị trí
+ * vừa thả không bị ghim: người dùng chưa phát biểu gì về chúng.
+ *
+ * Thả xuống cuối (`idDich === null`) thì cả danh sách bị ghim — đó là hệ quả trực tiếp của
+ * quy tắc trên, không phải ngoại lệ.
+ */
+export function ghimSauKhiKeo(
+  thuTuHienTai: readonly string[],
+  idKeo: readonly string[],
+  idDich: string | null,
+): KetQuaGhim {
+  const thuTu = chuyenViTri(
+    thuTuHienTai.map((id) => ({ id })),
+    idKeo,
+    idDich,
+  ).map((x) => x.id);
+  const keoCoThat = idKeo.filter((id) => thuTuHienTai.includes(id));
+  // Không có gì thực sự di chuyển (thả lên chính nó, hoặc id lạ) thì đừng ghim ai: một cú
+  // nhấc-đặt-lại-chỗ-cũ không phải là lời phát biểu về thứ tự.
+  const dungYen = keoCoThat.length === 0 || thuTu.every((id, i) => id === thuTuHienTai[i]);
+  if (dungYen) return { thuTu, ghim: [] };
+  const cuoi = Math.max(...keoCoThat.map((id) => thuTu.indexOf(id)));
+  return { thuTu, ghim: thuTu.slice(0, cuoi + 1) };
+}
+
+/**
+ * Nút Lên / Xuống: đổi chỗ với hàng xóm. KHÔNG vòng từ đầu xuống cuối — bấm quá tay ở biên
+ * mà danh sách nhảy vòng là thứ không ai cố ý làm.
+ */
+export function doiChoHangXom(thuTu: readonly string[], id: string, huong: 'len' | 'xuong'): string[] {
+  const ds = [...thuTu];
+  const i = ds.indexOf(id);
+  if (i === -1) return ds;
+  const j = huong === 'len' ? i - 1 : i + 1;
+  if (j < 0 || j >= ds.length) return ds;
+  [ds[i], ds[j]] = [ds[j] as string, ds[i] as string];
+  return ds;
+}
+
 export type KetQuaChuyen =
   | { loai: 'giu'; role: Role }
   | { loai: 'bo'; lyDo: 'khongCoVai' | 'dichKhongCoTen' | 'dichDaCoDieuPhoi' };

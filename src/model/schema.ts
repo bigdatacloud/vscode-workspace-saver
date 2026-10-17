@@ -99,6 +99,14 @@ export const WorkspaceSchema = z
     activeWindowId: z.string().nullable(),
     /** Vị trí mở terminal riêng của workspace — không có thì theo setting chung. */
     terminalLocation: z.enum(['editor', 'panel']).optional(),
+    /**
+     * Thứ tự người dùng tự đặt trong cây (ghim). Vắng mặt = để cây tự sắp theo lần kích hoạt.
+     *
+     * `.catch(undefined)` chứ không để parse hỏng: một con số thứ tự rác (file sửa tay, bản
+     * extension khác ghi kiểu khác) mà làm hỏng schema thì cả shard bị backup và khởi tạo
+     * rỗng — mất nguyên một workspace vì một thứ chỉ để sắp xếp cho đẹp.
+     */
+    order: z.number().int().nonnegative().optional().catch(undefined),
     terminals: z.array(TerminalEntrySchema),
     removedTerminals: z.array(BiaMoTerminalSchema).optional(),
     roles: z.array(RoleSchema).optional(),

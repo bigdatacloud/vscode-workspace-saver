@@ -76,6 +76,26 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.manageRoles(id);
     }),
+    vscode.commands.registerCommand('aiWorkspace.viewSplit', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.xemSongSong(id);
+    }),
+    vscode.commands.registerCommand('aiWorkspace.viewSplitOff', () => manager.thoiXemSongSong()),
+    vscode.commands.registerCommand('aiWorkspace.moveWorkspaceUp', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.doiChoWorkspace(id, 'len');
+    }),
+    vscode.commands.registerCommand('aiWorkspace.moveWorkspaceDown', async (item?: WorkspaceItem) => {
+      const id = await wsArg(item);
+      if (id) await manager.doiChoWorkspace(id, 'xuong');
+    }),
+    vscode.commands.registerCommand('aiWorkspace.unpinWorkspaceOrder', () => manager.boGhimThuTu()),
+    vscode.commands.registerCommand('aiWorkspace.moveTerminalUp', (item: TerminalItem) =>
+      manager.doiChoTerminal(item.view.workspaceId, item.view.id, 'len'),
+    ),
+    vscode.commands.registerCommand('aiWorkspace.moveTerminalDown', (item: TerminalItem) =>
+      manager.doiChoTerminal(item.view.workspaceId, item.view.id, 'xuong'),
+    ),
     vscode.commands.registerCommand('aiWorkspace.activateTerminal', (item: TerminalItem) =>
       manager.activate(item.view.workspaceId, item.view.id),
     ),

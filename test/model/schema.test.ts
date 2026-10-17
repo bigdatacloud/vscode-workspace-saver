@@ -143,3 +143,24 @@ describe('roles', () => {
     expect(WorkspaceSchema.safeParse(ws({ terminals: [t] })).success).toBe(true);
   });
 });
+
+describe('order — thứ tự workspace người dùng ghim tay', () => {
+  it('giữ nguyên số thứ tự hợp lệ', () => {
+    const r = WorkspaceSchema.parse({ ...wsValid, order: 3 });
+    expect(r.order).toBe(3);
+  });
+
+  it('vắng mặt là bình thường: file do bản cũ ghi không có trường này', () => {
+    expect(WorkspaceSchema.parse(wsValid).order).toBeUndefined();
+  });
+
+  it('giá trị RÁC thì bỏ trường đó đi chứ KHÔNG làm hỏng cả shard', () => {
+    // Shard hỏng schema = backup + khởi tạo rỗng = mất nguyên một workspace. Một con số thứ
+    // tự sai (file sửa tay, bản khác ghi kiểu khác) không đáng giá bằng dữ liệu đó.
+    for (const rac of ['hai', -1, 1.5, null, {}]) {
+      const r = WorkspaceSchema.safeParse({ ...wsValid, order: rac });
+      expect(r.success).toBe(true);
+      expect(r.success && r.data.order).toBeUndefined();
+    }
+  });
+});

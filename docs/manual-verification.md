@@ -749,3 +749,50 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 ## Kết quả lần chạy
 
 <!-- Điền ngày chạy, người chạy, và kết quả từng mục (đạt/không đạt/ghi chú) tại đây. -->
+
+## Xem các terminal song song (chuột phải workspace)
+
+- [ ] Workspace có 4 terminal đang mở → lệnh xếp đúng **lưới 2×2**, mỗi ô một terminal
+- [ ] 2 terminal → hai cột; 3 → cột trái hai hàng + cột phải một; 5 → ba cột 2-2-1, KHÔNG có ô trống
+- [ ] Terminal đang chạy Claude vẫn **đang chạy** sau khi xếp (hội thoại còn nguyên, không bị khởi động lại)
+- [ ] Terminal đang nằm ở **panel dưới** (workspace đặt `terminalLocation: panel`) cũng vào lưới,
+      và tiến trình của nó không bị giết
+- [ ] Workspace có terminal đang ĐÓNG → thông báo nói rõ bao nhiêu cái không xếp, và KHÔNG cái nào tự bật
+- [ ] Không terminal nào đang mở → cảnh báo, không đụng bố cục editor
+- [ ] Đang mở sẵn vài **file** trong editor → file ở lại ô đầu tiên, KHÔNG bị ném sang ô khác
+- [ ] Hơn 9 terminal đang mở → chỉ 9 cái vào lưới, thông báo nói rõ số còn lại
+- [ ] "Thôi xem song song" → mọi tab về một nhóm, không terminal nào bị đóng
+- [ ] Bấm xem song song hai lần liên tiếp → lưới vẫn đúng (không nhân đôi nhóm, không sót ô rỗng)
+
+## Thứ tự trong cây
+
+- [ ] Kéo một workspace lên trên workspace khác → nó đứng yên chỗ mới, description hiện `đã ghim thứ tự`
+- [ ] Kích hoạt một workspace KHÁC → workspace đã ghim vẫn ở nguyên chỗ (không bị đẩy xuống)
+- [ ] Workspace chưa ghim vẫn tự sắp theo lần kích hoạt gần nhất, và luôn nằm DƯỚI nhóm đã ghim
+- [ ] Chuột phải workspace → ↑ / ↓ đổi chỗ đúng một bậc; ở đầu/cuối bấm tiếp thì không đổi gì
+- [ ] "Bỏ ghim thứ tự" → chữ `đã ghim thứ tự` biến mất ở mọi workspace, cây về thứ tự theo lần dùng
+- [ ] Thứ tự ghim **sống sót qua reload cửa sổ** (ghi xuống shard JSON của workspace)
+- [ ] Mở cùng workspace ở cửa sổ VS Code thứ hai → thứ tự khớp nhau, không cửa sổ nào ghi đè cửa sổ kia
+- [ ] Chuột phải terminal → ↑ / ↓ đổi chỗ trong workspace của nó; ở biên thì đứng yên
+
+## Kéo terminal sang workspace khác, thả vào vị trí bất kỳ
+
+- [ ] Kéo terminal thả lên một terminal nằm GIỮA danh sách của workspace khác → nó chèn đúng chỗ đó
+- [ ] Thả lên dòng workspace khác → xuống cuối workspace ấy
+- [ ] Chọn nhiều terminal (Ctrl+click) rồi kéo sang workspace khác → thứ tự tương đối giữa chúng giữ nguyên
+- [ ] Terminal đang chạy không bị đóng khi chuyển; tab vẫn làm việc bình thường
+- [ ] Vai được giữ khi workspace đích có vai trùng tên; không có thì bỏ vai kèm thông báo
+- [ ] Workspace đích đã có terminal điều phối → vai điều phối bị bỏ kèm cảnh báo
+- [ ] Kéo workspace thả lên một TERMINAL của workspace khác → hiểu là thả lên workspace chứa nó
+      (xếp thứ tự), KHÔNG phải chuyển terminal
+
+## Đổi tên terminal Claude → đồng bộ tên phiên
+
+- [ ] Đổi tên một terminal Claude đang chạy → trong phiên hiện lệnh `/rename <tên mới>` và Claude xác nhận đổi tên
+- [ ] `claude agents` (terminal khác) hiện tên MỚI cho phiên đó
+- [ ] App Claude Code trên điện thoại hiện tên mới (có thể chậm vài giây theo nhịp đồng bộ)
+- [ ] Tên trong cây, tên tab terminal và tên phiên khớp nhau sau ~3 giây
+- [ ] Máy đang có phiên khác TRÙNG tên → Claude tự thêm hậu tố; cây hiện đúng tên thật ở lượt làm mới sau
+- [ ] Đổi tên terminal Claude đang ĐÓNG → không gõ gì; kích hoạt lại thì phiên mang tên mới (`-n`)
+- [ ] Đổi tên terminal shell thường → KHÔNG có `/rename` nào bị gõ vào shell
+- [ ] Huỷ hộp nhập tên → không có gì thay đổi

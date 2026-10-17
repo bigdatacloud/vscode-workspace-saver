@@ -91,6 +91,39 @@
         "title": "AI Workspace: Gắn vai cho terminal"
       },
       {
+        "command": "aiWorkspace.viewSplit",
+        "title": "AI Workspace: Xem các terminal song song (xếp lưới)",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "aiWorkspace.viewSplitOff",
+        "title": "AI Workspace: Thôi xem song song (dồn về một nhóm)"
+      },
+      {
+        "command": "aiWorkspace.moveWorkspaceUp",
+        "title": "AI Workspace: Đưa workspace lên trên",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "aiWorkspace.moveWorkspaceDown",
+        "title": "AI Workspace: Đưa workspace xuống dưới",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "aiWorkspace.unpinWorkspaceOrder",
+        "title": "AI Workspace: Bỏ ghim thứ tự workspace (về tự sắp theo lần dùng)"
+      },
+      {
+        "command": "aiWorkspace.moveTerminalUp",
+        "title": "AI Workspace: Đưa terminal lên trên",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "aiWorkspace.moveTerminalDown",
+        "title": "AI Workspace: Đưa terminal xuống dưới",
+        "icon": "$(arrow-down)"
+      },
+      {
         "command": "aiWorkspace.moveTerminal",
         "title": "AI Workspace: Chuyển terminal sang workspace khác"
       },
@@ -322,6 +355,31 @@
           "group": "3_edit@5"
         },
         {
+          "command": "aiWorkspace.viewSplit",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "1_activate@2"
+        },
+        {
+          "command": "aiWorkspace.viewSplitOff",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "1_activate@3"
+        },
+        {
+          "command": "aiWorkspace.moveWorkspaceUp",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "5_order@1"
+        },
+        {
+          "command": "aiWorkspace.moveWorkspaceDown",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "5_order@2"
+        },
+        {
+          "command": "aiWorkspace.unpinWorkspaceOrder",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
+          "group": "5_order@3"
+        },
+        {
           "command": "aiWorkspace.addRole",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiWorkspace(Active|Inactive)/",
           "group": "4_role@1"
@@ -365,6 +423,16 @@
           "command": "aiWorkspace.showTerminalPath",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
           "group": "1_edit"
+        },
+        {
+          "command": "aiWorkspace.moveTerminalUp",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "1_order@1"
+        },
+        {
+          "command": "aiWorkspace.moveTerminalDown",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "1_order@2"
         },
         {
           "command": "aiWorkspace.moveTerminal",
@@ -424,6 +492,14 @@
         },
         {
           "command": "aiWorkspace.assignRole",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.moveTerminalUp",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.moveTerminalDown",
           "when": "false"
         },
         {
