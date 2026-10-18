@@ -76,6 +76,8 @@ export function registerCommands(manager: WorkspaceManager): vscode.Disposable[]
       const id = await wsArg(item);
       if (id) await manager.manageRoles(id);
     }),
+    vscode.commands.registerCommand('aiWorkspace.nextTerminal', () => manager.nhayQuaTerminal('toi')),
+    vscode.commands.registerCommand('aiWorkspace.prevTerminal', () => manager.nhayQuaTerminal('lui')),
     vscode.commands.registerCommand('aiWorkspace.viewSplit', async (item?: WorkspaceItem) => {
       const id = await wsArg(item);
       if (id) await manager.xemSongSong(id);

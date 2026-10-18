@@ -91,6 +91,14 @@
         "title": "AI Workspace: Gắn vai cho terminal"
       },
       {
+        "command": "aiWorkspace.nextTerminal",
+        "title": "AI Workspace: Terminal kế tiếp trong workspace"
+      },
+      {
+        "command": "aiWorkspace.prevTerminal",
+        "title": "AI Workspace: Terminal trước đó trong workspace"
+      },
+      {
         "command": "aiWorkspace.viewSplit",
         "title": "AI Workspace: Xem các terminal song song (xếp lưới)",
         "icon": "$(split-horizontal)"
@@ -191,6 +199,16 @@
         "command": "aiWorkspace.newClaudeTerminal",
         "key": "ctrl+alt+a",
         "mac": "cmd+alt+a"
+      },
+      {
+        "command": "aiWorkspace.nextTerminal",
+        "key": "ctrl+tab",
+        "when": "terminalFocus || focusedView == aiWorkspace.workspaces"
+      },
+      {
+        "command": "aiWorkspace.prevTerminal",
+        "key": "ctrl+shift+tab",
+        "when": "terminalFocus || focusedView == aiWorkspace.workspaces"
       },
       {
         "command": "aiWorkspace.voiceToggle",

@@ -764,6 +764,20 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] "Thôi xem song song" → mọi tab về một nhóm, không terminal nào bị đóng
 - [ ] Bấm xem song song hai lần liên tiếp → lưới vẫn đúng (không nhân đôi nhóm, không sót ô rỗng)
 
+## Nhảy giữa các terminal (Ctrl+Tab)
+
+- [ ] Lần đầu chạy bản này → thông báo nói đã thêm `aiWorkspace.nextTerminal` / `prevTerminal`
+      vào `terminal.integrated.commandsToSkipShell`
+- [ ] Đang gõ trong một terminal, bấm Ctrl+Tab → nhảy sang terminal KẾ TIẾP theo thứ tự cây
+      (không phải theo vị trí ô trên màn hình)
+- [ ] Ở terminal cuối bấm Ctrl+Tab → vòng về terminal đầu
+- [ ] Ctrl+Shift+Tab đi ngược lại, cũng vòng
+- [ ] Chỉ nhảy trong CÙNG workspace với terminal đang focus, không lạc sang workspace khác
+- [ ] Đang ở editor một file → Ctrl+Tab vẫn là hành vi cũ của VS Code (chuyển tab gần đây)
+- [ ] Workspace chỉ có một terminal đang mở → bấm không nhấp nháy, không báo lỗi
+- [ ] Workspace không có terminal nào đang mở → cảnh báo rõ ràng, không ném lỗi
+- [ ] Sau khi xếp lưới, Ctrl+Tab đi đúng thứ tự cây kể cả khi lưới sắp các ô khác thứ tự đó
+
 ## Thứ tự trong cây
 
 - [ ] Kéo một workspace lên trên workspace khác → nó đứng yên chỗ mới, description hiện `đã ghim thứ tự`

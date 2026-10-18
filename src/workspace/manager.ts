@@ -86,6 +86,7 @@ import {
   type ShardResult,
 } from '../model/store';
 import { lenhDoiTenPhienClaude } from '../agent/claude';
+import { nhayTerminal } from './nhay';
 import { phanXuTrungPhien, type PhanXuPhien } from './trungphien';
 import { upsertTerminal } from '../model/store';
 import { docCotDong, TOI_DA_CANH, TOI_DA_O } from '../ui/luoi';
@@ -2221,6 +2222,37 @@ export class WorkspaceManager implements vscode.Disposable {
         `Đã chuyển ${daChuyen.size} terminal sang "${dich.name}".`,
       );
     }
+  }
+
+  // ------------------------------------------------ nhảy giữa terminal
+
+  /**
+   * Ctrl+Tab / Ctrl+Shift+Tab: sang terminal kế tiếp của CÙNG workspace, theo thứ tự trong cây.
+   *
+   * Lấy workspace từ terminal đang focus chứ không từ "workspace đang nhận": người dùng bấm
+   * phím này khi đang gõ dở trong một terminal, ý họ là "cái bên cạnh trong tổ này" — mà tổ
+   * nào thì chính terminal dưới tay họ nói lên, không phải một cài đặt ở đâu đó.
+   */
+  async nhayQuaTerminal(huong: 'toi' | 'lui'): Promise<void> {
+    const dangFocus = vscode.window.activeTerminal;
+    const idFocus = dangFocus === undefined ? null : this.terminals.ownsTerminal(dangFocus);
+    const ws =
+      (idFocus === null ? null : this.timTheoTerminalId(idFocus)?.ws ?? null) ??
+      findWorkspace(this.store, this.wsNhan() ?? '');
+    if (!ws) {
+      void vscode.window.showWarningMessage('Chưa có workspace nào đang mở để nhảy qua lại.');
+      return;
+    }
+    const dangMo = ws.terminals.filter((e) => this.terminals.has(e.id)).map((e) => e.id);
+    const dich = nhayTerminal(dangMo, idFocus, huong);
+    if (dich === null) {
+      void vscode.window.showWarningMessage(
+        `Workspace "${ws.name}" chưa có terminal nào đang mở.`,
+      );
+      return;
+    }
+    this.terminals.focus(dich);
+    return Promise.resolve();
   }
 
   // --------------------------------------------------- xem song song

@@ -856,6 +856,28 @@
             lưới hẹp hơn số terminal (bạn chọn bố cục nhỏ) hay VS Code không tách được tab.
           </p>
 
+          <h3>Nhảy qua lại giữa các terminal</h3>
+          <p>
+            <kbd>Ctrl</kbd>+<kbd>Tab</kbd> sang terminal kế tiếp của cùng workspace,
+            <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> quay lại — theo đúng <strong>thứ tự
+            trong cây</strong> (không phải vị trí ô trên màn hình), và vòng về đầu khi hết. Chạy cả
+            khi chưa xếp lưới.
+          </p>
+          <p>
+            Hai điều có chủ ý. Thứ nhất, phím chỉ ăn khi con trỏ đang <em>trong terminal</em> hoặc
+            đang đứng ở cây — ở editor file thì <kbd>Ctrl</kbd>+<kbd>Tab</kbd> vẫn là của VS Code
+            như cũ. Thứ hai, lần đầu chạy extension thêm hai lệnh này vào
+            <code>terminal.integrated.commandsToSkipShell</code> (có báo), vì mặc định VS Code đẩy
+            gần hết phím xuống shell khi terminal đang focus — không làm thế thì
+            <kbd>Ctrl</kbd>+<kbd>Tab</kbd> không bao giờ tới được extension. Đổi lại:
+            <kbd>Ctrl</kbd>+<kbd>Tab</kbd> không còn gửi được xuống shell nữa.
+          </p>
+          <p>
+            Còn <kbd>Ctrl</kbd>+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> và
+            <kbd>Ctrl</kbd>+<kbd>K</kbd> <kbd>Ctrl</kbd>+<kbd>→</kbd> của VS Code vẫn dùng được,
+            chúng nhảy theo <em>vị trí ô</em> và không vòng lại.
+          </p>
+
           <h3>Nhân bản một terminal</h3>
           <p>
             Chuột phải một terminal → <strong>Nhân bản terminal ra worktree riêng</strong>. Bản sao
@@ -1425,6 +1447,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Xem log điều phối</td><td>Mở khung kiểm toán, kèm lối mở file log bền</td><td>chuột phải workspace</td></tr>
                 <tr><td>Lập tổ</td><td>Nhờ agent điều phối đề xuất tổ; bạn duyệt và sửa trước khi tạo</td><td>chuột phải terminal điều phối</td></tr>
                 <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây. Terminal Claude: tên được gửi vào chính phiên bằng <code>/rename</code> nên <code>claude agents</code>, session picker và app trên điện thoại cũng đổi theo</td><td>chuột phải terminal</td></tr>
+                <tr><td>Terminal kế tiếp / trước đó</td><td>Ctrl+Tab / Ctrl+Shift+Tab — vòng theo thứ tự cây trong cùng workspace</td><td>phím tắt</td></tr>
                 <tr><td>Xem các terminal song song</td><td>Hỏi bố cục (tự động / 2 cột / 3 cột / 2×2 / 3×2 / 3×3 / tuỳ chỉnh <code>&lt;cột&gt;x&lt;dòng&gt;</code>) rồi xếp terminal đang mở thành lưới trong vùng editor</td><td>chuột phải workspace</td></tr>
                 <tr><td>Thôi xem song song</td><td>Dồn mọi tab về một nhóm</td><td>chuột phải workspace</td></tr>
                 <tr><td>Đưa workspace lên / xuống</td><td>Ghim thứ tự thủ công cho cây</td><td>chuột phải workspace</td></tr>

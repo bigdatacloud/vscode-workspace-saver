@@ -37,7 +37,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(LENH_CHON_MIC, () => nghe.chonMic()),
     vscode.commands.registerCommand(LENH_DAT_KEY, () => nghe.nhapKey()),
   );
-  void damBaoPhimQuaShell();
+  void damBaoPhimQuaShell([
+    { id: LENH_TOGGLE, phim: process.platform === 'darwin' ? 'Cmd+Shift+Y' : 'Ctrl+Shift+Y', viec: 'nghe giọng nói' },
+    { id: 'aiWorkspace.nextTerminal', phim: 'Ctrl+Tab', viec: 'terminal kế tiếp' },
+    { id: 'aiWorkspace.prevTerminal', phim: 'Ctrl+Shift+Tab', viec: 'terminal trước đó' },
+  ]);
   // Làm nóng model giọng nói SAU khi mọi thứ khác đã lên: khởi động không chậm đi, và người dùng
   // bấm phím trong lúc đang nạp thì phiên làm nóng thành phiên thật, không mất vòng nạp thứ hai.
   const hen = setTimeout(() => void nghe.lamNong(), 4_000);

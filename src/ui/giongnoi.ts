@@ -678,20 +678,29 @@ ${huongDanCaiQuan(python)}` },
  * `terminal.integrated.commandsToSkipShell` mới được giữ lại. Extension KHÔNG khai được vào
  * danh sách đó bằng `contributes`, nên phải ghi vào cài đặt người dùng — một lần, có báo.
  * Không làm thế thì phím trong terminal bị đẩy xuống shell và không bao giờ tới được ta.
+ *
+ * Nhận cả danh sách vì nay có nhiều phím cần đi qua shell (nghe giọng nói, nhảy terminal);
+ * ghi một lần cho tất cả thay vì bắn nhiều thông báo liên tiếp vào mặt người dùng.
  */
-export async function damBaoPhimQuaShell(): Promise<void> {
+export async function damBaoPhimQuaShell(
+  canThem: readonly { id: string; phim: string; viec: string }[] = [
+    { id: LENH_TOGGLE, phim: PHIM, viec: 'bật nghe giọng nói' },
+  ],
+): Promise<void> {
   const KHOA = 'terminal.integrated.commandsToSkipShell';
   const cauHinh = vscode.workspace.getConfiguration();
   const hienCo = cauHinh.get<string[]>(KHOA, []);
-  if (hienCo.includes(LENH_TOGGLE)) return;
+  const thieu = canThem.filter((x) => !hienCo.includes(x.id));
+  if (thieu.length === 0) return;
+  const moTa = thieu.map((x) => `${x.phim} → ${x.viec}`).join(', ');
   try {
-    await cauHinh.update(KHOA, [...hienCo, LENH_TOGGLE], vscode.ConfigurationTarget.Global);
+    await cauHinh.update(KHOA, [...hienCo, ...thieu.map((x) => x.id)], vscode.ConfigurationTarget.Global);
     void vscode.window.showInformationMessage(
-      `Đã thêm "${LENH_TOGGLE}" vào ${KHOA} để ${PHIM} trong terminal bật nghe giọng nói thay vì bị shell nuốt.`,
+      `Đã thêm ${thieu.length} lệnh vào ${KHOA} để trong terminal các phím này tới được extension thay vì bị shell nuốt: ${moTa}.`,
     );
   } catch {
     void vscode.window.showWarningMessage(
-      `Không ghi được ${KHOA}. Thêm tay "${LENH_TOGGLE}" vào cài đặt đó, không thì ${PHIM} trong terminal sẽ bị shell nuốt.`,
+      `Không ghi được ${KHOA}. Thêm tay ${thieu.map((x) => `"${x.id}"`).join(', ')} vào cài đặt đó, không thì các phím ${moTa} trong terminal sẽ bị shell nuốt.`,
     );
   }
 }
