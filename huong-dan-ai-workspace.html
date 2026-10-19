@@ -842,6 +842,19 @@
             bạn đi đâu cả.
           </p>
           <p>
+            <strong>Lưới là của MỘT workspace.</strong> Terminal của workspace khác đang nằm trong
+            vùng editor sẽ bị <strong>đưa xuống panel</strong> — ẩn đi chứ không đóng, phiên bên
+            trong vẫn chạy, bấm vào panel là thấy lại. Không làm vậy thì chính những tab lạ ấy
+            chiếm mất ô của terminal đáng ra phải vào lưới. Thông báo nói rõ đã đưa mấy cái xuống.
+          </p>
+          <p>
+            <strong>Mở thêm terminal khi đang xem song song</strong> thì VS Code đặt nó vào ô đang
+            active — nó nằm đè lên terminal ở đó nên trông như "mất tích". Chuột phải nó trong cây →
+            <strong>Thêm terminal này vào lưới</strong>: lưới nới ra đúng một ô cho nó, không phải
+            xếp lại từ đầu. Nếu extension không chắc tab đang mở là của terminal ấy thì nó
+            <em>không</em> dời gì cả — thà thiếu một ô còn hơn ném nhầm tab của bạn sang chỗ khác.
+          </p>
+          <p>
             Thứ tự ô đi theo thứ tự tab trong vùng editor, thường trùng thứ tự bạn mở terminal —
             extension <em>không</em> hứa trùng khít thứ tự trong cây. Lý do rất cụ thể: bản đầu tiên
             cố bám thứ tự cây bằng cách gọi <code>show()</code> cho từng terminal rồi dời tab đang
@@ -1449,6 +1462,7 @@ Bạn là người rà soát. Không sửa code, chỉ nêu vấn đề…
                 <tr><td>Đổi tên terminal</td><td>Hoặc dùng Rename có sẵn của VS Code, tên tự đồng bộ về cây. Terminal Claude: tên được gửi vào chính phiên bằng <code>/rename</code> nên <code>claude agents</code>, session picker và app trên điện thoại cũng đổi theo</td><td>chuột phải terminal</td></tr>
                 <tr><td>Terminal kế tiếp / trước đó</td><td>Ctrl+Tab / Ctrl+Shift+Tab — vòng theo thứ tự cây trong cùng workspace</td><td>phím tắt</td></tr>
                 <tr><td>Xem các terminal song song</td><td>Hỏi bố cục (tự động / 2 cột / 3 cột / 2×2 / 3×2 / 3×3 / tuỳ chỉnh <code>&lt;cột&gt;x&lt;dòng&gt;</code>) rồi xếp terminal đang mở thành lưới trong vùng editor</td><td>chuột phải workspace</td></tr>
+                <tr><td>Thêm terminal này vào lưới</td><td>Nới lưới thêm một ô cho terminal mở sau khi đã xếp</td><td>chuột phải terminal</td></tr>
                 <tr><td>Thôi xem song song</td><td>Dồn mọi tab về một nhóm</td><td>chuột phải workspace</td></tr>
                 <tr><td>Đưa workspace lên / xuống</td><td>Ghim thứ tự thủ công cho cây</td><td>chuột phải workspace</td></tr>
                 <tr><td>Bỏ ghim thứ tự workspace</td><td>Trả cây về tự sắp theo lần kích hoạt</td><td>chuột phải workspace</td></tr>

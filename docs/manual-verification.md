@@ -764,6 +764,25 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] "Thôi xem song song" → mọi tab về một nhóm, không terminal nào bị đóng
 - [ ] Bấm xem song song hai lần liên tiếp → lưới vẫn đúng (không nhân đôi nhóm, không sót ô rỗng)
 
+## Lưới chỉ chứa terminal của workspace đó
+
+- [ ] Workspace A và B đều có terminal đang mở trong vùng editor → xếp lưới cho A thì terminal
+      của B bị đưa xuống panel, lưới chỉ còn terminal của A
+- [ ] Terminal của B **vẫn đang chạy** (bấm vào panel thấy phiên còn nguyên, không bị đóng)
+- [ ] Thông báo nói rõ đã đưa mấy terminal của workspace khác xuống panel
+- [ ] Terminal của B vốn đã ở panel → không bị đụng, không báo thừa
+- [ ] Tab FILE đang mở vẫn ở lại ô đầu tiên, không bị đóng và không bị ném sang ô khác
+- [ ] Vừa đóng một terminal rồi xếp lưới ngay → không lỗi, lưới vẫn rải đủ ô
+
+## Thêm terminal vào lưới đang có
+
+- [ ] Đang xem song song, mở thêm một terminal → nó chui vào chung ô (hiện tượng "không thấy nó đâu")
+- [ ] Chuột phải terminal đó trong cây → **Thêm terminal này vào lưới** → lưới có thêm đúng một ô
+      và nó nằm riêng một ô
+- [ ] Terminal đang ở panel → thêm vào lưới được, KHÔNG bị mở lại (phiên giữ nguyên)
+- [ ] Terminal đang đóng → báo "bấm vào nó trong cây để bật rồi thêm vào lưới", không tự bật
+- [ ] Lưới đã 9 ô → báo không nới thêm được, không làm hỏng lưới đang có
+
 ## Nhảy giữa các terminal (Ctrl+Tab)
 
 - [ ] Lần đầu chạy bản này → thông báo nói đã thêm `aiWorkspace.nextTerminal` / `prevTerminal`
