@@ -172,6 +172,7 @@ kênh Output **AI Workspace — Xem song song**. Lệnh ngược: *Thôi xem son
 | AI Workspace: Đổi tên terminal | `aiWorkspace.renameTerminal` | Context menu terminal item — hoặc dùng Rename có sẵn của VS Code trên tab terminal, tên tự đồng bộ về cây trong ~3 giây. Terminal Claude: tên được gửi vào chính phiên bằng `/rename`, nên `claude agents`, session picker và app Claude Code trên điện thoại cũng đổi theo |
 | AI Workspace: Xem các terminal song song | `aiWorkspace.viewSplit` | Context menu workspace — hỏi bố cục (tự động / 2 cột / 3 cột / 2×2 / 3×2 / 3×3 / tuỳ chỉnh `<cột>x<dòng>`) rồi xếp terminal đang mở thành lưới trong vùng editor |
 | AI Workspace: Thôi xem song song | `aiWorkspace.viewSplitOff` | Context menu workspace — dồn mọi tab về một nhóm |
+| AI Workspace: Thêm terminal này vào lưới | `aiWorkspace.addToGrid` | Context menu terminal — nới lưới thêm một ô cho terminal mở sau khi đã xếp |
 | AI Workspace: Terminal kế tiếp / trước đó | `aiWorkspace.nextTerminal` / `prevTerminal` | <kbd>Ctrl+Tab</kbd> / <kbd>Ctrl+Shift+Tab</kbd> khi đang ở trong terminal |
 | AI Workspace: Đưa workspace lên trên / xuống dưới | `aiWorkspace.moveWorkspaceUp` / `…Down` | Context menu workspace — ghim thứ tự thủ công |
 | AI Workspace: Bỏ ghim thứ tự workspace | `aiWorkspace.unpinWorkspaceOrder` | Context menu workspace — về tự sắp theo lần dùng |

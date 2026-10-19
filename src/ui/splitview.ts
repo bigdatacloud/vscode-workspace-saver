@@ -19,6 +19,8 @@ export interface KetQuaXepLuoi {
   daXep: number;
   /** Số terminal bị bỏ lại vì quá `TOI_DA_O`. */
   qua: number;
+  /** Số terminal KHÔNG thuộc lưới đã được đẩy xuống panel để không chiếm ô. */
+  daAn: number;
 }
 
 const chay = async (lenh: string, ...args: unknown[]): Promise<void> => {
@@ -120,6 +122,116 @@ async function xoayToiTabTerminal(g: vscode.TabGroup): Promise<boolean> {
 }
 
 /**
+ * Thêm MỘT terminal vào lưới đang có, bằng cách dựng thêm một ô cho riêng nó.
+ *
+ * Vì sao cần: mở một terminal mới trong lúc đang xem song song thì VS Code đặt nó vào nhóm
+ * đang active — nó thành tab thứ hai của một ô, nằm đè lên terminal đang ở đó, nên người
+ * dùng "không thấy nó đâu". Xếp lại cả lưới chỉ vì thêm một cái là thừa (và làm nhấp nháy
+ * mọi ô), nên ở đây chỉ nới lưới ra đúng một ô rồi đẩy nó sang.
+ *
+ * Trả `false` khi không chắc tab đang active là của terminal này — thà không thêm còn hơn
+ * ném nhầm tab khác (kể cả tab file) sang ô mới.
+ */
+export async function themOVaoLuoi(
+  t: vscode.Terminal,
+  ghiLog: (d: string) => void = () => undefined,
+): Promise<boolean> {
+  if (t.exitStatus !== undefined) return false;
+  try {
+    if (dangOPanel(t)) {
+      t.show(true);
+      await cho(() => vscode.window.activeTerminal === t);
+      await nghi(NHIP_UI_MS);
+      await chay('workbench.action.terminal.moveToEditor');
+      await nghi(NHIP_UI_MS);
+    }
+    t.show(true);
+    await cho(
+      () =>
+        vscode.window.activeTerminal === t &&
+        vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal,
+    );
+    if (
+      vscode.window.activeTerminal !== t ||
+      !(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal)
+    ) {
+      ghiLog(`[luoi] không chắc tab đang mở là của "${t.name}", không thêm ô`);
+      return false;
+    }
+
+    const truoc = soNhom();
+    if (truoc >= TOI_DA_O) {
+      ghiLog(`[luoi] lưới đã ${truoc} ô, không nới thêm`);
+      return false;
+    }
+    // Nới lưới TRƯỚC rồi mới dời: ô mới phải tồn tại sẵn, vì dời sang "nhóm kế tiếp" khi
+    // chưa có nhóm nào ở đó không phải lúc nào cũng tạo ra nhóm (xem ghi chú ở xepLuoiTerminal).
+    await chay('vscode.setEditorLayout', boCucLuoi(truoc + 1));
+    await cho(() => soNhom() > truoc);
+    await nghi(NHIP_UI_MS);
+    await chay('workbench.action.moveEditorToLastGroup');
+    await cho(() => soNhomCoTerminal() >= Math.min(truoc + 1, soNhom()));
+    ghiLog(`[luoi] đã thêm "${t.name}" vào ô thứ ${soNhom()}`);
+    return true;
+  } catch {
+    ghiLog(`[luoi] không thêm được "${t.name}" vào lưới`);
+    return false;
+  }
+}
+
+/**
+ * Đẩy mọi terminal KHÔNG thuộc lưới ra khỏi vùng editor, xuống panel dưới.
+ *
+ * Lưới là của MỘT workspace: terminal của workspace khác (hay cái người dùng tự mở) nằm lẫn
+ * trong đó thì mỗi ô một nơi khác nhau, và chính những tab lạ ấy chiếm mất ô của terminal
+ * đáng ra phải vào lưới.
+ *
+ * ẨN, không đóng: `moveToTerminalPanel` dời tiến trình xuống panel, pty giữ nguyên — phiên
+ * agent trong đó vẫn chạy, bấm vào panel là thấy lại. Đóng chúng đi là giết phiên của người
+ * khác vì một thao tác bố cục của ta.
+ *
+ * Tab FILE thì không đụng: vùng editor là của chung, và đóng một file chưa lưu thì không có
+ * đường lùi. Chúng ở lại ô đầu tiên.
+ */
+async function anTerminalNgoaiLuoi(
+  canAn: readonly vscode.Terminal[],
+  trongLuoi: readonly vscode.Terminal[],
+  ghiLog: (d: string) => void,
+): Promise<number> {
+  const giu = new Set(trongLuoi);
+  const song = new Set(vscode.window.terminals);
+  let da = 0;
+  for (const t of canAn) {
+    if (giu.has(t) || dangOPanel(t)) continue;
+    // Tiến trình đã thoát thì không còn gì để ẩn.
+    if (t.exitStatus !== undefined || !song.has(t)) continue;
+    try {
+      // `show()` nằm TRONG try: danh sách terminal của VS Code vẫn liệt kê cái vừa bị đóng
+      // (cập nhật bất đồng bộ), và gọi show() lên nó ném "Terminal has already been
+      // disposed" — ném ở đây là hỏng cả lượt xếp lưới vì một terminal không liên quan.
+      t.show(true);
+      await cho(() => vscode.window.activeTerminal === t);
+      await nghi(NHIP_UI_MS);
+      await chay('workbench.action.terminal.moveToTerminalPanel');
+    } catch {
+      ghiLog(`[luoi] không ẩn được terminal "${t.name}"`);
+      continue;
+    }
+    await nghi(NHIP_UI_MS);
+    da += 1;
+  }
+  if (da > 0) {
+    // Ẩn xong thì focus đang nằm ở PANEL (terminal vừa bị dời xuống đó). Vòng rải bên dưới
+    // ra lệnh lên tab đang active của vùng editor, mà khi focus ở panel thì lệnh xoay tab
+    // không ăn — hậu quả đo được: tab file bị ném sang ô thứ hai và cả lưới rải hỏng.
+    await chay('workbench.action.focusActiveEditorGroup');
+    await nghi(NHIP_UI_MS);
+    ghiLog(`[luoi] đã ẩn ${da} terminal ngoài lưới xuống panel`);
+  }
+  return da;
+}
+
+/**
  * Xếp các terminal thành lưới.
  *
  * Ba điều học được khi chạy thật trên VS Code 1.142, cả ba đều đi ngược trực giác:
@@ -146,8 +258,16 @@ export async function xepLuoiTerminal(
   ds: readonly vscode.Terminal[],
   yeuCau?: YeuCauLuoi,
   ghiLog: (d: string) => void = () => undefined,
+  /**
+   * Terminal cần ẩn khỏi vùng editor (của workspace khác). Phải do bên gọi đưa vào chứ KHÔNG
+   * tự quét `window.terminals`: danh sách đó còn liệt kê cả terminal vừa bị đóng, mà chạm
+   * vào một terminal đã chết thì ném lỗi và làm hỏng focus giữa lúc đang rải lưới — đo được
+   * trong test, biểu hiện là cả lưới chỉ rải được một ô. Bên gọi (manager) có sổ terminal
+   * sống, cập nhật theo `onDidCloseTerminal`.
+   */
+  canAn: readonly vscode.Terminal[] = [],
 ): Promise<KetQuaXepLuoi> {
-  if (ds.length === 0) return { daXep: 0, qua: 0 };
+  if (ds.length === 0) return { daXep: 0, qua: 0, daAn: 0 };
   const soO =
     yeuCau === undefined
       ? Math.max(1, Math.min(ds.length, TOI_DA_O))
@@ -161,6 +281,9 @@ export async function xepLuoiTerminal(
     await chay('workbench.action.terminal.moveToEditor');
     await nghi(NHIP_UI_MS);
   }
+
+  // Ẩn TRƯỚC khi gom nhóm: gom xong mới ẩn thì những tab lạ đã kịp chen vào ô của lưới.
+  const daAn = await anTerminalNgoaiLuoi(canAn, ds, ghiLog);
 
   await gopVeMotNhom();
   await cho(() => soNhom() === 1);
@@ -196,5 +319,5 @@ export async function xepLuoiTerminal(
   const coTerm = soNhomCoTerminal();
   ghiLog(`[luoi] kết quả: ${coTerm} ô có terminal / ${soNhom()} ô`);
   const daXep = Math.min(coTerm, ds.length);
-  return { daXep, qua: ds.length - daXep };
+  return { daXep, qua: ds.length - daXep, daAn };
 }

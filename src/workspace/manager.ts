@@ -90,7 +90,7 @@ import { nhayTerminal } from './nhay';
 import { phanXuTrungPhien, type PhanXuPhien } from './trungphien';
 import { upsertTerminal } from '../model/store';
 import { docCotDong, TOI_DA_CANH, TOI_DA_O } from '../ui/luoi';
-import { gopVeMotNhom, xepLuoiTerminal, type YeuCauLuoi } from '../ui/splitview';
+import { gopVeMotNhom, themOVaoLuoi, xepLuoiTerminal, type YeuCauLuoi } from '../ui/splitview';
 import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
@@ -2284,7 +2284,12 @@ export class WorkspaceManager implements vscode.Disposable {
     const chon = await this.chonBoCucLuoi(dangMo.length);
     if (chon === null) return; // người dùng huỷ
 
-    const kq = await xepLuoiTerminal(dangMo, chon, (d) => this.kenhLuoi().appendLine(d));
+    const kq = await xepLuoiTerminal(
+      dangMo,
+      chon,
+      (d) => this.kenhLuoi().appendLine(d),
+      this.terminalCuaWsKhac(ws.id),
+    );
     const soO = chon === undefined ? Math.min(dangMo.length, TOI_DA_O) : chon.cot * chon.dong;
 
     const phan = [`Đã xếp ${kq.daXep} terminal của "${ws.name}" thành lưới.`];
@@ -2302,7 +2307,55 @@ export class WorkspaceManager implements vscode.Disposable {
       }
     }
     if (dong > 0) phan.push(`${dong} cái đang đóng nên không xếp — bấm vào trong cây để bật riêng.`);
+    if (kq.daAn > 0) {
+      phan.push(`${kq.daAn} terminal của workspace khác đã được đưa xuống panel (vẫn đang chạy).`);
+    }
     void vscode.window.showInformationMessage(phan.join(' '));
+  }
+
+  /**
+   * Terminal đang mở của MỌI workspace khác — để lưới của workspace này không bị chúng chiếm ô.
+   *
+   * Lấy từ sổ của `TerminalManager` chứ không quét `vscode.window.terminals`: sổ đó dọn theo
+   * `onDidCloseTerminal` nên không chứa terminal đã chết, còn danh sách của VS Code thì có —
+   * và chạm vào một terminal đã chết giữa lúc rải lưới làm hỏng cả lượt xếp (đo được trong
+   * test: cả lưới chỉ rải nổi một ô).
+   */
+  private terminalCuaWsKhac(wsId: string): vscode.Terminal[] {
+    const ds: vscode.Terminal[] = [];
+    for (const w of this.store.workspaces) {
+      if (w.id === wsId) continue;
+      for (const e of w.terminals) {
+        const t = this.terminals.get(e.id);
+        if (t !== undefined) ds.push(t);
+      }
+    }
+    return ds;
+  }
+
+  /**
+   * Thêm một terminal vào lưới đang có (menu chuột phải trong cây).
+   *
+   * Tình huống: đang xem song song thì mở thêm terminal — VS Code đặt nó vào nhóm đang
+   * active nên nó nằm đè lên terminal khác và coi như "mất tích". Lệnh này nới lưới thêm
+   * đúng một ô cho nó, thay vì xếp lại cả lưới.
+   */
+  async themVaoLuoi(workspaceId: string, terminalId: string): Promise<void> {
+    const entry = this.findEntry(workspaceId, terminalId);
+    if (!entry) return;
+    const terminal = this.terminals.get(terminalId);
+    if (terminal === undefined) {
+      void vscode.window.showWarningMessage(
+        `Terminal "${entry.name}" đang đóng. Bấm vào nó trong cây để bật rồi thêm vào lưới.`,
+      );
+      return;
+    }
+    const ok = await themOVaoLuoi(terminal, (d) => this.kenhLuoi().appendLine(d));
+    void (ok
+      ? vscode.window.showInformationMessage(`Đã thêm "${entry.name}" vào lưới.`)
+      : vscode.window.showWarningMessage(
+          `Không thêm được "${entry.name}" vào lưới (xem kênh "${TEN_KENH_LUOI}" trong Output). Thử "Xem các terminal song song" để xếp lại từ đầu.`,
+        ));
   }
 
   private kenhLuoiCache: vscode.OutputChannel | null = null;

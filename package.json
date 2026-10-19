@@ -91,6 +91,11 @@
         "title": "AI Workspace: Gắn vai cho terminal"
       },
       {
+        "command": "aiWorkspace.addToGrid",
+        "title": "AI Workspace: Thêm terminal này vào lưới",
+        "icon": "$(add)"
+      },
+      {
         "command": "aiWorkspace.nextTerminal",
         "title": "AI Workspace: Terminal kế tiếp trong workspace"
       },
@@ -453,6 +458,11 @@
           "group": "1_edit"
         },
         {
+          "command": "aiWorkspace.addToGrid",
+          "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
+          "group": "0_activate@3"
+        },
+        {
           "command": "aiWorkspace.moveTerminalUp",
           "when": "view == aiWorkspace.workspaces && viewItem =~ /aiTerminal(Claude|Plain)/",
           "group": "1_order@1"
@@ -520,6 +530,10 @@
         },
         {
           "command": "aiWorkspace.assignRole",
+          "when": "false"
+        },
+        {
+          "command": "aiWorkspace.addToGrid",
           "when": "false"
         },
         {

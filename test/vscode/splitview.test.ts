@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
-import { gopVeMotNhom, xepLuoiTerminal } from '../../src/ui/splitview';
+import { gopVeMotNhom, themOVaoLuoi, xepLuoiTerminal } from '../../src/ui/splitview';
 
 /**
  * Chạy thật trong Extension Host: ba lệnh workbench mà `splitview.ts` dựa vào
@@ -223,7 +223,115 @@ suite('xem song song — xếp terminal thành lưới', () => {
   test('danh sách rỗng: không ném, không đụng bố cục', async () => {
     const truoc = soNhom();
     const kq = await xepLuoiTerminal([]);
-    assert.deepEqual(kq, { daXep: 0, qua: 0 });
+    assert.deepEqual(kq, { daXep: 0, qua: 0, daAn: 0 });
     assert.equal(soNhom(), truoc);
+  });
+});
+
+suite('xem song song — terminal ngoài lưới', () => {
+  setup(async () => {
+    await donBanLamViec();
+  });
+
+  test('terminal KHÔNG thuộc danh sách bị đẩy khỏi vùng editor, nhưng vẫn sống', async () => {
+    const trong = [0, 1].map((i) =>
+      vscode.window.createTerminal({ name: `trong-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const ngoai = vscode.window.createTerminal({
+      name: 'ngoai-luoi',
+      location: vscode.TerminalLocation.Editor,
+    });
+    try {
+      await cho(() => tabTerminal() === 3);
+
+      const kq = await xepLuoiTerminal(trong, undefined, undefined, [ngoai]);
+
+      // Lưới chỉ còn hai terminal của workspace; cái thứ ba không còn tab nào trong editor.
+      await cho(() => tabTerminal() === 2);
+      assert.equal(tabTerminal(), 2, `vùng editor phải chỉ còn terminal trong lưới — ${moTaNhom()}`);
+      assert.equal(kq.daAn, 1, 'phải báo đã ẩn đúng một terminal');
+      assert.equal(kq.daXep, 2);
+      // Ẩn, KHÔNG giết: phiên agent trong đó phải còn nguyên.
+      assert.ok(vscode.window.terminals.includes(ngoai), 'terminal ngoài lưới không được bị đóng');
+    } finally {
+      await donDep([...trong, ngoai]);
+    }
+  });
+
+  test('terminal đang ở panel thì để yên — nó vốn đã không chiếm chỗ trong lưới', async () => {
+    const trong = vscode.window.createTerminal({
+      name: 'trong-luoi',
+      location: vscode.TerminalLocation.Editor,
+    });
+    const duoiPanel = vscode.window.createTerminal({
+      name: 'duoi-panel',
+      location: vscode.TerminalLocation.Panel,
+    });
+    try {
+      await cho(() => tabTerminal() === 1);
+
+      const kq = await xepLuoiTerminal([trong], undefined, undefined, [duoiPanel]);
+
+      assert.equal(kq.daAn, 0, 'không có gì để ẩn: cái kia vốn đã ở panel');
+      assert.ok(vscode.window.terminals.includes(duoiPanel));
+    } finally {
+      await donDep([trong, duoiPanel]);
+    }
+  });
+});
+
+suite('xem song song — thêm ô vào lưới đang có', () => {
+  setup(async () => {
+    await donBanLamViec();
+  });
+
+  test('terminal mở sau khi đã xếp lưới: thêm được một ô riêng cho nó', async () => {
+    const dau = [0, 1].map((i) =>
+      vscode.window.createTerminal({ name: `dau-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    let them: vscode.Terminal | undefined;
+    try {
+      await cho(() => tabTerminal() === 2);
+      await xepLuoiTerminal(dau);
+      await cho(() => soNhom() === 2);
+
+      // Đây là tình huống thật: đang xem song song thì mở thêm một terminal — nó chui vào
+      // chung ô với cái khác nên người dùng "không thấy nó đâu".
+      them = vscode.window.createTerminal({ name: 'mo-sau', location: vscode.TerminalLocation.Editor });
+      await cho(() => tabTerminal() === 3);
+
+      const ok = await themOVaoLuoi(them);
+
+      assert.equal(ok, true);
+      await cho(() => soNhom() === 3 && moiNhomMotTerminal());
+      assert.equal(soNhom(), 3, `phải có ba ô — ${moTaNhom()}`);
+      assert.ok(moiNhomMotTerminal(), `mỗi ô đúng một terminal — ${moTaNhom()}`);
+    } finally {
+      await donDep(them === undefined ? dau : [...dau, them]);
+    }
+  });
+
+  test('terminal đang ở panel cũng thêm vào lưới được, không mở lại', async () => {
+    const trong = vscode.window.createTerminal({
+      name: 'da-trong-luoi',
+      location: vscode.TerminalLocation.Editor,
+    });
+    const panel = vscode.window.createTerminal({
+      name: 'tu-panel',
+      location: vscode.TerminalLocation.Panel,
+    });
+    try {
+      await cho(() => tabTerminal() === 1);
+      await xepLuoiTerminal([trong]);
+
+      const ok = await themOVaoLuoi(panel);
+
+      assert.equal(ok, true);
+      await cho(() => tabTerminal() === 2 && soNhom() === 2);
+      assert.equal(tabTerminal(), 2, `terminal từ panel phải thành tab trong lưới — ${moTaNhom()}`);
+      assert.ok(vscode.window.terminals.includes(panel), 'không được mở lại terminal');
+    } finally {
+      await donDep([trong, panel]);
+    }
   });
 });
