@@ -867,6 +867,19 @@ xảy ra. Terminal sinh sẵn trong vùng editor không dính. Bản sửa: `sho
 tới thì xoay tab trong từng nhóm, và nhận diện qua TAB đang hiện chứ không qua `activeTerminal`
 (thuộc tính này báo cái dưới panel khi panel và editor cùng có terminal).
 
+**Mức tin cậy của ca test tự động** (đo 20/10/2026, đừng coi nó là bảo hiểm tuyệt đối): ca
+`terminal ĐÃ BỊ DỜI chỗ (panel↔editor) vẫn hiện được` tái hiện lỗi **chỉ khi chạy trong cả bộ**
+— chạy riêng bằng `--grep` thì `show()` tình cờ làm được việc và ca đó xanh cả trên mã chưa sửa.
+Phép A/B trong cùng điều kiện (cùng bộ, cùng thứ tự): mã trước khi sửa **đỏ** với log
+`[hien] không đưa được terminal panel "doi-d" lên trước`, mã sau khi sửa **xanh**. Nghĩa là ca này
+bắt được lỗi khi `show()` thất bại — đúng cảnh người dùng gặp — nhưng không ép được `show()` thất
+bại theo ý muốn. Vì vậy checklist tay dưới đây vẫn là bằng chứng cuối cùng.
+
+**Nợ đã biết:** `nhayQuaTerminal` (Ctrl+Tab) vẫn lấy điểm xuất phát từ `window.activeTerminal`.
+Khi panel và editor cùng có terminal, thuộc tính đó báo cái dưới panel, nên vừa bấm một terminal
+trong cây rồi bấm Ctrl+Tab có thể nhảy từ nhầm chỗ (lệch một nấc). Chưa sửa vì API công khai không
+cho biết vùng nào đang giữ focus, mọi luật thay thế đều đánh đổi sai ở ca khác — cần đo thêm.
+
 - [ ] Xếp lưới một workspace ≥ 3 terminal → **Thôi xem song song** → bấm lần lượt TỪNG terminal
       trong cây: mỗi lần tab terminal tương ứng phải hiện lên và con trỏ vào đúng nó
 - [ ] Lặp lại với terminal đang nằm ở panel (bị đẩy xuống khi xếp lưới): bấm trong cây →
@@ -876,3 +889,5 @@ tới thì xoay tab trong từng nhóm, và nhận diện qua TAB đang hiện c
 - [ ] Kéo một terminal sang workspace khác rồi bấm vào item cũ (nếu cây chưa kịp làm mới) →
       báo "cây đang hiển thị thông tin cũ", không im lặng
 - [ ] Ctrl+Tab giữa các terminal sau khi thoát lưới: nhảy đúng vòng, không bỏ sót cái nào
+- [ ] Ctrl+Tab trong bố cục HỖN HỢP (một terminal ở panel + số còn lại ở editor): bấm một terminal
+      trong cây rồi Ctrl+Tab → nếu nhảy từ nhầm chỗ thì đó là nợ ở trên, ghi lại tên hai terminal
