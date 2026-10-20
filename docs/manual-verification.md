@@ -861,9 +861,11 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 
 ## Bấm terminal trong cây sau khi thoát lưới (20/10/2026)
 
-Nền: lỗi người dùng báo — về giao diện thường rồi thì có terminal bấm vào nhảy tới, có cái bấm
-không phản ứng gì. Test Extension Host cho thấy `show()` vẫn đổi đúng tab, nên nguyên nhân thật
-CHƯA xác định; các mục dưới vừa để nghiệm thu vừa để bắt đúng nhánh đang im lặng.
+Nguyên nhân đã tìm ra và tái hiện được trong Extension Host: terminal **sinh ở panel rồi bị kéo
+vào lưới** thì `terminal.show()` không kéo nổi tab của nó lên trước, nên bấm vào cây không có gì
+xảy ra. Terminal sinh sẵn trong vùng editor không dính. Bản sửa: `show()` xong thì kiểm lại, chưa
+tới thì xoay tab trong từng nhóm, và nhận diện qua TAB đang hiện chứ không qua `activeTerminal`
+(thuộc tính này báo cái dưới panel khi panel và editor cùng có terminal).
 
 - [ ] Xếp lưới một workspace ≥ 3 terminal → **Thôi xem song song** → bấm lần lượt TỪNG terminal
       trong cây: mỗi lần tab terminal tương ứng phải hiện lên và con trỏ vào đúng nó

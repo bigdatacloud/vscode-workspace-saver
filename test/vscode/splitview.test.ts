@@ -377,6 +377,46 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
     }
   });
 
+  test('terminal ĐÃ BỊ DỜI chỗ (panel↔editor) vẫn hiện được', async () => {
+    // Ca sát với máy người dùng nhất: sau khi xếp lưới, `creationOptions.location` không còn
+    // nói đúng terminal đang nằm đâu — cái sinh ở panel đã bị kéo vào editor, cái sinh ở
+    // editor đã bị đẩy xuống panel. Mọi suy luận theo location lúc tạo đều sai từ đây.
+    const a = vscode.window.createTerminal({ name: 'doi-a', location: vscode.TerminalLocation.Editor });
+    const b = vscode.window.createTerminal({ name: 'doi-b', location: vscode.TerminalLocation.Editor });
+    // d sinh ở PANEL rồi bị kéo vào lưới; c sinh ở EDITOR rồi bị đẩy xuống panel.
+    const d = vscode.window.createTerminal({ name: 'doi-d', location: vscode.TerminalLocation.Panel });
+    const c = vscode.window.createTerminal({ name: 'doi-c', location: vscode.TerminalLocation.Editor });
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 3);
+      await xepLuoiTerminal([a, b, d], undefined, (x) => log.push(x), [c]);
+      await gopVeMotNhom();
+      await cho(() => soNhom() === 1);
+
+      a.show(false);
+      await cho(() => vscode.window.activeTerminal === a);
+      const okC = await hienTerminal(c, (x) => log.push(x));
+      assert.equal(okC, true, `terminal bị đẩy xuống panel phải hiện được — log: ${log.join(' | ')}`);
+      assert.equal(vscode.window.activeTerminal, c, `active phải là doi-c — log: ${log.join(' | ')}`);
+
+      a.show(false);
+      await cho(() => vscode.window.activeTerminal === a);
+      const okD = await hienTerminal(d, (x) => log.push(x));
+
+      // KHÔNG đòi `activeTerminal === d`: khi panel còn giữ doi-c thì VS Code vẫn báo
+      // `activeTerminal` là cái dưới panel, kể cả lúc tab editor đang hiện doi-d (đo được
+      // trong chính ca này). Thứ người dùng nhìn thấy — và thứ phải đúng — là TAB đang hiện.
+      assert.equal(okD, true, `terminal sinh ở panel đã vào lưới phải hiện được — log: ${log.join(' | ')}`);
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+      assert.ok(
+        tab?.input instanceof vscode.TabInputTerminal && tab.label === 'doi-d',
+        `tab đang hiện phải là doi-d — thực tế "${tab?.label}" — log: ${log.join(' | ')}`,
+      );
+    } finally {
+      await donDep([a, b, c, d]);
+    }
+  });
+
   test('terminal ở panel cũng hiện được', async () => {
     const panel = vscode.window.createTerminal({
       name: 'hien-panel',
