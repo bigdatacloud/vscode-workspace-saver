@@ -885,9 +885,45 @@ cho biết vùng nào đang giữ focus, mọi luật thay thế đều đánh �
 - [ ] Lặp lại với terminal đang nằm ở panel (bị đẩy xuống khi xếp lưới): bấm trong cây →
       panel mở ra và đúng terminal đó được chọn
 - [ ] Gặp terminal không phản ứng: phải có **thông báo** (không im lặng nữa) — chụp lại nội dung
-- [ ] Mở Output → kênh **AI Workspace — lưới**, tìm dòng bắt đầu bằng `[hien]`, ghi lại nguyên văn
+- [ ] Mở Output → kênh **AI Workspace — Xem song song**, tìm dòng bắt đầu bằng `[hien]`, ghi nguyên văn
 - [ ] Kéo một terminal sang workspace khác rồi bấm vào item cũ (nếu cây chưa kịp làm mới) →
       báo "cây đang hiển thị thông tin cũ", không im lặng
 - [ ] Ctrl+Tab giữa các terminal sau khi thoát lưới: nhảy đúng vòng, không bỏ sót cái nào
 - [ ] Ctrl+Tab trong bố cục HỖN HỢP (một terminal ở panel + số còn lại ở editor): bấm một terminal
       trong cây rồi Ctrl+Tab → nếu nhảy từ nhầm chỗ thì đó là nợ ở trên, ghi lại tên hai terminal
+
+## Lưới thiếu ô: chọn N cột mà chỉ vài terminal vào được (20/10/2026)
+
+Người dùng báo: chọn 4 cột cho workspace 4 terminal, chỉ 2 cái vào ô riêng, **thông báo không
+nói lý do**. Đã sửa phần "không nói lý do"; **nguyên nhân thiếu ô thì CHƯA tìm ra** — ghi lại
+đây đúng những gì đo được để lần sau khỏi dò lại từ đầu.
+
+**Đã đo được trong Extension Host** (ca `năm terminal`, chạy cả bộ):
+
+```
+[luoi] dựng 5 ô cho 5 terminal
+[luoi] dừng ở ô 4: VS Code không nhận lệnh dời tab sang ô kế
+[luoi] bố cục lúc dừng: #1:nam-1,nam-2 | #2:nam-4 | #3:nam-0,nam-3 | #4:Untitled-1
+```
+
+Lưới dựng đủ ô. Thứ bị ném sang ô 4 là **tab file `Untitled-1`**, không phải terminal. Vòng rải
+hiện nay xoay tab cho tới khi *tab đang hiện* là terminal rồi dời "cái đang hiện" — một phỏng
+đoán, và khi trật thì nó quăng nhầm tab của người dùng.
+
+**Ba hướng vá đã THỬ VÀ TRƯỢT** (đừng thử lại y nguyên):
+
+1. Thay ba nhịp nghỉ cố định trong vòng rải bằng chờ-có-điều-kiện → vẫn đỏ 2/4 lượt.
+2. Rải theo đích danh từng terminal (`hienTerminal` rồi dời) → hỏng nặng hơn, 5-7 ca đỏ:
+   `hienTerminal` chỉ hứa terminal thành *active*, KHÔNG hứa nhóm chứa tab của nó thành nhóm
+   đang focus, mà lệnh dời tab lại làm việc trên nhóm đang focus.
+3. Thêm bước đưa focus về đúng nhóm giữ tab của nó, nhận diện tab theo tên → vẫn đỏ, và lộ ra
+   điều quan trọng nhất bên dưới.
+
+**Phát hiện làm sụp giả định nền:** `tab.label` của tab terminal **có lúc là chuỗi rỗng** — đo
+được `#1:,,,,` cho năm tab terminal. Nghĩa là mọi cách nhận diện tab theo tên đều không chắc,
+**kể cả bản sửa `hienTerminal` ngày 20/10** (nó so `tab.label === t.name`). Khi nhãn rỗng, nhánh
+dự phòng của `hienTerminal` sẽ không bao giờ nhận ra terminal và báo "không hiện được" dù thực
+tế đã hiện. Chưa biết khi nào VS Code để nhãn rỗng — đó là việc phải đo tiếp.
+
+**Cần người dùng cung cấp khi gặp lại:** nội dung thông báo (nay có kèm lý do) và toàn bộ dòng
+`[luoi]` trong Output → kênh **AI Workspace — Xem song song**, nhất là dòng `bố cục lúc dừng`.

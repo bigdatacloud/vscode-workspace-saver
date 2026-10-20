@@ -21,7 +21,20 @@ export interface KetQuaXepLuoi {
   qua: number;
   /** Số terminal KHÔNG thuộc lưới đã được đẩy xuống panel để không chiếm ô. */
   daAn: number;
+  /**
+   * Vì sao lưới dừng khi chưa đủ ô — `undefined` nghĩa là rải trọn vẹn.
+   *
+   * Phải đi theo kết quả về tới THÔNG BÁO chứ không chỉ nằm trong Output: bảo người dùng
+   * "xem kênh Output" là cách chắc chắn nhất khiến không ai đọc.
+   */
+  lyDo?: string;
 }
+
+/** Bố cục hiện tại dạng `#col:tab1,tab2 | ...` — để log nói được chuyện gì đang xảy ra. */
+const moTaBoCuc = (): string =>
+  vscode.window.tabGroups.all
+    .map((g) => `#${g.viewColumn}:${g.tabs.map((x) => x.label).join(',')}`)
+    .join(' | ');
 
 const chay = async (lenh: string, ...args: unknown[]): Promise<void> => {
   await vscode.commands.executeCommand(lenh, ...args);
@@ -190,9 +203,7 @@ export async function hienTerminal(
       if (dungNo()) return true;
     }
   }
-  const moTa = vscode.window.tabGroups.all
-    .map((g) => `#${g.viewColumn}:${g.tabs.map((x) => x.label).join(',')}`)
-    .join(' | ');
+  const moTa = moTaBoCuc();
   ghiLog(
     `[hien] không tìm thấy tab của "${t.name}" — tab đang hiện: ` +
       `"${vscode.window.tabGroups.activeTabGroup.activeTab?.label ?? 'không có'}", ` +
@@ -373,17 +384,27 @@ export async function xepLuoiTerminal(
   await cho(() => soNhom() >= soO);
   ghiLog(`[luoi] dựng ${soNhom()} ô cho ${ds.length} terminal`);
 
+  // Mỗi lối thoát dưới đây PHẢI đặt `lyDo`. Trước đây hai lối lặng thinh (`nhom1` rỗng và
+  // xoay tab thất bại) nên có lần lưới thiếu ô mà cả Output lẫn thông báo đều không nói được
+  // vì sao — người dùng báo đúng chuyện đó ngày 20/10/2026.
+  let lyDo: string | undefined;
   for (let k = 1; k < soO; k++) {
     await focusNhom(0);
     await nghi(NHIP_NHO_MS);
     const nhom1 = vscode.window.tabGroups.all[0];
-    if (nhom1 === undefined) break;
-    // Dời nốt tab cuối của nhóm 1 là làm nó rỗng → VS Code đóng nhóm → lưới mất một ô.
-    if (nhom1.tabs.length <= 1 || demTermTrongNhom(nhom1) <= 1) {
-      ghiLog(`[luoi] hết terminal để rải ở ô ${k + 1} (nhóm 1 còn ${nhom1.tabs.length} tab)`);
+    if (nhom1 === undefined) {
+      lyDo = `dừng ở ô ${k + 1}: không đọc được nhóm editor nào`;
       break;
     }
-    if (!(await xoayToiTabTerminal(nhom1))) break;
+    // Dời nốt tab cuối của nhóm 1 là làm nó rỗng → VS Code đóng nhóm → lưới mất một ô.
+    if (nhom1.tabs.length <= 1 || demTermTrongNhom(nhom1) <= 1) {
+      lyDo = `dừng ở ô ${k + 1}: hết terminal để rải (nhóm 1 còn ${nhom1.tabs.length} tab)`;
+      break;
+    }
+    if (!(await xoayToiTabTerminal(nhom1))) {
+      lyDo = `dừng ở ô ${k + 1}: không xoay được tới tab terminal nào trong nhóm 1`;
+      break;
+    }
     const truoc = soNhomCoTerminal();
     for (let b = 0; b < k; b++) {
       await chay('workbench.action.moveEditorToNextGroup');
@@ -391,13 +412,21 @@ export async function xepLuoiTerminal(
     }
     await cho(() => soNhomCoTerminal() > truoc);
     if (soNhomCoTerminal() === truoc) {
-      ghiLog(`[luoi] ô ${k + 1}: dời tab không ăn thua, dừng lại`);
+      lyDo = `dừng ở ô ${k + 1}: VS Code không nhận lệnh dời tab sang ô kế`;
       break;
     }
   }
+  if (lyDo !== undefined) ghiLog(`[luoi] ${lyDo}`);
 
   const coTerm = soNhomCoTerminal();
   ghiLog(`[luoi] kết quả: ${coTerm} ô có terminal / ${soNhom()} ô`);
   const daXep = Math.min(coTerm, ds.length);
-  return { daXep, qua: ds.length - daXep, daAn };
+  // Rải trọn lượt mà vẫn thiếu: ô đã dựng rồi lại mất terminal. Không `break` nào xảy ra nên
+  // không đặt lý do ở đây là lại im lặng như cũ.
+  if (lyDo === undefined && daXep < ds.length) {
+    lyDo = `rải hết lượt nhưng chỉ ${coTerm} ô giữ được terminal / ${soNhom()} ô`;
+    ghiLog(`[luoi] ${lyDo}`);
+  }
+  if (daXep < ds.length) ghiLog(`[luoi] bố cục lúc dừng: ${moTaBoCuc()}`);
+  return { daXep, qua: ds.length - daXep, daAn, lyDo };
 }

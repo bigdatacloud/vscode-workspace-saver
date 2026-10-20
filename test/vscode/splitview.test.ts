@@ -108,15 +108,19 @@ suite('xem song song — xếp terminal thành lưới', () => {
     const ds = [0, 1, 2, 3, 4].map((i) =>
       vscode.window.createTerminal({ name: `nam-${i}`, location: vscode.TerminalLocation.Editor }),
     );
+    const log: string[] = [];
     try {
       await cho(() => tabTerminal() === 5);
 
-      const kq = await xepLuoiTerminal(ds);
+      const kq = await xepLuoiTerminal(ds, undefined, (x) => log.push(x));
 
       await cho(() => soNhom() === 5);
-      assert.equal(kq.daXep, 5, `phải xếp đủ 5 — thực tế: ${moTaNhom()}`);
-      assert.equal(soNhom(), 5, `phải có 5 nhóm — thực tế: ${moTaNhom()}`);
-      assert.ok(moiNhomMotTerminal(), `mỗi nhóm đúng một terminal — thực tế: ${moTaNhom()}`);
+      assert.equal(kq.daXep, 5, `phải xếp đủ 5 — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`);
+      assert.equal(soNhom(), 5, `phải có 5 nhóm — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`);
+      assert.ok(
+        moiNhomMotTerminal(),
+        `mỗi nhóm đúng một terminal — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
     } finally {
       await donDep(ds);
     }
@@ -137,7 +141,97 @@ suite('xem song song — xếp terminal thành lưới', () => {
       assert.equal(soNhom(), 9, `phải có 9 ô — thực tế: ${moTaNhom()}`);
       assert.equal(kq.daXep, 4);
       assert.equal(soNhomCoTerminal(), 4, `bốn ô có terminal — thực tế: ${moTaNhom()}`);
+      // Dừng rải vì hết terminal là một lý do CÓ THẬT và phải nói ra được: thông báo cho
+      // người dùng chỉ trỏ sang Output thì họ vẫn không biết vì sao thiếu ô.
+      assert.ok(
+        kq.lyDo !== undefined && kq.lyDo.includes('hết terminal để rải'),
+        `phải trả về lý do dừng rải — thực tế: ${String(kq.lyDo)}`,
+      );
     } finally {
+      await donDep(ds);
+    }
+  });
+
+  test('bố cục 4 cột 1 dòng với 4 terminal → bốn ô, mỗi ô một terminal', async () => {
+    // Ca người dùng báo 20/10/2026: chọn 4 cột cho workspace 4 terminal, chỉ 2 cái vào được
+    // ô riêng. Log được gom lại để khi đỏ thì đọc ra lý do ngay trong thông báo lỗi.
+    const ds = [0, 1, 2, 3].map((i) =>
+      vscode.window.createTerminal({ name: `bon-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 4);
+
+      const kq = await xepLuoiTerminal(ds, { cot: 4, dong: 1 }, (x) => log.push(x));
+
+      await cho(() => soNhom() === 4);
+      assert.equal(soNhom(), 4, `phải có 4 ô — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`);
+      assert.equal(
+        soNhomCoTerminal(),
+        4,
+        `bốn ô đều phải có terminal — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+      assert.equal(kq.daXep, 4, `phải xếp đủ 4 — log: ${log.join(' | ')}`);
+      assert.equal(kq.qua, 0, `không được bỏ sót cái nào — log: ${log.join(' | ')}`);
+    } finally {
+      await donDep(ds);
+    }
+  });
+
+  test('4 cột, một terminal ở panel + một terminal workspace khác phải ẩn → vẫn đủ bốn ô', async () => {
+    // Trạng thái thật trên máy người dùng: không phải cả bốn đều sinh sẵn trong vùng editor,
+    // và còn terminal của workspace khác chen trong vùng editor phải đẩy xuống panel trước.
+    const a = vscode.window.createTerminal({ name: 'tron-a', location: vscode.TerminalLocation.Editor });
+    const b = vscode.window.createTerminal({ name: 'tron-b', location: vscode.TerminalLocation.Editor });
+    const c = vscode.window.createTerminal({ name: 'tron-c', location: vscode.TerminalLocation.Editor });
+    const d = vscode.window.createTerminal({ name: 'tron-d', location: vscode.TerminalLocation.Panel });
+    const la = vscode.window.createTerminal({ name: 'tron-la', location: vscode.TerminalLocation.Editor });
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 4);
+
+      const kq = await xepLuoiTerminal([a, b, c, d], { cot: 4, dong: 1 }, (x) => log.push(x), [la]);
+
+      await cho(() => soNhomCoTerminal() === 4);
+      assert.equal(
+        soNhomCoTerminal(),
+        4,
+        `bốn ô đều phải có terminal — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+      assert.equal(kq.daXep, 4, `phải xếp đủ 4 — log: ${log.join(' | ')}`);
+    } finally {
+      await donDep([a, b, c, d, la]);
+    }
+  });
+
+  test('có tab FILE đang hiện trong nhóm: vẫn rải đủ terminal, không ném tab file đi', async () => {
+    // Tái hiện ca đỏ quan sát được 20/10/2026: nhóm 1 có một tab KHÔNG phải terminal và nó
+    // đang là tab hiện. Vòng xoay nghỉ một nhịp cố định rồi đọc tab đang hiện → đọc phải giá
+    // trị cũ → lệnh dời ném chính tab file sang ô kế, lưới đứng lại ở một ô.
+    const ds = [0, 1, 2].map((i) =>
+      vscode.window.createTerminal({ name: `file-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 3);
+      const doc = await vscode.workspace.openTextDocument({ content: 'xin chào', language: 'plaintext' });
+      await vscode.window.showTextDocument(doc, { preview: false });
+      await cho(
+        () =>
+          !(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal),
+      );
+
+      const kq = await xepLuoiTerminal(ds, { cot: 3, dong: 1 }, (x) => log.push(x));
+
+      await cho(() => soNhomCoTerminal() === 3);
+      assert.equal(
+        soNhomCoTerminal(),
+        3,
+        `ba ô đều phải có terminal — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+      assert.equal(kq.daXep, 3, `phải xếp đủ 3 — log: ${log.join(' | ')}`);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
       await donDep(ds);
     }
   });
@@ -429,10 +523,17 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
     try {
       await cho(() => vscode.window.activeTerminal === khac);
 
-      const ok = await hienTerminal(panel);
+      const log: string[] = [];
+      const ok = await hienTerminal(panel, (x) => log.push(x));
 
-      assert.equal(ok, true, 'terminal panel phải hiện được');
-      assert.equal(vscode.window.activeTerminal, panel, 'panel phải thành terminal active');
+      assert.equal(ok, true, `terminal panel phải hiện được — log: ${log.join(' | ')}`);
+      assert.equal(
+        vscode.window.activeTerminal,
+        panel,
+        `panel phải thành terminal active — thực tế "${vscode.window.activeTerminal?.name}" ` +
+          `— tab đang hiện "${vscode.window.tabGroups.activeTabGroup.activeTab?.label}" ` +
+          `— log: ${log.join(' | ')}`,
+      );
     } finally {
       await donDep([panel, khac]);
     }

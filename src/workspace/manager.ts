@@ -2307,8 +2307,13 @@ export class WorkspaceManager implements vscode.Disposable {
           `${kq.qua} cái nằm chồng tab vì lưới chỉ có ${soO} ô — chọn bố cục rộng hơn nếu muốn mỗi cái một ô.`,
         );
       } else {
+        // Lý do đi kèm ngay trong thông báo. Chỉ trỏ sang Output là bắt người dùng đi tìm
+        // một thứ họ không biết có tồn tại hay không — và khi lý do bị nuốt thì tìm cũng
+        // chẳng thấy gì.
         phan.push(
-          `${kq.qua} cái VS Code không tách ra được ô riêng (xem kênh "${TEN_KENH_LUOI}" trong Output).`,
+          `${kq.qua} cái VS Code không tách ra được ô riêng` +
+            `${kq.lyDo === undefined ? '' : ` — ${kq.lyDo}`}` +
+            ` (chi tiết ở kênh "${TEN_KENH_LUOI}" trong Output).`,
         );
       }
     }
