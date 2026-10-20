@@ -858,3 +858,19 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Sau khi dùng hàng rào, `claude agents --json` KHÔNG còn hai pid cùng một `sessionId`
 - [ ] Kích hoạt một workspace bình thường (hội thoại chưa chạy ở đâu) → không hỏi gì thêm
 - [ ] Registry đọc lỗi (tắt mạng / `claude` không chạy được) → không chặn oan, mở như cũ
+
+## Bấm terminal trong cây sau khi thoát lưới (20/10/2026)
+
+Nền: lỗi người dùng báo — về giao diện thường rồi thì có terminal bấm vào nhảy tới, có cái bấm
+không phản ứng gì. Test Extension Host cho thấy `show()` vẫn đổi đúng tab, nên nguyên nhân thật
+CHƯA xác định; các mục dưới vừa để nghiệm thu vừa để bắt đúng nhánh đang im lặng.
+
+- [ ] Xếp lưới một workspace ≥ 3 terminal → **Thôi xem song song** → bấm lần lượt TỪNG terminal
+      trong cây: mỗi lần tab terminal tương ứng phải hiện lên và con trỏ vào đúng nó
+- [ ] Lặp lại với terminal đang nằm ở panel (bị đẩy xuống khi xếp lưới): bấm trong cây →
+      panel mở ra và đúng terminal đó được chọn
+- [ ] Gặp terminal không phản ứng: phải có **thông báo** (không im lặng nữa) — chụp lại nội dung
+- [ ] Mở Output → kênh **AI Workspace — lưới**, tìm dòng bắt đầu bằng `[hien]`, ghi lại nguyên văn
+- [ ] Kéo một terminal sang workspace khác rồi bấm vào item cũ (nếu cây chưa kịp làm mới) →
+      báo "cây đang hiển thị thông tin cũ", không im lặng
+- [ ] Ctrl+Tab giữa các terminal sau khi thoát lưới: nhảy đúng vòng, không bỏ sót cái nào

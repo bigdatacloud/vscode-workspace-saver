@@ -30,8 +30,8 @@ const chay = async (lenh: string, ...args: unknown[]): Promise<void> => {
 const HAN_CHO_MS = 3000;
 
 /** Chờ một điều kiện về bố cục editor — các lệnh workbench cập nhật UI không đồng bộ. */
-async function cho(dieuKien: () => boolean): Promise<void> {
-  const het = Date.now() + HAN_CHO_MS;
+async function cho(dieuKien: () => boolean, hanMs = HAN_CHO_MS): Promise<void> {
+  const het = Date.now() + hanMs;
   while (Date.now() < het) {
     if (dieuKien()) return;
     await new Promise((r) => setTimeout(r, 50));
@@ -119,6 +119,59 @@ async function xoayToiTabTerminal(g: vscode.TabGroup): Promise<boolean> {
     await nghi(NHIP_NHO_MS);
   }
   return vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal;
+}
+
+/** Hạn chờ sau `show()`: đây là đường đi của một CÚ BẤM nên không được đứng hình vài giây. */
+const HAN_SHOW_MS = 600;
+
+/**
+ * Đưa một terminal lên trước mặt người dùng — bấm vào nó trong cây thì chính nó phải active.
+ *
+ * `terminal.show()` đủ cho terminal ở panel, nhưng với terminal sống dưới dạng tab editor thì
+ * không chắc kéo được tab của nó lên active — đúng cái bẫy đã làm lưới bỏ sót terminal (xem
+ * ghi chú 3 ở `xepLuoiTerminal`). Người dùng thấy nó thế này: thoát lưới xong, mọi terminal
+ * chồng thành tab trong MỘT nhóm, bấm cái đang hiện thì có phản ứng, bấm cái khác thì im lặng.
+ *
+ * Nên sau `show()` phải KIỂM lại, chưa tới thì xoay tab trong từng nhóm cho tới khi gặp. Vòng
+ * trong chạy đúng bằng số tab của nhóm, nên nhóm nào không chứa nó thì quay về tab cũ.
+ *
+ * @returns `true` khi terminal đã thật sự thành `window.activeTerminal`.
+ */
+export async function hienTerminal(
+  t: vscode.Terminal,
+  ghiLog: (d: string) => void = () => undefined,
+): Promise<boolean> {
+  if (t.exitStatus !== undefined) return false;
+  const dungNo = (): boolean => vscode.window.activeTerminal === t;
+  try {
+    t.show(false);
+  } catch {
+    // `window.terminals` còn liệt kê terminal vừa đóng thêm một nhịp; show() lên nó thì ném.
+    ghiLog(`[hien] "${t.name}" đã đóng, không hiện được`);
+    return false;
+  }
+  await cho(dungNo, HAN_SHOW_MS);
+  if (dungNo()) return true;
+  if (dangOPanel(t)) {
+    ghiLog(`[hien] không đưa được terminal panel "${t.name}" lên trước`);
+    return false;
+  }
+
+  ghiLog(`[hien] show() chưa kéo "${t.name}" lên active — xoay tab trong vùng editor`);
+  const nhom = vscode.window.tabGroups.all.length;
+  for (let g = 0; g < nhom; g++) {
+    await focusNhom(g);
+    await nghi(NHIP_NHO_MS);
+    if (dungNo()) return true;
+    const soTab = vscode.window.tabGroups.activeTabGroup.tabs.length;
+    for (let i = 0; i < soTab; i++) {
+      await chay('workbench.action.nextEditorInGroup');
+      await nghi(NHIP_NHO_MS);
+      if (dungNo()) return true;
+    }
+  }
+  ghiLog(`[hien] không tìm thấy tab của "${t.name}"`);
+  return false;
 }
 
 /**

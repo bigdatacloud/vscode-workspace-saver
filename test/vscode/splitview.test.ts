@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
-import { gopVeMotNhom, themOVaoLuoi, xepLuoiTerminal } from '../../src/ui/splitview';
+import { gopVeMotNhom, hienTerminal, themOVaoLuoi, xepLuoiTerminal } from '../../src/ui/splitview';
 
 /**
  * Chạy thật trong Extension Host: ba lệnh workbench mà `splitview.ts` dựa vào
@@ -333,5 +333,81 @@ suite('xem song song — thêm ô vào lưới đang có', () => {
     } finally {
       await donDep([trong, panel]);
     }
+  });
+});
+
+suite('bấm vào terminal trong cây — đúng cái đó phải lên active', () => {
+  setup(async () => {
+    await donBanLamViec();
+  });
+
+  test('thoát lưới xong, terminal KHÔNG phải tab đang hiện vẫn lên active', async () => {
+    // Lỗi người dùng gặp thật: "thôi xem song song" chỉ gộp nhóm, mọi terminal chồng thành
+    // tab trong MỘT nhóm. Bấm cái đang hiện thì thấy có phản ứng, bấm cái khác thì im lặng,
+    // vì `terminal.show()` không chắc kéo được tab của nó lên active.
+    const ds = [0, 1, 2].map((i) =>
+      vscode.window.createTerminal({ name: `cay-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 3);
+      await xepLuoiTerminal(ds);
+      await cho(() => soNhom() === 3);
+
+      await gopVeMotNhom();
+      await cho(() => soNhom() === 1);
+      // Đặt con trỏ ở một terminal KHÁC để cú bấm sắp tới phải đổi tab thật sự.
+      ds[2]?.show(false);
+      await cho(() => vscode.window.activeTerminal === ds[2]);
+
+      const ok = await hienTerminal(ds[0] as vscode.Terminal, (d) => log.push(d));
+
+      assert.equal(ok, true, `phải hiện được cay-0 — log: ${log.join(' | ')} — ${moTaNhom()}`);
+      assert.equal(
+        vscode.window.activeTerminal,
+        ds[0],
+        `terminal active phải là cay-0 — log: ${log.join(' | ')} — ${moTaNhom()}`,
+      );
+      assert.ok(
+        vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal,
+        `tab đang hiện phải là tab terminal — ${moTaNhom()}`,
+      );
+    } finally {
+      await donDep(ds);
+    }
+  });
+
+  test('terminal ở panel cũng hiện được', async () => {
+    const panel = vscode.window.createTerminal({
+      name: 'hien-panel',
+      location: vscode.TerminalLocation.Panel,
+    });
+    const khac = vscode.window.createTerminal({
+      name: 'hien-editor',
+      location: vscode.TerminalLocation.Editor,
+    });
+    try {
+      await cho(() => vscode.window.activeTerminal === khac);
+
+      const ok = await hienTerminal(panel);
+
+      assert.equal(ok, true, 'terminal panel phải hiện được');
+      assert.equal(vscode.window.activeTerminal, panel, 'panel phải thành terminal active');
+    } finally {
+      await donDep([panel, khac]);
+    }
+  });
+
+  test('terminal đã đóng: trả false chứ không ném', async () => {
+    // `window.terminals` còn liệt kê terminal vừa đóng một nhịp, nên ca này canh đúng chỗ
+    // `show()` ném "Terminal has already been disposed" và làm hỏng cú bấm.
+    const chet = vscode.window.createTerminal({ name: 'da-dong', location: vscode.TerminalLocation.Editor });
+    await cho(() => tabTerminal() === 1);
+    chet.dispose();
+    await cho(() => tabTerminal() === 0);
+
+    const ok = await hienTerminal(chet);
+
+    assert.equal(ok, false, 'terminal đã đóng thì không hiện được, và không được ném');
   });
 });

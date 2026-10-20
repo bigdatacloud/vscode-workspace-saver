@@ -87,10 +87,17 @@ import {
 } from '../model/store';
 import { lenhDoiTenPhienClaude } from '../agent/claude';
 import { nhayTerminal } from './nhay';
+import { phanXuBamTerminal } from './bamterminal';
 import { phanXuTrungPhien, type PhanXuPhien } from './trungphien';
 import { upsertTerminal } from '../model/store';
 import { docCotDong, TOI_DA_CANH, TOI_DA_O } from '../ui/luoi';
-import { gopVeMotNhom, themOVaoLuoi, xepLuoiTerminal, type YeuCauLuoi } from '../ui/splitview';
+import {
+  gopVeMotNhom,
+  hienTerminal,
+  themOVaoLuoi,
+  xepLuoiTerminal,
+  type YeuCauLuoi,
+} from '../ui/splitview';
 import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../terminal/manager';
 import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
@@ -793,7 +800,7 @@ export class WorkspaceManager implements vscode.Disposable {
       const canMo = pham.filter((entry) => !this.terminals.has(entry.id));
       if (canMo.length > 0) await this.moThemEntry(ws, canMo);
       const daMo = pham.find((entry) => this.terminals.has(entry.id));
-      if (daMo) this.terminals.focus(daMo.id);
+      if (daMo) await this.hienTheoId(daMo.id);
       return;
     }
 
@@ -2251,8 +2258,7 @@ export class WorkspaceManager implements vscode.Disposable {
       );
       return;
     }
-    this.terminals.focus(dich);
-    return Promise.resolve();
+    await this.hienTheoId(dich);
   }
 
   // --------------------------------------------------- xem song song
@@ -4532,9 +4538,24 @@ export class WorkspaceManager implements vscode.Disposable {
    * là đủ chủ ý rồi.
    */
   async focusTerminal(workspaceId: string, terminalId: string): Promise<void> {
-    if (this.terminals.focus(terminalId)) return;
+    const dangMo = this.terminals.has(terminalId);
+    const hienDuoc = dangMo ? await this.hienTheoId(terminalId) : false;
     const entry = this.findEntry(workspaceId, terminalId);
-    if (entry === undefined) return;
+    const phan = phanXuBamTerminal({ dangMo, hienDuoc, coEntry: entry !== undefined });
+    if (phan.loai === 'daHien') return;
+    if (phan.loai === 'khongHienDuoc') {
+      void vscode.window.showWarningMessage(
+        `Terminal "${entry?.name ?? terminalId}" đang chạy nhưng không đưa ra trước được ` +
+          `(xem kênh "${TEN_KENH_LUOI}" trong Output).`,
+      );
+      return;
+    }
+    if (phan.loai === 'entryLacHau' || entry === undefined) {
+      void vscode.window.showWarningMessage(
+        'Terminal này không còn trong workspace đó — cây đang hiển thị thông tin cũ. Làm mới cây rồi thử lại.',
+      );
+      return;
+    }
     const canHoi = vscode.workspace.getConfiguration('aiWorkspace').get<boolean>('confirmActivateOnClick', true);
     if (canHoi) {
       const tra = await vscode.window.showWarningMessage(
@@ -4545,6 +4566,19 @@ export class WorkspaceManager implements vscode.Disposable {
       if (tra !== 'Kích hoạt') return;
     }
     await this.activate(workspaceId, terminalId);
+  }
+
+  /**
+   * Đưa terminal đang mở của entry này lên trước mặt người dùng.
+   *
+   * Mọi chỗ "nhảy tới terminal" đi qua đây thay vì gọi thẳng `terminal.show()`: show() không
+   * chắc đổi được tab trong vùng editor, nên trước đây bấm vào cây hay bấm Ctrl+Tab tới một
+   * terminal không phải tab đang hiện thì không có gì xảy ra.
+   */
+  private async hienTheoId(terminalId: string): Promise<boolean> {
+    const t = this.terminals.get(terminalId);
+    if (t === undefined) return false;
+    return hienTerminal(t, (d) => this.kenhLuoi().appendLine(d));
   }
 
   private findEntry(workspaceId: string, terminalId: string): TerminalEntry | undefined {
