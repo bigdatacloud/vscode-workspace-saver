@@ -372,6 +372,75 @@ suite('xem song song — terminal ngoài lưới', () => {
       await donDep([trong, duoiPanel]);
     }
   });
+
+  /**
+   * Ca người dùng gặp 22/10/2026: tab "pwsh" họ tự mở bằng Ctrl+` nằm lẫn trong lưới của
+   * workspace "Working" và chiếm mất một ô. Bên gọi không thể đưa nó vào `canAn` vì extension
+   * không hề biết nó tồn tại — nên chính `xepLuoiTerminal` phải tự thấy.
+   */
+  test('terminal người dùng tự mở (không workspace nào quản) cũng phải rời vùng editor', async () => {
+    const trong = [0, 1].map((i) =>
+      vscode.window.createTerminal({ name: `trong-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const la = vscode.window.createTerminal({
+      name: 'la-editor',
+      location: vscode.TerminalLocation.Editor,
+    });
+    try {
+      await cho(() => tabTerminal() === 3);
+      assert.equal(tabTerminal(), 3, `tiền đề: cả ba terminal phải ở vùng editor — ${moTaNhom()}`);
+
+      const kq = await xepLuoiTerminal(trong, undefined, undefined, []);
+
+      await cho(() => tabTerminal() === trong.length);
+      assert.equal(
+        tabTerminal(),
+        trong.length,
+        `terminal lạ phải xuống panel, không chiếm ô — ${moTaNhom()}`,
+      );
+      assert.equal(kq.daAn, 1, 'phải báo đã ẩn đúng một terminal lạ');
+      assert.ok(vscode.window.terminals.includes(la), 'ẩn chứ không được giết');
+    } finally {
+      await donDep([...trong, la]);
+    }
+  });
+
+  /**
+   * Cùng ca trên nhưng terminal lạ KHÔNG khai `location` — đúng dạng Ctrl+` sinh ra. Máy
+   * người dùng đặt `terminal.integrated.defaultLocation: "editor"`, nên nó nằm ở vùng editor
+   * dù `creationOptions.location` rỗng.
+   */
+  test('terminal lạ không khai location, mặc định là "editor": vẫn phải rời vùng editor', async () => {
+    const cfg = vscode.workspace.getConfiguration('terminal.integrated');
+    const cu = cfg.inspect<string>('defaultLocation')?.globalValue;
+    await cfg.update('defaultLocation', 'editor', vscode.ConfigurationTarget.Global);
+    await doi(300);
+    const trong = [0, 1].map((i) =>
+      vscode.window.createTerminal({ name: `trong-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const la = vscode.window.createTerminal({ name: 'la-mac-dinh' });
+    try {
+      await cho(() => tabTerminal() === 3);
+      assert.equal(
+        tabTerminal(),
+        3,
+        `tiền đề: terminal không khai location phải nằm ở vùng editor — ${moTaNhom()}`,
+      );
+
+      const kq = await xepLuoiTerminal(trong, undefined, undefined, []);
+
+      await cho(() => tabTerminal() === trong.length);
+      assert.equal(
+        tabTerminal(),
+        trong.length,
+        `terminal lạ phải xuống panel, không chiếm ô — ${moTaNhom()}`,
+      );
+      assert.equal(kq.daAn, 1, 'phải báo đã ẩn đúng một terminal lạ');
+    } finally {
+      await donDep([...trong, la]);
+      await cfg.update('defaultLocation', cu, vscode.ConfigurationTarget.Global);
+    }
+  });
 });
 
 suite('xem song song — thêm ô vào lưới đang có', () => {

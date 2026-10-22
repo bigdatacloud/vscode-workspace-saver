@@ -64,16 +64,30 @@ const soNhomCoTerminal = (): number =>
     g.tabs.some((t) => t.input instanceof vscode.TabInputTerminal),
   ).length;
 
+/** Terminal không khai `location` thì VS Code mở nó ở đâu — theo setting của người dùng. */
+function macDinhMoOEditor(): boolean {
+  return (
+    vscode.workspace
+      .getConfiguration('terminal.integrated')
+      .get<string>('defaultLocation', 'view') === 'editor'
+  );
+}
+
 /**
  * Terminal này đang nằm ở panel dưới (chứ không phải vùng editor)?
  *
  * Đọc `creationOptions.location` thay vì dò tab đang active: dò tab chỉ đúng khi terminal
- * đang được focus, mà giữa chừng vòng lặp thì không có gì bảo đảm điều đó. Terminal do người
- * dùng tự mở rồi được nhận nuôi thường không khai `location` — mặc định của VS Code là panel.
+ * đang được focus, mà giữa chừng vòng lặp thì không có gì bảo đảm điều đó.
+ *
+ * Terminal người dùng tự mở (Ctrl+`) KHÔNG khai `location`. Bản trước coi đó là panel —
+ * sai, vì nơi nó rơi vào do setting `terminal.integrated.defaultLocation` quyết định. Máy
+ * nào đặt setting đó là `editor` thì mọi terminal tự mở đều nằm trong vùng editor mà hàm này
+ * vẫn báo "đang ở panel", nên lệnh ẩn bỏ qua nó và nó chiếm mất một ô của lưới — đúng ca
+ * người dùng gặp ngày 22/10/2026 (tab "pwsh" lọt vào lưới của workspace "Working").
  */
 function dangOPanel(t: vscode.Terminal): boolean {
   const loc = (t.creationOptions as { location?: unknown }).location;
-  if (loc === undefined) return true;
+  if (loc === undefined) return !macDinhMoOEditor();
   if (loc === vscode.TerminalLocation.Panel) return true;
   if (loc === vscode.TerminalLocation.Editor) return false;
   // Dạng object: `{ viewColumn }` là editor, `{ parentTerminal }` là split trong panel.
@@ -291,8 +305,13 @@ async function anTerminalNgoaiLuoi(
 ): Promise<number> {
   const giu = new Set(trongLuoi);
   const song = new Set(vscode.window.terminals);
+  // Quét cả `window.terminals` chứ không chỉ danh sách bên gọi đưa: terminal người dùng tự
+  // mở không thuộc workspace nào nên bên gọi không thể biết nó tồn tại, mà nó vẫn chiếm một
+  // ô của lưới. Mối nguy "chạm vào terminal đã chết thì ném" được chặn ngay dưới bằng
+  // `exitStatus` và `try` quanh `show()` — hai lớp đó có sau cái ghi chú cũ cấm quét.
+  const ungVien = new Set<vscode.Terminal>([...canAn, ...song]);
   let da = 0;
-  for (const t of canAn) {
+  for (const t of ungVien) {
     if (giu.has(t) || dangOPanel(t)) continue;
     // Tiến trình đã thoát thì không còn gì để ẩn.
     if (t.exitStatus !== undefined || !song.has(t)) continue;
@@ -350,11 +369,12 @@ export async function xepLuoiTerminal(
   yeuCau?: YeuCauLuoi,
   ghiLog: (d: string) => void = () => undefined,
   /**
-   * Terminal cần ẩn khỏi vùng editor (của workspace khác). Phải do bên gọi đưa vào chứ KHÔNG
-   * tự quét `window.terminals`: danh sách đó còn liệt kê cả terminal vừa bị đóng, mà chạm
-   * vào một terminal đã chết thì ném lỗi và làm hỏng focus giữa lúc đang rải lưới — đo được
-   * trong test, biểu hiện là cả lưới chỉ rải được một ô. Bên gọi (manager) có sổ terminal
-   * sống, cập nhật theo `onDidCloseTerminal`.
+   * Terminal của workspace KHÁC, do bên gọi (manager) đưa vào từ sổ terminal sống của nó.
+   *
+   * Danh sách này KHÔNG còn là nguồn duy nhất: hàm ẩn quét thêm `window.terminals` để thấy
+   * cả terminal người dùng tự mở. Vẫn giữ tham số vì sổ của manager là nguồn sạch nhất (dọn
+   * theo `onDidCloseTerminal`), còn danh sách của VS Code thì có lúc liệt kê cả terminal vừa
+   * bị đóng — chạm vào một cái đã chết thì ném lỗi, nên mọi lối chạm đều phải có lưới chắn.
    */
   canAn: readonly vscode.Terminal[] = [],
 ): Promise<KetQuaXepLuoi> {

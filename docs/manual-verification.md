@@ -773,6 +773,10 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Terminal của B vốn đã ở panel → không bị đụng, không báo thừa
 - [ ] Tab FILE đang mở vẫn ở lại ô đầu tiên, không bị đóng và không bị ném sang ô khác
 - [ ] Vừa đóng một terminal rồi xếp lưới ngay → không lỗi, lưới vẫn rải đủ ô
+- [ ] **(22/10/2026)** Mở một terminal thường bằng Ctrl+` (không thuộc workspace nào) trong vùng
+      editor → xếp lưới → nó phải xuống panel, KHÔNG chiếm ô của lưới và vẫn đang chạy
+- [ ] Lặp lại thao tác trên với `terminal.integrated.defaultLocation` đặt là `editor` (máy anh Ý
+      đang đặt thế) — đây chính là ca đã lọt lưới
 
 ## Thêm terminal vào lưới đang có
 
@@ -927,3 +931,32 @@ tế đã hiện. Chưa biết khi nào VS Code để nhãn rỗng — đó là 
 
 **Cần người dùng cung cấp khi gặp lại:** nội dung thông báo (nay có kèm lý do) và toàn bộ dòng
 `[luoi]` trong Output → kênh **AI Workspace — Xem song song**, nhất là dòng `bố cục lúc dừng`.
+
+## Terminal lạ lọt vào lưới (22/10/2026) — ĐÃ SỬA
+
+Người dùng báo: xếp lưới cho workspace "Working" (4 terminal) nhưng tab `pwsh` họ tự mở lại nằm
+trong lưới và chiếm một ô, đẩy `kubova-cd` xuống làm tab thứ hai của ô đầu.
+
+**Hai lỗi chồng lên nhau, cả hai đã sửa:**
+
+1. `manager.terminalCuaWsKhac()` chỉ gom terminal của các workspace KHÁC trong sổ. Terminal
+   người dùng tự mở không thuộc workspace nào nên không bao giờ vào danh sách cần ẩn.
+   → `anTerminalNgoaiLuoi` nay quét thêm `vscode.window.terminals`. Lưới chắn cho terminal đã
+   chết (`exitStatus`, `try` quanh `show()`) vốn đã có sẵn, ghi chú cũ cấm quét là từ thời chưa
+   có hai lớp đó.
+2. `dangOPanel()` coi "không khai `location`" là "đang ở panel". Sai: nơi terminal rơi vào do
+   setting `terminal.integrated.defaultLocation` quyết định, và máy anh Ý đặt `editor`. Nên
+   terminal tự mở vừa không có trong danh sách cần ẩn, vừa bị lệnh ẩn bỏ qua nếu có.
+   → nay đọc đúng setting đó.
+
+**Liên quan tới ca "lưới thiếu ô" ngày 20/10:** rất có thể cùng gốc — một terminal lạ nằm trong
+nhóm nguồn vừa chiếm một ô, vừa bị `xoayToiTabTerminal` coi là tab hợp lệ rồi ném sang ô kế.
+Chưa khẳng định được cho tới khi người dùng chạy lại và gửi log.
+
+**Nợ kỹ thuật phát hiện cùng lúc (chưa sửa, không gộp vào commit này):**
+
+- `daXep` đếm bằng `soNhomCoTerminal()` — tức là đếm "ô nào có terminal BẤT KỲ", không phân biệt
+  có phải terminal của lưới hay không. Trong ca trên nó báo "đã xếp 4" trong khi một ô là của
+  `pwsh` và `kubova-cd` thì bị chồng tab. Mọi rò rỉ tương tự về sau sẽ lại được báo là thành công.
+- Terminal đã thoát tiến trình nhưng tab vẫn còn: `anTerminalNgoaiLuoi` bỏ qua
+  (`exitStatus !== undefined → continue`) nên tab chết vẫn chiếm một ô.
