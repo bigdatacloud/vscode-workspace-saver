@@ -960,3 +960,11 @@ Chưa khẳng định được cho tới khi người dùng chạy lại và g�
   `pwsh` và `kubova-cd` thì bị chồng tab. Mọi rò rỉ tương tự về sau sẽ lại được báo là thành công.
 - Terminal đã thoát tiến trình nhưng tab vẫn còn: `anTerminalNgoaiLuoi` bỏ qua
   (`exitStatus !== undefined → continue`) nên tab chết vẫn chiếm một ô.
+- `Terminal.name` KHÔNG chắc là tên lúc tạo: đo được trong Extension Host một terminal tạo với
+  `name: 'hien-editor'` mà `t.name` trả về `'pwsh'` (tên tiến trình). Cộng với chuyện `tab.label`
+  có lúc rỗng, cách nhận diện tab theo tên của `hienTerminal` (`tab.label === t.name`) không chắc
+  ở cả hai đầu.
+- `dangOPanel` nay trả `false` cho terminal không khai `location` trên máy đặt mặc định `editor`.
+  Hệ quả: terminal nhận nuôi mà người dùng tự KÉO xuống panel sẽ không còn được kéo vào lưới —
+  trước đây có, nhưng là nhờ mặc định sai chứ không phải chủ ý. Vẫn là nợ "`creationOptions` chỉ
+  là ảnh chụp lúc tạo", nay lộ ra ở chiều ngược lại. Chưa ai gặp.
