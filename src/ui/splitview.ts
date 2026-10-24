@@ -102,25 +102,44 @@ const HAN_CHO_NGAN_MS = 700;
  * Nhận diện cái vừa bị đẩy bằng `window.activeTerminal` NGAY SAU lệnh (đo được: VS Code để
  * chính nó làm active). KHÔNG dùng nhãn tab — nhãn có lúc là tên tiến trình, có lúc rỗng.
  */
+/**
+ * Đẩy MỘT tab terminal của vùng editor xuống panel. Thử lại tối đa ba lần, nghỉ dài dần.
+ *
+ * Vì sao phải thử lại: `moveToTerminalPanel` chỉ ăn khi vùng EDITOR đang giữ focus, mà focus
+ * chuyển không đồng bộ và không API nào cho đọc trạng thái đó. Ngay sau một lần đẩy thành
+ * công thì focus đang nằm ở panel (terminal vừa rơi xuống đó), nên lượt kế tiếp dễ ra lệnh
+ * vào quãng trống — đo được trong bộ test: vét dừng giữa chừng dù tab đang hiện đúng là tab
+ * terminal. Mỗi lần thử đều tự kiểm bằng số tab nên thử lại không bao giờ đẩy dư.
+ */
+async function dayMotTabXuongPanel(truoc: number, ghiLog: (d: string) => void): Promise<boolean> {
+  for (let lan = 0; lan < 3; lan++) {
+    await chay('workbench.action.focusActiveEditorGroup');
+    await nghi(NHIP_UI_MS * (lan + 1));
+    if (!(await xoayToiTabTerminal(vscode.window.tabGroups.activeTabGroup))) {
+      ghiLog(`[luoi] còn ${truoc} tab terminal trong editor nhưng không xoay tới được`);
+      return false;
+    }
+    await chay('workbench.action.terminal.moveToTerminalPanel');
+    await cho(() => soTabTerminal() < truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
+    if (soTabTerminal() < truoc) return true;
+    // Lần sau thử một tab terminal KHÁC: cố mãi vào đúng một tab là cách chắc chắn nhất để
+    // kẹt vĩnh viễn nếu riêng nó không chịu dời (tiến trình đã chết, tab hỏng…).
+    await chay('workbench.action.nextEditorInGroup');
+    await nghi(NHIP_NHO_MS);
+  }
+  ghiLog(`[luoi] không đẩy được tab terminal xuống panel (còn ${truoc} tab)`);
+  return false;
+}
+
 async function donTerminalKhoiEditor(ghiLog: (d: string) => void): Promise<vscode.Terminal[]> {
   const daDay: vscode.Terminal[] = [];
   const toiDa = soTabTerminal() + 1;
   for (let i = 0; i < toiDa; i++) {
     const truoc = soTabTerminal();
     if (truoc === 0) break;
-    await chay('workbench.action.focusActiveEditorGroup');
-    await nghi(NHIP_NHO_MS);
-    if (!(await xoayToiTabTerminal(vscode.window.tabGroups.activeTabGroup))) {
-      ghiLog(`[luoi] còn ${truoc} tab terminal trong editor nhưng không xoay tới được`);
-      break;
-    }
-    await chay('workbench.action.terminal.moveToTerminalPanel');
-    await cho(() => soTabTerminal() < truoc);
-    if (soTabTerminal() >= truoc) {
-      ghiLog(`[luoi] không đẩy được tab terminal xuống panel (còn ${truoc} tab)`);
-      break;
-    }
+    if (!(await dayMotTabXuongPanel(truoc, ghiLog))) break;
     await nghi(NHIP_UI_MS);
+
     const vua = vscode.window.activeTerminal;
     if (vua !== undefined) daDay.push(vua);
   }
@@ -148,18 +167,25 @@ async function keoLenTheoThuTu(
       ghiMot(`"${t.name}" đã thoát nên không kéo lên được`);
       continue;
     }
-    const truoc = soTabTerminal();
-    try {
-      t.show(true);
-      await cho(() => vscode.window.activeTerminal === t);
-      await nghi(NHIP_UI_MS);
-      await chay('workbench.action.terminal.moveToEditor');
-    } catch {
-      ghiMot(`không kéo được "${t.name}" lên vùng editor`);
-      continue;
+    // Thử lại như bên vét, và vì cùng một lý do: lệnh workbench chỉ ăn khi đúng vùng đang
+    // giữ focus, mà focus thì chuyển không đồng bộ. Mỗi lần thử tự kiểm bằng số tab nên thử
+    // lại không kéo dư cái nào.
+    let len = false;
+    for (let lan = 0; lan < 3 && !len; lan++) {
+      const truoc = soTabTerminal();
+      try {
+        t.show(true);
+        await cho(() => vscode.window.activeTerminal === t);
+        await nghi(NHIP_UI_MS * (lan + 1));
+        await chay('workbench.action.terminal.moveToEditor');
+      } catch {
+        ghiMot(`không kéo được "${t.name}" lên vùng editor`);
+        break;
+      }
+      await cho(() => soTabTerminal() > truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
+      len = soTabTerminal() > truoc;
     }
-    await cho(() => soTabTerminal() > truoc);
-    if (soTabTerminal() <= truoc) {
+    if (!len) {
       ghiMot(`"${t.name}" không lên được vùng editor`);
     }
     await nghi(NHIP_UI_MS);
@@ -226,10 +252,15 @@ async function xoayToiTabTerminal(g: vscode.TabGroup): Promise<boolean> {
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
     if (tab?.input instanceof vscode.TabInputTerminal) return true;
     await chay('workbench.action.nextEditorInGroup');
-    // Chờ tab đang hiện ĐỔI THẬT chứ không nghỉ một nhịp cố định rồi đọc: khi máy đang tải,
-    // nhịp cố định đọc phải giá trị cũ, hàm trả `true` nhầm và lệnh dời ngay sau đó tác động
-    // lên tab FILE. Đo được 24/10/2026 — đúng kiểu hỏng mà ca "có tab FILE" sinh ra để bắt.
-    await cho(() => vscode.window.tabGroups.activeTabGroup.activeTab !== tab, HAN_CHO_NGAN_MS);
+    // Chờ trên ĐÚNG ĐIỀU KIỆN mình cần, không nghỉ một nhịp cố định rồi đọc: máy đang tải thì
+    // đọc phải giá trị cũ, hàm trả `true` nhầm và lệnh dời ngay sau đó tác động lên tab FILE.
+    // Cũng KHÔNG so định danh object tab — `activeTabGroup` có thể trả object mới mỗi lần
+    // đọc, khi đó điều kiện đúng tức thì và nhịp chờ coi như bị bỏ.
+    await cho(
+      () =>
+        vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal,
+      HAN_XOAY_MS,
+    );
   }
   return vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal;
 }
