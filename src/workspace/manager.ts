@@ -2290,12 +2290,7 @@ export class WorkspaceManager implements vscode.Disposable {
     const chon = await this.chonBoCucLuoi(dangMo.length);
     if (chon === null) return; // người dùng huỷ
 
-    const kq = await xepLuoiTerminal(
-      dangMo,
-      chon,
-      (d) => this.kenhLuoi().appendLine(d),
-      this.terminalCuaWsKhac(ws.id),
-    );
+    const kq = await xepLuoiTerminal(dangMo, chon, (d) => this.kenhLuoi().appendLine(d));
     const soO = chon === undefined ? Math.min(dangMo.length, TOI_DA_O) : chon.cot * chon.dong;
 
     const phan = [`Đã xếp ${kq.daXep} terminal của "${ws.name}" thành lưới.`];
@@ -2319,29 +2314,12 @@ export class WorkspaceManager implements vscode.Disposable {
     }
     if (dong > 0) phan.push(`${dong} cái đang đóng nên không xếp — bấm vào trong cây để bật riêng.`);
     if (kq.daAn > 0) {
-      phan.push(`${kq.daAn} terminal của workspace khác đã được đưa xuống panel (vẫn đang chạy).`);
+      phan.push(
+        `${kq.daAn} terminal không thuộc workspace này (kể cả terminal bạn tự mở) đã được đưa ` +
+          'xuống panel — vẫn đang chạy.',
+      );
     }
     void vscode.window.showInformationMessage(phan.join(' '));
-  }
-
-  /**
-   * Terminal đang mở của MỌI workspace khác — để lưới của workspace này không bị chúng chiếm ô.
-   *
-   * Lấy từ sổ của `TerminalManager` chứ không quét `vscode.window.terminals`: sổ đó dọn theo
-   * `onDidCloseTerminal` nên không chứa terminal đã chết, còn danh sách của VS Code thì có —
-   * và chạm vào một terminal đã chết giữa lúc rải lưới làm hỏng cả lượt xếp (đo được trong
-   * test: cả lưới chỉ rải nổi một ô).
-   */
-  private terminalCuaWsKhac(wsId: string): vscode.Terminal[] {
-    const ds: vscode.Terminal[] = [];
-    for (const w of this.store.workspaces) {
-      if (w.id === wsId) continue;
-      for (const e of w.terminals) {
-        const t = this.terminals.get(e.id);
-        if (t !== undefined) ds.push(t);
-      }
-    }
-    return ds;
   }
 
   /**

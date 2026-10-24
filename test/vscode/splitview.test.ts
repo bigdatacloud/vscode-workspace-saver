@@ -190,7 +190,7 @@ suite('xem song song — xếp terminal thành lưới', () => {
     try {
       await cho(() => tabTerminal() === 4);
 
-      const kq = await xepLuoiTerminal([a, b, c, d], { cot: 4, dong: 1 }, (x) => log.push(x), [la]);
+      const kq = await xepLuoiTerminal([a, b, c, d], { cot: 4, dong: 1 }, (x) => log.push(x));
 
       await cho(() => soNhomCoTerminal() === 4);
       assert.equal(
@@ -232,6 +232,37 @@ suite('xem song song — xếp terminal thành lưới', () => {
       assert.equal(kq.daXep, 3, `phải xếp đủ 3 — log: ${log.join(' | ')}`);
     } finally {
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+      await donDep(ds);
+    }
+  });
+
+  /**
+   * Ca người dùng gặp 24/10/2026: "Đã xếp 2 terminal ... 3 cái VS Code không tách ra được ô
+   * riêng — dừng ở ô 3: hết terminal để rải (nhóm 1 còn 1 tab)". Ba terminal kia nằm ở PANEL
+   * vì một lượt xếp lưới TRƯỚC (của workspace khác) đã đẩy chúng xuống, và vòng kéo lên chỉ
+   * đọc `creationOptions.location` — ảnh chụp lúc tạo, vẫn khai "editor" — nên bỏ qua chúng.
+   */
+  test('terminal bị lượt lưới trước đẩy xuống panel: lượt sau phải kéo lên lại', async () => {
+    const moi = (ten: string): vscode.Terminal =>
+      vscode.window.createTerminal({ name: ten, location: vscode.TerminalLocation.Editor });
+    const bịĐẩy = moi('lai-2');
+    const ds = [moi('lai-0'), moi('lai-1'), bịĐẩy];
+    try {
+      await cho(() => tabTerminal() === 3);
+      // Đúng việc `anTerminalNgoaiLuoi` làm khi một workspace khác xếp lưới.
+      bịĐẩy.show(true);
+      await cho(() => vscode.window.activeTerminal === bịĐẩy);
+      await doi(200);
+      await vscode.commands.executeCommand('workbench.action.terminal.moveToTerminalPanel');
+      await cho(() => tabTerminal() === 2);
+      assert.equal(tabTerminal(), 2, `tiền đề: một terminal phải đang ở panel — ${moTaNhom()}`);
+
+      const kq = await xepLuoiTerminal(ds);
+
+      await cho(() => soNhomCoTerminal() === 3);
+      assert.equal(kq.daXep, 3, `cả ba phải vào lưới — ${moTaNhom()}`);
+      assert.ok(moiNhomMotTerminal(), `mỗi ô đúng một terminal — ${moTaNhom()}`);
+    } finally {
       await donDep(ds);
     }
   });
@@ -338,7 +369,7 @@ suite('xem song song — terminal ngoài lưới', () => {
     try {
       await cho(() => tabTerminal() === 3);
 
-      const kq = await xepLuoiTerminal(trong, undefined, undefined, [ngoai]);
+      const kq = await xepLuoiTerminal(trong);
 
       // Lưới chỉ còn hai terminal của workspace; cái thứ ba không còn tab nào trong editor.
       await cho(() => tabTerminal() === 2);
@@ -364,7 +395,7 @@ suite('xem song song — terminal ngoài lưới', () => {
     try {
       await cho(() => tabTerminal() === 1);
 
-      const kq = await xepLuoiTerminal([trong], undefined, undefined, [duoiPanel]);
+      const kq = await xepLuoiTerminal([trong]);
 
       assert.equal(kq.daAn, 0, 'không có gì để ẩn: cái kia vốn đã ở panel');
       assert.ok(vscode.window.terminals.includes(duoiPanel));
@@ -375,8 +406,8 @@ suite('xem song song — terminal ngoài lưới', () => {
 
   /**
    * Ca người dùng gặp 22/10/2026: tab "pwsh" họ tự mở bằng Ctrl+` nằm lẫn trong lưới của
-   * workspace "Working" và chiếm mất một ô. Bên gọi không thể đưa nó vào `canAn` vì extension
-   * không hề biết nó tồn tại — nên chính `xepLuoiTerminal` phải tự thấy.
+   * workspace "Working" và chiếm mất một ô. Bên gọi không thể kể tên nó vì extension không
+   * hề biết nó tồn tại — nên chính `xepLuoiTerminal` phải tự dọn.
    */
   test('terminal người dùng tự mở (không workspace nào quản) cũng phải rời vùng editor', async () => {
     const trong = [0, 1].map((i) =>
@@ -390,7 +421,7 @@ suite('xem song song — terminal ngoài lưới', () => {
       await cho(() => tabTerminal() === 3);
       assert.equal(tabTerminal(), 3, `tiền đề: cả ba terminal phải ở vùng editor — ${moTaNhom()}`);
 
-      const kq = await xepLuoiTerminal(trong, undefined, undefined, []);
+      const kq = await xepLuoiTerminal(trong);
 
       await cho(() => tabTerminal() === trong.length);
       assert.equal(
@@ -427,7 +458,7 @@ suite('xem song song — terminal ngoài lưới', () => {
         `tiền đề: terminal không khai location phải nằm ở vùng editor — ${moTaNhom()}`,
       );
 
-      const kq = await xepLuoiTerminal(trong, undefined, undefined, []);
+      const kq = await xepLuoiTerminal(trong);
 
       await cho(() => tabTerminal() === trong.length);
       assert.equal(
@@ -552,7 +583,7 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
     const log: string[] = [];
     try {
       await cho(() => tabTerminal() === 3);
-      await xepLuoiTerminal([a, b, d], undefined, (x) => log.push(x), [c]);
+      await xepLuoiTerminal([a, b, d], undefined, (x) => log.push(x));
       await gopVeMotNhom();
       await cho(() => soNhom() === 1);
 
