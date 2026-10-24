@@ -20,7 +20,16 @@ export type PhanXuPhien =
   /** Đang chạy trong một terminal của CỬA SỔ NÀY: dùng lại nó, đừng resume lần hai. */
   | { loai: 'daCoChu'; terminalId: string }
   /** Đang chạy ở cửa sổ VS Code khác hoặc ngoài VS Code: ở đây không có terminal để mà dùng. */
-  | { loai: 'ngoai'; soTienTrinh: number };
+  | { loai: 'ngoai'; soTienTrinh: number }
+  /**
+   * Hội thoại KHÁC, nhưng cùng tên và cùng chỗ làm việc với một terminal đang mở.
+   *
+   * Khác `daCoChu` ở chỗ không có gì bị xé đôi — hai hội thoại riêng biệt chạy song song
+   * trên cùng một thư mục là hợp lệ về kỹ thuật. Chỉ là gần như luôn luôn ngoài ý muốn:
+   * người dùng có cùng một dự án nằm ở hai workspace, kích hoạt cái thứ hai là mọc thêm
+   * một phiên agent y hệt. Nên hỏi, chứ không tự quyết.
+   */
+  | { loai: 'trungCho'; terminalId: string };
 
 /**
  * @param sessionId Hội thoại mà entry sắp resume; `undefined` = entry chưa gắn phiên nào.
@@ -42,4 +51,49 @@ export function phanXuTrungPhien(
 
   const soTienTrinh = dangChay.filter((r) => r.sessionId === sessionId && r.pid !== null).length;
   return soTienTrinh > 0 ? { loai: 'ngoai', soTienTrinh } : { loai: 'mo' };
+}
+
+/**
+ * Chỗ làm việc THẬT của một entry: worktree riêng nếu có, không thì `cwd`.
+ *
+ * Chuẩn hoá để hai cách viết cùng một thư mục vẫn so được với nhau. Hạ hoa-thường là đúng
+ * cho Windows (nơi extension này chạy); trên hệ phân biệt hoa thường thì cùng lắm là hỏi
+ * dư một câu, không bao giờ làm mất dữ liệu.
+ */
+export function choLamViec(e: { cwd: string; worktree?: { path: string } }): string {
+  return (e.worktree?.path ?? e.cwd)
+    .replace(/[\\/]+/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
+/** Một terminal đang mở, mô tả đủ để biết nó có trùng chỗ với entry nào không. */
+export interface TerminalDangGiu {
+  /** Id entry đang giữ terminal này — cũng là key của `TerminalManager`. */
+  terminalId: string;
+  name: string;
+  cwd: string;
+  worktree?: { path: string };
+}
+
+/**
+ * Terminal nào đang mở mà TRÙNG TÊN và TRÙNG CHỖ LÀM VIỆC với entry sắp mở.
+ *
+ * Hai điều kiện phải cùng đúng: trùng tên mà khác thư mục là hai việc khác nhau tình cờ đặt
+ * tên giống; cùng thư mục mà khác tên là chủ ý chạy nhiều vai trên một dự án (đúng cái
+ * extension này sinh ra để làm). Chỉ khi cả hai trùng mới gần như chắc chắn là nhân đôi.
+ */
+export function timTerminalTrungCho(
+  entry: { id: string; name: string; cwd: string; worktree?: { path: string } },
+  dangGiu: readonly TerminalDangGiu[],
+): string | null {
+  const cho = choLamViec(entry);
+  const ten = entry.name.trim().toLowerCase();
+  for (const t of dangGiu) {
+    if (t.terminalId === entry.id) continue;
+    if (t.name.trim().toLowerCase() !== ten) continue;
+    if (choLamViec(t) !== cho) continue;
+    return t.terminalId;
+  }
+  return null;
 }

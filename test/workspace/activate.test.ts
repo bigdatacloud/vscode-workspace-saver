@@ -238,6 +238,37 @@ describe('activateWorkspace — một hội thoại chỉ một tiến trình', 
     expect(xuLy).toHaveBeenCalledWith(claudeResume, { loai: 'daCoChu', terminalId: 'term-cu' });
   });
 
+  /**
+   * Trùng TÊN + TRÙNG CHỖ LÀM VIỆC là chuyện khác hẳn trùng hội thoại: hai entry riêng biệt,
+   * không hội thoại nào bị xé đôi, nên hàng rào cũ (chỉ xét `claudeSessionId`) không thấy.
+   * Người dùng báo 24/10/2026: cùng một dự án nằm ở hai workspace, kích hoạt cái thứ hai là
+   * mọc thêm một phiên agent y hệt.
+   */
+  it('terminal thường trùng chỗ: vẫn phải hỏi, không mở thẳng', async () => {
+    const xuLy = vi.fn(async () => 'daDung' as const);
+    const { ports, calls } = makePorts({
+      phanXuPhien: () => ({ loai: 'trungCho', terminalId: 'term-cu' }),
+      xuLyTrungPhien: xuLy,
+    });
+
+    const r = await activateWorkspace(ws([plainCmd]), ports);
+
+    expect(calls).not.toContain(`create:${plainCmd.id}`);
+    expect(r.opened).toEqual([plainCmd.id]);
+    expect(xuLy).toHaveBeenCalledWith(plainCmd, { loai: 'trungCho', terminalId: 'term-cu' });
+  });
+
+  it('trùng chỗ nhưng người dùng chọn vẫn mở → tạo terminal như thường', async () => {
+    const { ports, calls } = makePorts({
+      phanXuPhien: () => ({ loai: 'trungCho', terminalId: 'term-cu' }),
+      xuLyTrungPhien: async () => 'vanMo' as const,
+    });
+
+    await activateWorkspace(ws([plainCmd]), ports);
+
+    expect(calls).toContain(`create:${plainCmd.id}`);
+  });
+
   it('phiên đang chạy ở cửa sổ khác và người dùng chọn bỏ qua → không tạo terminal nào', async () => {
     const { ports, sent, calls } = makePorts({
       phanXuPhien: () => ({ loai: 'ngoai', soTienTrinh: 2 }),
@@ -265,16 +296,22 @@ describe('activateWorkspace — một hội thoại chỉ một tiến trình', 
     expect(r.opened).toEqual([claudeResume.id]);
   });
 
-  it('entry CHƯA có sessionId thì không hỏi gì — không có hội thoại nào để mà trùng', async () => {
+  /**
+   * Trước 24/10/2026 `activate` tự lọc "chỉ hỏi khi entry là claude và đã có sessionId".
+   * Luật trùng tên + trùng chỗ làm việc không nằm trong bộ lọc đó, nên nay QUYỀN QUYẾT ĐỊNH
+   * nằm trọn ở cổng `phanXuPhien`: activate hỏi mọi entry, cổng trả 'mo' khi không có gì
+   * đáng ngại. Ca này giữ cho đúng hợp đồng đó.
+   */
+  it('entry CHƯA có sessionId: vẫn đi qua cổng, cổng bảo "mở" thì mở như thường', async () => {
     const xuLy = vi.fn(async () => 'boQua' as const);
-    const { ports } = makePorts({
-      phanXuPhien: () => ({ loai: 'ngoai', soTienTrinh: 9 }),
-      xuLyTrungPhien: xuLy,
-    });
+    const phanXu = vi.fn(() => ({ loai: 'mo' }) as const);
+    const { ports, calls } = makePorts({ phanXuPhien: phanXu, xuLyTrungPhien: xuLy });
 
     await activateWorkspace(ws([claudeNew]), ports);
 
+    expect(phanXu).toHaveBeenCalledWith(claudeNew);
     expect(xuLy).not.toHaveBeenCalled();
+    expect(calls).toContain(`create:${claudeNew.id}`);
   });
 
   it('cổng không được cấp (bản cũ gọi vào) → hành vi y như trước, không ai bị chặn', async () => {

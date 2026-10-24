@@ -1015,3 +1015,25 @@ phục lại terminal và tab Untitled của lượt trước, làm các ca sau 
 
 **Nợ còn lại:** `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và
 `tab.label` có lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.
+
+## Phiên trùng tên + trùng thư mục (24/10/2026)
+
+Hàng rào cũ chỉ bắt được trùng HỘI THOẠI (cùng `claudeSessionId`). Ca người dùng gặp khác
+hẳn: cùng một dự án được khai ở hai workspace, hai entry riêng biệt, không hội thoại nào
+trùng — kích hoạt workspace thứ hai là mọc thêm một phiên agent y hệt.
+
+Luật mới: trùng **cả tên lẫn chỗ làm việc** (worktree riêng nếu có, không thì `cwd`) thì hỏi.
+Trùng tên mà khác thư mục, hay cùng thư mục mà khác tên, đều KHÔNG hỏi — cùng thư mục khác
+tên chính là cách dùng nhiều vai trên một dự án.
+
+- [ ] Khai cùng một thư mục ở hai workspace với CÙNG tên terminal → kích hoạt cái thứ hai →
+      hiện hộp thoại, không tự mở thêm
+- [ ] **Đưa phiên đang chạy về workspace này** → terminal chuyển sang cây của workspace hiện
+      tại, phiên agent chạy tiếp không đứt, mục trùng bị gỡ khỏi workspace này
+- [ ] **Chỉ hiện phiên đang chạy** → nhảy tới terminal đó, không mở gì thêm, cây không đổi
+- [ ] **Đóng phiên cũ rồi mở phiên mới** → terminal cũ đóng hẳn, workspace hiện tại mở phiên mới
+- [ ] **Mở thêm một phiên nữa** → đúng hành vi cũ, hai terminal cùng tên cùng thư mục
+- [ ] Bấm Esc → không mở gì cả, báo lý do trong danh sách "chưa mở được"
+- [ ] Trùng trong CHÍNH workspace đó → không có nút "Đưa về workspace này" (vô nghĩa)
+- [ ] Hai worktree khác nhau của cùng một repo, cùng tên terminal → KHÔNG hỏi (khác chỗ làm việc)
+- [ ] Cùng thư mục nhưng tên khác (nhiều vai) → KHÔNG hỏi

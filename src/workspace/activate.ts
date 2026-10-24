@@ -109,7 +109,10 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
       }
       // Hàng rào một-hội-thoại-một-tiến-trình. Phải đứng TRƯỚC createTerminal: hỏi xong mới
       // biết có mở hay không, mà tạo terminal rồi bỏ thì người dùng lãnh một tab rỗng.
-      if (currentEntry.kind === 'claude' && currentEntry.claudeSessionId !== undefined && ports.phanXuPhien) {
+      // Hỏi cho MỌI entry, không riêng entry Claude đã gắn phiên: luật trùng tên +
+      // trùng chỗ làm việc áp cho cả terminal thường lẫn agent chưa có hội thoại nào.
+      // Bản thân `phanXuPhien` trả 'mo' khi không có gì đáng ngại.
+      if (ports.phanXuPhien) {
         const phanXu = ports.phanXuPhien(currentEntry);
         if (phanXu.loai !== 'mo') {
           const quyet = (await ports.xuLyTrungPhien?.(currentEntry, phanXu)) ?? 'vanMo';
@@ -125,7 +128,9 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
               reason:
                 phanXu.loai === 'ngoai'
                   ? `Hội thoại đang chạy ở nơi khác (${phanXu.soTienTrinh} tiến trình) nên không mở thêm.`
-                  : 'Hội thoại đang chạy ở một terminal khác của cửa sổ này.',
+                  : phanXu.loai === 'trungCho'
+                    ? 'Đã có terminal cùng tên trên cùng thư mục đang mở.'
+                    : 'Hội thoại đang chạy ở một terminal khác của cửa sổ này.',
             });
             continue;
           }

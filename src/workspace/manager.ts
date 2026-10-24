@@ -88,7 +88,12 @@ import {
 import { lenhDoiTenPhienClaude } from '../agent/claude';
 import { nhayTerminal } from './nhay';
 import { phanXuBamTerminal } from './bamterminal';
-import { phanXuTrungPhien, type PhanXuPhien } from './trungphien';
+import {
+  phanXuTrungPhien,
+  timTerminalTrungCho,
+  type PhanXuPhien,
+  type TerminalDangGiu,
+} from './trungphien';
 import { upsertTerminal } from '../model/store';
 import { docCotDong, TOI_DA_CANH, TOI_DA_O } from '../ui/luoi';
 import {
@@ -1050,6 +1055,8 @@ export class WorkspaceManager implements vscode.Disposable {
       return tra === NUT_MO ? 'vanMo' : 'boQua';
     }
 
+    if (phanXu.loai === 'trungCho') return this.hoiTrungCho(wsId, entry, phanXu.terminalId);
+
     // 'mo' không bao giờ tới được đây (activate chỉ hỏi khi khác 'mo'), nhưng để TS thu hẹp
     // kiểu — và nếu một ngày nào đó nó tới thật thì mở như cũ là lựa chọn không gây hại.
     if (phanXu.loai !== 'daCoChu') return 'vanMo';
@@ -1087,6 +1094,87 @@ export class WorkspaceManager implements vscode.Disposable {
     terminal.show(false);
     this.onChanged.fire();
     return 'daDung';
+  }
+
+  /**
+   * Trùng TÊN + TRÙNG CHỖ LÀM VIỆC: hỏi, không bao giờ tự quyết.
+   *
+   * Khác hẳn trùng hội thoại: ở đây không có gì bị xé đôi, hai phiên song song trên cùng thư
+   * mục là hợp lệ về kỹ thuật — chỉ là gần như luôn ngoài ý muốn. Nên có đủ cả ba lối: nhận
+   * nuôi cái đang chạy, bỏ nó đi mở cái mới, hay cứ mở thêm.
+   */
+  private async hoiTrungCho(
+    wsId: string,
+    entry: TerminalEntry,
+    terminalId: string,
+  ): Promise<'daDung' | 'boQua' | 'vanMo'> {
+    const chu = this.timTheoTerminalId(terminalId);
+    const terminal = this.terminals.get(terminalId);
+    // Dữ liệu lệch (terminal vừa đóng giữa chừng) thì đừng chặn người dùng: mở như cũ.
+    if (chu === null || terminal === undefined) return 'vanMo';
+
+    const cungWs = chu.ws.id === wsId;
+    const NUT_CHUYEN = 'Đưa phiên đang chạy về workspace này';
+    const NUT_HIEN = 'Chỉ hiện phiên đang chạy';
+    const NUT_DONG = 'Đóng phiên cũ rồi mở phiên mới';
+    const NUT_MO = 'Mở thêm một phiên nữa';
+    const nut = cungWs ? [NUT_HIEN, NUT_DONG, NUT_MO] : [NUT_CHUYEN, NUT_HIEN, NUT_DONG, NUT_MO];
+    const noi = entry.worktree?.path ?? entry.cwd;
+    const tra = await vscode.window.showWarningMessage(
+      `Đã có terminal "${chu.entry.name}" cùng tên, cùng thư mục đang chạy` +
+        `${cungWs ? ' trong chính workspace này' : ` ở workspace "${chu.ws.name}"`}.`,
+      {
+        modal: true,
+        detail:
+          `Thư mục: ${noi}\n\n` +
+          (cungWs
+            ? 'Mở thêm sẽ thành hai phiên agent y hệt nhau trên cùng một thư mục.'
+            : `Đưa về đây thì phiên vẫn chạy tiếp, chỉ đổi chỗ trong cây, và mục trùng "${entry.name}" ở workspace này được bỏ đi. Mở thêm sẽ thành hai phiên agent y hệt nhau trên cùng một thư mục.`),
+      },
+      ...nut,
+    );
+    if (tra === undefined) return 'boQua';
+    if (tra === NUT_MO) return 'vanMo';
+    if (tra === NUT_DONG) {
+      // Người dùng chọn bỏ cái cũ: đóng nó rồi để activate mở phiên mới như thường.
+      terminal.dispose();
+      return 'vanMo';
+    }
+    if (tra === NUT_CHUYEN) {
+      await this.thaTerminal([chu.entry.id], wsId, null);
+      const wsNow = findWorkspace(this.store, wsId);
+      if (wsNow) {
+        removeTerminalEntry(wsNow, entry.id);
+        this.touch(wsId);
+        this.scheduleSave();
+        this.flush();
+      }
+    }
+    terminal.show(false);
+    this.onChanged.fire();
+    return 'daDung';
+  }
+
+  /**
+   * Mọi terminal đang mở của MỌI workspace, kèm tên và chỗ làm việc.
+   *
+   * Phải quét cả store chứ không riêng workspace đang kích hoạt: ca cần chặn chính là phiên
+   * nằm ở workspace KHÁC.
+   */
+  private terminalDangGiu(): TerminalDangGiu[] {
+    const ds: TerminalDangGiu[] = [];
+    for (const w of this.store.workspaces) {
+      for (const e of w.terminals) {
+        if (!this.terminals.has(e.id)) continue;
+        ds.push({
+          terminalId: e.id,
+          name: e.name,
+          cwd: e.cwd,
+          ...(e.worktree === undefined ? {} : { worktree: { path: e.worktree.path } }),
+        });
+      }
+    }
+    return ds;
   }
 
   private async noiLaiTerminalHoiSinh(
@@ -1414,8 +1502,20 @@ export class WorkspaceManager implements vscode.Disposable {
       // Hàng rào một-hội-thoại-một-tiến-trình cho nhánh `--resume`. Nhánh `-c` đã có hàng rào
       // riêng ngay bên dưới; thiếu cái này thì mỗi lần kích hoạt lại một workspace mà terminal
       // cũ nằm ở cửa sổ VS Code khác là thêm một tiến trình bám cùng file hội thoại.
-      phanXuPhien: (entry) =>
-        phanXuTrungPhien(entry.claudeSessionId, this.phienLucKhoiPhuc, this.chuTheoSession()),
+      phanXuPhien: (entry) => {
+        const theoHoiThoai = phanXuTrungPhien(
+          entry.claudeSessionId,
+          this.phienLucKhoiPhuc,
+          this.chuTheoSession(),
+        );
+        if (theoHoiThoai.loai !== 'mo') return theoHoiThoai;
+        // Hàng rào thứ hai, bắt ca mà hàng rào theo hội thoại không thấy: hai entry KHÁC
+        // nhau (khác id, khác sessionId hoặc chưa có sessionId) nhưng cùng tên và cùng chỗ
+        // làm việc. Người dùng báo 24/10/2026: một dự án nằm ở hai workspace, kích hoạt cái
+        // thứ hai là mọc thêm một phiên agent y hệt.
+        const trung = timTerminalTrungCho(entry, this.terminalDangGiu());
+        return trung === null ? { loai: 'mo' } : { loai: 'trungCho', terminalId: trung };
+      },
       xuLyTrungPhien: (entry, phanXu) => this.hoiTrungPhien(ws.id, entry, phanXu),
       coPhienDangChayNgoai: (cwd) => {
         // Không đọc nổi registry ở bước nối lại = không biết → phải coi như CÓ (xem ghi chú

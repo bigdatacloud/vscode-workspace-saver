@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { phanXuTrungPhien, type PhienDangChay } from '../../src/workspace/trungphien';
+import {
+  choLamViec,
+  phanXuTrungPhien,
+  timTerminalTrungCho,
+  type PhienDangChay,
+  type TerminalDangGiu,
+} from '../../src/workspace/trungphien';
 
 const P = (sessionId: string, pid: number | null): PhienDangChay => ({ sessionId, pid });
 
@@ -54,5 +60,82 @@ describe('phanXuTrungPhien — có nên resume phiên này không', () => {
       loai: 'daCoChu',
       terminalId: 'term-cu',
     });
+  });
+});
+
+describe('choLamViec — chỗ làm việc thật của một entry', () => {
+  it('không có worktree thì là cwd', () => {
+    expect(choLamViec({ cwd: 'D:/Coding/abc' })).toBe('d:/coding/abc');
+  });
+
+  it('có worktree thì worktree thắng cwd', () => {
+    expect(choLamViec({ cwd: 'D:/Coding/abc', worktree: { path: 'D:/wt/abc-dev' } })).toBe(
+      'd:/wt/abc-dev',
+    );
+  });
+
+  it('bỏ qua khác biệt về dấu gạch, hoa thường và gạch thừa ở cuối', () => {
+    expect(choLamViec({ cwd: 'D:\\Coding\\ABC\\' })).toBe(choLamViec({ cwd: 'd:/coding/abc' }));
+  });
+});
+
+describe('timTerminalTrungCho — phiên trùng tên và trùng chỗ làm việc', () => {
+  const G = (terminalId: string, name: string, cwd: string, wt?: string): TerminalDangGiu => ({
+    terminalId,
+    name,
+    cwd,
+    ...(wt === undefined ? {} : { worktree: { path: wt } }),
+  });
+  const E = (id: string, name: string, cwd: string, wt?: string) => ({
+    id,
+    name,
+    cwd,
+    ...(wt === undefined ? {} : { worktree: { path: wt } }),
+  });
+
+  it('trùng cả tên lẫn thư mục → trả terminal đang giữ', () => {
+    expect(timTerminalTrungCho(E('e1', 'kubova-cd', 'D:/Coding/kubova'), [
+      G('t9', 'kubova-cd', 'D:/Coding/kubova'),
+    ])).toBe('t9');
+  });
+
+  it('trùng tên nhưng khác thư mục → không coi là trùng', () => {
+    expect(timTerminalTrungCho(E('e1', 'kubova-cd', 'D:/Coding/kubova'), [
+      G('t9', 'kubova-cd', 'D:/Coding/khac'),
+    ])).toBeNull();
+  });
+
+  it('cùng thư mục nhưng khác tên → không coi là trùng', () => {
+    expect(timTerminalTrungCho(E('e1', 'kubova-cd', 'D:/Coding/kubova'), [
+      G('t9', 'kubova-review', 'D:/Coding/kubova'),
+    ])).toBeNull();
+  });
+
+  it('chính entry đó đang giữ terminal thì không tự báo trùng với mình', () => {
+    expect(timTerminalTrungCho(E('e1', 'kubova-cd', 'D:/Coding/kubova'), [
+      G('e1', 'kubova-cd', 'D:/Coding/kubova'),
+    ])).toBeNull();
+  });
+
+  it('so theo worktree chứ không theo cwd khi entry có worktree riêng', () => {
+    // Cùng cwd gốc nhưng hai worktree khác nhau = hai chỗ làm việc khác nhau.
+    expect(timTerminalTrungCho(E('e1', 'vof', 'D:/Coding/vof', 'D:/wt/vof-a'), [
+      G('t9', 'vof', 'D:/Coding/vof', 'D:/wt/vof-b'),
+    ])).toBeNull();
+    expect(timTerminalTrungCho(E('e1', 'vof', 'D:/Coding/vof', 'D:/wt/vof-a'), [
+      G('t9', 'vof', 'D:/khac', 'D:/wt/vof-a'),
+    ])).toBe('t9');
+  });
+
+  it('khác hoa thường và kiểu dấu gạch vẫn là một chỗ', () => {
+    expect(timTerminalTrungCho(E('e1', 'Kubova-CD', 'D:\\Coding\\kubova'), [
+      G('t9', 'kubova-cd', 'd:/coding/Kubova/'),
+    ])).toBe('t9');
+  });
+
+  it('nhiều cái trùng thì lấy cái đầu, không ném', () => {
+    expect(timTerminalTrungCho(E('e1', 'x', 'D:/a'), [G('t1', 'x', 'D:/a'), G('t2', 'x', 'D:/a')])).toBe(
+      't1',
+    );
   });
 });
