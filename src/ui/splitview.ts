@@ -64,34 +64,143 @@ const soNhomCoTerminal = (): number =>
     g.tabs.some((t) => t.input instanceof vscode.TabInputTerminal),
   ).length;
 
-/** Terminal không khai `location` thì VS Code mở nó ở đâu — theo setting của người dùng. */
-function macDinhMoOEditor(): boolean {
-  return (
-    vscode.workspace
-      .getConfiguration('terminal.integrated')
-      .get<string>('defaultLocation', 'view') === 'editor'
+/**
+ * Số tab terminal đang nằm trong vùng editor.
+ *
+ * Đây là thước đo DUY NHẤT đáng tin cho câu hỏi "terminal đang ở đâu". Bản trước hỏi
+ * `creationOptions.location` — ảnh chụp lúc TẠO — rồi quyết định có dời hay không. Sai, vì
+ * chính extension này dời terminal qua lại panel↔editor sau đó: lệnh ẩn đẩy terminal của
+ * workspace khác xuống panel, nên lần sau xếp lưới cho chính workspace đó thì nó vẫn khai
+ * "editor" trong khi đang nằm dưới panel, và không bao giờ được kéo lên nữa. Đo được
+ * 24/10/2026: 5 terminal mà chỉ 2 cái vào lưới, ba ô còn lại rỗng với lý do "hết terminal
+ * để rải".
+ */
+const soTabTerminal = (): number =>
+  vscode.window.tabGroups.all.reduce(
+    (n, g) => n + g.tabs.filter((t) => t.input instanceof vscode.TabInputTerminal).length,
+    0,
   );
+
+/** Hạn chờ cho thao tác CÓ THỂ không xảy ra (dời một terminal vốn đã đúng chỗ là lệnh rỗng). */
+const HAN_CHO_NGAN_MS = 700;
+
+/**
+ * Vét MỌI tab terminal khỏi vùng editor xuống panel; trả về đúng những cái đã bị đẩy.
+ *
+ * Vì sao phải vét sạch rồi kéo lại, thay vì chỉ kéo cái còn thiếu lên:
+ * `workbench.action.terminal.moveToEditor` KHÔNG làm việc trên `window.activeTerminal` mà
+ * trên terminal đang active CỦA PANEL — đo được 24/10/2026: `show()` một terminal đang ở
+ * vùng editor rồi gọi lệnh đó thì VS Code lôi nhầm một terminal khác dưới panel lên. Nên
+ * không có cách nào an toàn để "kéo lên nếu nó đang ở dưới" khi chưa biết chắc nó ở đâu —
+ * mà không API nào nói điều đó: `creationOptions.location` chỉ là ảnh chụp lúc TẠO, sai
+ * ngay khi chính extension dời terminal qua lại (lệnh ẩn của lưới làm đúng việc đó).
+ *
+ * Vét xong thì vùng editor sạch bóng terminal, nên `show()` + `moveToEditor` cho từng cái
+ * là xác định. Được thêm hai thứ: thứ tự ô bám đúng thứ tự cây, và mọi tab terminal còn lại
+ * trong editor chắc chắn thuộc về lưới — hết cửa ném nhầm tab của người khác.
+ *
+ * Nhận diện cái vừa bị đẩy bằng `window.activeTerminal` NGAY SAU lệnh (đo được: VS Code để
+ * chính nó làm active). KHÔNG dùng nhãn tab — nhãn có lúc là tên tiến trình, có lúc rỗng.
+ */
+/**
+ * Đẩy MỘT tab terminal của vùng editor xuống panel. Thử lại tối đa ba lần, nghỉ dài dần.
+ *
+ * Vì sao phải thử lại: `moveToTerminalPanel` chỉ ăn khi vùng EDITOR đang giữ focus, mà focus
+ * chuyển không đồng bộ và không API nào cho đọc trạng thái đó. Ngay sau một lần đẩy thành
+ * công thì focus đang nằm ở panel (terminal vừa rơi xuống đó), nên lượt kế tiếp dễ ra lệnh
+ * vào quãng trống — đo được trong bộ test: vét dừng giữa chừng dù tab đang hiện đúng là tab
+ * terminal. Mỗi lần thử đều tự kiểm bằng số tab nên thử lại không bao giờ đẩy dư.
+ */
+async function dayMotTabXuongPanel(truoc: number, ghiLog: (d: string) => void): Promise<boolean> {
+  for (let lan = 0; lan < 3; lan++) {
+    await chay('workbench.action.focusActiveEditorGroup');
+    await nghi(NHIP_UI_MS * (lan + 1));
+    if (!(await xoayToiTabTerminal(vscode.window.tabGroups.activeTabGroup))) {
+      ghiLog(`[luoi] còn ${truoc} tab terminal trong editor nhưng không xoay tới được`);
+      return false;
+    }
+    await chay('workbench.action.terminal.moveToTerminalPanel');
+    await cho(() => soTabTerminal() < truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
+    if (soTabTerminal() < truoc) return true;
+    // Lần sau thử một tab terminal KHÁC: cố mãi vào đúng một tab là cách chắc chắn nhất để
+    // kẹt vĩnh viễn nếu riêng nó không chịu dời (tiến trình đã chết, tab hỏng…).
+    await chay('workbench.action.nextEditorInGroup');
+    await nghi(NHIP_NHO_MS);
+  }
+  ghiLog(`[luoi] không đẩy được tab terminal xuống panel (còn ${truoc} tab)`);
+  return false;
+}
+
+async function donTerminalKhoiEditor(ghiLog: (d: string) => void): Promise<vscode.Terminal[]> {
+  const daDay: vscode.Terminal[] = [];
+  const toiDa = soTabTerminal() + 1;
+  for (let i = 0; i < toiDa; i++) {
+    const truoc = soTabTerminal();
+    if (truoc === 0) break;
+    if (!(await dayMotTabXuongPanel(truoc, ghiLog))) break;
+    await nghi(NHIP_UI_MS);
+
+    const vua = vscode.window.activeTerminal;
+    if (vua !== undefined) daDay.push(vua);
+  }
+  return daDay;
 }
 
 /**
- * Terminal này đang nằm ở panel dưới (chứ không phải vùng editor)?
+ * Kéo đúng những terminal này lên vùng editor, THEO ĐÚNG THỨ TỰ truyền vào.
  *
- * Đọc `creationOptions.location` thay vì dò tab đang active: dò tab chỉ đúng khi terminal
- * đang được focus, mà giữa chừng vòng lặp thì không có gì bảo đảm điều đó.
- *
- * Terminal người dùng tự mở (Ctrl+`) KHÔNG khai `location`. Bản trước coi đó là panel —
- * sai, vì nơi nó rơi vào do setting `terminal.integrated.defaultLocation` quyết định. Máy
- * nào đặt setting đó là `editor` thì mọi terminal tự mở đều nằm trong vùng editor mà hàm này
- * vẫn báo "đang ở panel", nên lệnh ẩn bỏ qua nó và nó chiếm mất một ô của lưới — đúng ca
- * người dùng gặp ngày 22/10/2026 (tab "pwsh" lọt vào lưới của workspace "Working").
+ * Chỉ đúng khi vùng editor đã sạch terminal (xem `donTerminalKhoiEditor`) — bên gọi phải
+ * bảo đảm điều đó. Mỗi bước tự xác nhận: số tab tăng VÀ `window.activeTerminal` chính là nó.
+ * Trả về lý do đầu tiên khiến một cái không lên được, `undefined` nếu trọn vẹn.
  */
-function dangOPanel(t: vscode.Terminal): boolean {
-  const loc = (t.creationOptions as { location?: unknown }).location;
-  if (loc === undefined) return !macDinhMoOEditor();
-  if (loc === vscode.TerminalLocation.Panel) return true;
-  if (loc === vscode.TerminalLocation.Editor) return false;
-  // Dạng object: `{ viewColumn }` là editor, `{ parentTerminal }` là split trong panel.
-  return typeof loc === 'object' && loc !== null && !('viewColumn' in loc);
+async function keoLenTheoThuTu(
+  ds: readonly vscode.Terminal[],
+  ghiLog: (d: string) => void,
+): Promise<string | undefined> {
+  let lyDo: string | undefined;
+  const ghiMot = (d: string): void => {
+    lyDo ??= d;
+    ghiLog(`[luoi] ${d}`);
+  };
+  for (const t of ds) {
+    if (t.exitStatus !== undefined) {
+      ghiMot(`"${t.name}" đã thoát nên không kéo lên được`);
+      continue;
+    }
+    // Thử lại như bên vét, và vì cùng một lý do: lệnh workbench chỉ ăn khi đúng vùng đang
+    // giữ focus, mà focus thì chuyển không đồng bộ. Mỗi lần thử tự kiểm bằng số tab nên thử
+    // lại không kéo dư cái nào.
+    let len = false;
+    for (let lan = 0; lan < 3 && !len; lan++) {
+      const truoc = soTabTerminal();
+      try {
+        t.show(true);
+        await cho(() => vscode.window.activeTerminal === t);
+        await nghi(NHIP_UI_MS * (lan + 1));
+        await chay('workbench.action.terminal.moveToEditor');
+      } catch {
+        ghiMot(`không kéo được "${t.name}" lên vùng editor`);
+        break;
+      }
+      await cho(() => soTabTerminal() > truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
+      len = soTabTerminal() > truoc;
+    }
+    if (!len) {
+      ghiMot(`"${t.name}" không lên được vùng editor`);
+    }
+    await nghi(NHIP_UI_MS);
+    // Đối chiếu danh tính CHỈ để ghi log, không coi là lý do hỏng: ngay sau khi một terminal
+    // rời panel thì `window.activeTerminal` còn bám theo panel một nhịp, nên nó hay báo cái
+    // kế tiếp (đo được: kéo "nam-0" mà đọc ra "nam-1" trong khi cả 5 cái vẫn lên đúng thứ
+    // tự). Bằng chứng thật là số tab tăng — vùng editor đã sạch nên cái lên chỉ có thể là nó.
+    if (vscode.window.activeTerminal !== t) {
+      ghiLog(
+        `[luoi] kéo "${t.name}", active ngay sau đó là ` +
+          `"${vscode.window.activeTerminal?.name ?? 'không có'}"`,
+      );
+    }
+  }
+  return lyDo;
 }
 
 /**
@@ -143,7 +252,15 @@ async function xoayToiTabTerminal(g: vscode.TabGroup): Promise<boolean> {
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
     if (tab?.input instanceof vscode.TabInputTerminal) return true;
     await chay('workbench.action.nextEditorInGroup');
-    await nghi(NHIP_NHO_MS);
+    // Chờ trên ĐÚNG ĐIỀU KIỆN mình cần, không nghỉ một nhịp cố định rồi đọc: máy đang tải thì
+    // đọc phải giá trị cũ, hàm trả `true` nhầm và lệnh dời ngay sau đó tác động lên tab FILE.
+    // Cũng KHÔNG so định danh object tab — `activeTabGroup` có thể trả object mới mỗi lần
+    // đọc, khi đó điều kiện đúng tức thì và nhịp chờ coi như bị bỏ.
+    await cho(
+      () =>
+        vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal,
+      HAN_XOAY_MS,
+    );
   }
   return vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal;
 }
@@ -195,10 +312,11 @@ export async function hienTerminal(
   await cho(dungNo, HAN_SHOW_MS);
   if (dungNo()) return true;
 
-  // KHÔNG lọc theo `dangOPanel` ở đây. Đó là ảnh chụp lúc TẠO, mà cả lưới lẫn lệnh ẩn đều
-  // dời terminal qua lại panel↔editor sau đó — đúng cái terminal cần xoay tab nhất (sinh ở
-  // panel rồi bị kéo vào lưới) lại là cái bị ảnh chụp đó loại ra. Đo được trong Extension
-  // Host: với terminal như vậy `show()` KHÔNG kéo nổi tab của nó lên trước.
+  // KHÔNG đoán trước terminal đang ở panel hay editor rồi bỏ qua. Mọi nguồn đoán đều là
+  // ảnh chụp lúc TẠO, mà cả lưới lẫn lệnh ẩn đều dời terminal qua lại panel↔editor sau đó —
+  // đúng cái terminal cần xoay tab nhất (sinh ở panel rồi bị kéo vào lưới) lại là cái bị
+  // ảnh chụp đó loại ra. Đo được trong Extension Host: với terminal như vậy `show()` KHÔNG
+  // kéo nổi tab của nó lên trước.
   // Xoay oan một terminal đang thật sự ở panel thì vô hại: mỗi nhóm quay trọn một vòng nên
   // tab cũ trở lại đúng chỗ, và hàm vẫn trả `false`.
   ghiLog(`[hien] show() chưa kéo "${t.name}" lên active — xoay tab trong vùng editor`);
@@ -243,11 +361,19 @@ export async function themOVaoLuoi(
 ): Promise<boolean> {
   if (t.exitStatus !== undefined) return false;
   try {
-    if (dangOPanel(t)) {
-      t.show(true);
-      await cho(() => vscode.window.activeTerminal === t);
-      await nghi(NHIP_UI_MS);
-      await chay('workbench.action.terminal.moveToEditor');
+    // Không đoán `t` đang ở đâu: cứ ra lệnh kéo lên rồi kiểm. Lệnh này làm việc trên
+    // terminal active CỦA PANEL, nên khi `t` vốn đã ở vùng editor nó sẽ lôi nhầm một cái
+    // dưới panel lên — thấy vậy thì trả ngay cái đó về panel.
+    const truocTab = soTabTerminal();
+    t.show(true);
+    await cho(() => vscode.window.activeTerminal === t);
+    await nghi(NHIP_UI_MS);
+    await chay('workbench.action.terminal.moveToEditor');
+    await cho(() => soTabTerminal() > truocTab, HAN_CHO_NGAN_MS);
+    if (soTabTerminal() > truocTab && vscode.window.activeTerminal !== t) {
+      ghiLog(`[luoi] lôi nhầm "${vscode.window.activeTerminal?.name ?? '?'}" lên, trả về panel`);
+      await chay('workbench.action.terminal.moveToTerminalPanel');
+      await cho(() => soTabTerminal() <= truocTab, HAN_CHO_NGAN_MS);
       await nghi(NHIP_UI_MS);
     }
     t.show(true);
@@ -285,63 +411,6 @@ export async function themOVaoLuoi(
 }
 
 /**
- * Đẩy mọi terminal KHÔNG thuộc lưới ra khỏi vùng editor, xuống panel dưới.
- *
- * Lưới là của MỘT workspace: terminal của workspace khác (hay cái người dùng tự mở) nằm lẫn
- * trong đó thì mỗi ô một nơi khác nhau, và chính những tab lạ ấy chiếm mất ô của terminal
- * đáng ra phải vào lưới.
- *
- * ẨN, không đóng: `moveToTerminalPanel` dời tiến trình xuống panel, pty giữ nguyên — phiên
- * agent trong đó vẫn chạy, bấm vào panel là thấy lại. Đóng chúng đi là giết phiên của người
- * khác vì một thao tác bố cục của ta.
- *
- * Tab FILE thì không đụng: vùng editor là của chung, và đóng một file chưa lưu thì không có
- * đường lùi. Chúng ở lại ô đầu tiên.
- */
-async function anTerminalNgoaiLuoi(
-  canAn: readonly vscode.Terminal[],
-  trongLuoi: readonly vscode.Terminal[],
-  ghiLog: (d: string) => void,
-): Promise<number> {
-  const giu = new Set(trongLuoi);
-  const song = new Set(vscode.window.terminals);
-  // Quét cả `window.terminals` chứ không chỉ danh sách bên gọi đưa: terminal người dùng tự
-  // mở không thuộc workspace nào nên bên gọi không thể biết nó tồn tại, mà nó vẫn chiếm một
-  // ô của lưới. Mối nguy "chạm vào terminal đã chết thì ném" được chặn ngay dưới bằng
-  // `exitStatus` và `try` quanh `show()` — hai lớp đó có sau cái ghi chú cũ cấm quét.
-  const ungVien = new Set<vscode.Terminal>([...canAn, ...song]);
-  let da = 0;
-  for (const t of ungVien) {
-    if (giu.has(t) || dangOPanel(t)) continue;
-    // Tiến trình đã thoát thì không còn gì để ẩn.
-    if (t.exitStatus !== undefined || !song.has(t)) continue;
-    try {
-      // `show()` nằm TRONG try: danh sách terminal của VS Code vẫn liệt kê cái vừa bị đóng
-      // (cập nhật bất đồng bộ), và gọi show() lên nó ném "Terminal has already been
-      // disposed" — ném ở đây là hỏng cả lượt xếp lưới vì một terminal không liên quan.
-      t.show(true);
-      await cho(() => vscode.window.activeTerminal === t);
-      await nghi(NHIP_UI_MS);
-      await chay('workbench.action.terminal.moveToTerminalPanel');
-    } catch {
-      ghiLog(`[luoi] không ẩn được terminal "${t.name}"`);
-      continue;
-    }
-    await nghi(NHIP_UI_MS);
-    da += 1;
-  }
-  if (da > 0) {
-    // Ẩn xong thì focus đang nằm ở PANEL (terminal vừa bị dời xuống đó). Vòng rải bên dưới
-    // ra lệnh lên tab đang active của vùng editor, mà khi focus ở panel thì lệnh xoay tab
-    // không ăn — hậu quả đo được: tab file bị ném sang ô thứ hai và cả lưới rải hỏng.
-    await chay('workbench.action.focusActiveEditorGroup');
-    await nghi(NHIP_UI_MS);
-    ghiLog(`[luoi] đã ẩn ${da} terminal ngoài lưới xuống panel`);
-  }
-  return da;
-}
-
-/**
  * Xếp các terminal thành lưới.
  *
  * Ba điều học được khi chạy thật trên VS Code 1.142, cả ba đều đi ngược trực giác:
@@ -368,15 +437,6 @@ export async function xepLuoiTerminal(
   ds: readonly vscode.Terminal[],
   yeuCau?: YeuCauLuoi,
   ghiLog: (d: string) => void = () => undefined,
-  /**
-   * Terminal của workspace KHÁC, do bên gọi (manager) đưa vào từ sổ terminal sống của nó.
-   *
-   * Danh sách này KHÔNG còn là nguồn duy nhất: hàm ẩn quét thêm `window.terminals` để thấy
-   * cả terminal người dùng tự mở. Vẫn giữ tham số vì sổ của manager là nguồn sạch nhất (dọn
-   * theo `onDidCloseTerminal`), còn danh sách của VS Code thì có lúc liệt kê cả terminal vừa
-   * bị đóng — chạm vào một cái đã chết thì ném lỗi, nên mọi lối chạm đều phải có lưới chắn.
-   */
-  canAn: readonly vscode.Terminal[] = [],
 ): Promise<KetQuaXepLuoi> {
   if (ds.length === 0) return { daXep: 0, qua: 0, daAn: 0 };
   const soO =
@@ -384,20 +444,28 @@ export async function xepLuoiTerminal(
       ? Math.max(1, Math.min(ds.length, TOI_DA_O))
       : Math.max(1, yeuCau.cot * yeuCau.dong);
 
-  for (const t of ds) {
-    if (!dangOPanel(t)) continue;
-    t.show(true);
-    await cho(() => vscode.window.activeTerminal === t);
-    await nghi(NHIP_UI_MS);
-    await chay('workbench.action.terminal.moveToEditor');
-    await nghi(NHIP_UI_MS);
-  }
-
-  // Ẩn TRƯỚC khi gom nhóm: gom xong mới ẩn thì những tab lạ đã kịp chen vào ô của lưới.
-  const daAn = await anTerminalNgoaiLuoi(canAn, ds, ghiLog);
-
+  // Gom về một nhóm TRƯỚC mọi thứ: cả vét lẫn kéo lên đều làm việc trên nhóm đang focus.
   await gopVeMotNhom();
   await cho(() => soNhom() === 1);
+
+  // Vét sạch rồi kéo lại đúng cái mình cần — xem `donTerminalKhoiEditor` để biết vì sao
+  // không thể chỉ "kéo cái còn thiếu lên".
+  let lyDo: string | undefined;
+  const giu = new Set(ds);
+  const daAn = (await donTerminalKhoiEditor(ghiLog)).filter((t) => !giu.has(t)).length;
+  if (daAn > 0) ghiLog(`[luoi] đã đưa ${daAn} terminal không thuộc lưới xuống panel`);
+  if (soTabTerminal() > 0) {
+    lyDo = `vùng editor còn ${soTabTerminal()} tab terminal không dọn được`;
+    ghiLog(`[luoi] ${lyDo}`);
+  } else {
+    lyDo = await keoLenTheoThuTu(ds, ghiLog);
+  }
+  // Gom LẠI: vét có thể đóng nhóm rỗng, kéo lên có thể mở nhóm mới — đo được 24/10/2026 là
+  // sau hai pha đó tab nằm ở nhóm 2,3,4 còn nhóm 1 rỗng, nên vòng rải thấy "nhóm 1 còn 0
+  // tab" rồi dừng ngay. Pha rải chỉ đúng khi xuất phát từ ĐÚNG MỘT nhóm giữ mọi tab.
+  await gopVeMotNhom();
+  await cho(() => soNhom() === 1);
+  ghiLog(`[luoi] trước khi dựng ô: ${moTaBoCuc()}`);
 
   const bc = yeuCau === undefined ? boCucLuoi(soO) : boCucTuCotDong(yeuCau.cot, yeuCau.dong);
   await chay('vscode.setEditorLayout', bc);
@@ -407,22 +475,22 @@ export async function xepLuoiTerminal(
   // Mỗi lối thoát dưới đây PHẢI đặt `lyDo`. Trước đây hai lối lặng thinh (`nhom1` rỗng và
   // xoay tab thất bại) nên có lần lưới thiếu ô mà cả Output lẫn thông báo đều không nói được
   // vì sao — người dùng báo đúng chuyện đó ngày 20/10/2026.
-  let lyDo: string | undefined;
+  let lyDoRai: string | undefined;
   for (let k = 1; k < soO; k++) {
     await focusNhom(0);
     await nghi(NHIP_NHO_MS);
     const nhom1 = vscode.window.tabGroups.all[0];
     if (nhom1 === undefined) {
-      lyDo = `dừng ở ô ${k + 1}: không đọc được nhóm editor nào`;
+      lyDoRai = `dừng ở ô ${k + 1}: không đọc được nhóm editor nào`;
       break;
     }
     // Dời nốt tab cuối của nhóm 1 là làm nó rỗng → VS Code đóng nhóm → lưới mất một ô.
     if (nhom1.tabs.length <= 1 || demTermTrongNhom(nhom1) <= 1) {
-      lyDo = `dừng ở ô ${k + 1}: hết terminal để rải (nhóm 1 còn ${nhom1.tabs.length} tab)`;
+      lyDoRai = `dừng ở ô ${k + 1}: hết terminal để rải (nhóm 1 còn ${nhom1.tabs.length} tab)`;
       break;
     }
     if (!(await xoayToiTabTerminal(nhom1))) {
-      lyDo = `dừng ở ô ${k + 1}: không xoay được tới tab terminal nào trong nhóm 1`;
+      lyDoRai = `dừng ở ô ${k + 1}: không xoay được tới tab terminal nào trong nhóm 1`;
       break;
     }
     const truoc = soNhomCoTerminal();
@@ -432,11 +500,12 @@ export async function xepLuoiTerminal(
     }
     await cho(() => soNhomCoTerminal() > truoc);
     if (soNhomCoTerminal() === truoc) {
-      lyDo = `dừng ở ô ${k + 1}: VS Code không nhận lệnh dời tab sang ô kế`;
+      lyDoRai = `dừng ở ô ${k + 1}: VS Code không nhận lệnh dời tab sang ô kế`;
       break;
     }
   }
-  if (lyDo !== undefined) ghiLog(`[luoi] ${lyDo}`);
+  if (lyDoRai !== undefined) ghiLog(`[luoi] ${lyDoRai}`);
+  lyDo ??= lyDoRai;
 
   const coTerm = soNhomCoTerminal();
   ghiLog(`[luoi] kết quả: ${coTerm} ô có terminal / ${soNhom()} ô`);

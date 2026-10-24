@@ -775,6 +775,10 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Vừa đóng một terminal rồi xếp lưới ngay → không lỗi, lưới vẫn rải đủ ô
 - [ ] **(22/10/2026)** Mở một terminal thường bằng Ctrl+` (không thuộc workspace nào) trong vùng
       editor → xếp lưới → nó phải xuống panel, KHÔNG chiếm ô của lưới và vẫn đang chạy
+- [ ] **(24/10/2026)** Xếp lưới workspace A → rồi xếp lưới workspace B → MỌI terminal của B
+      phải lên lưới, không ô nào rỗng (trước đây terminal của B bị lượt A đẩy xuống panel thì
+      nằm lại dưới đó vĩnh viễn)
+- [ ] **(24/10/2026)** Thứ tự ô bám đúng thứ tự trong cây
 - [ ] Lặp lại thao tác trên với `terminal.integrated.defaultLocation` đặt là `editor` (máy anh Ý
       đang đặt thế) — đây chính là ca đã lọt lưới
 
@@ -968,3 +972,46 @@ Chưa khẳng định được cho tới khi người dùng chạy lại và g�
   Hệ quả: terminal nhận nuôi mà người dùng tự KÉO xuống panel sẽ không còn được kéo vào lưới —
   trước đây có, nhưng là nhờ mặc định sai chứ không phải chủ ý. Vẫn là nợ "`creationOptions` chỉ
   là ảnh chụp lúc tạo", nay lộ ra ở chiều ngược lại. Chưa ai gặp.
+
+## Lưới thiếu ô — GỐC RỄ, đã sửa (24/10/2026)
+
+Nối tiếp mục 20/10 ở trên: nguyên nhân thật đã tìm ra, đo được chứ không suy đoán, và ca
+người dùng báo ("chọn 5 mà chỉ 2 cái vào lưới") đã dựng lại được trong Extension Host.
+
+**Hai sự thật đo được về VS Code 1.143:**
+
+1. `workbench.action.terminal.moveToEditor` KHÔNG làm việc trên `window.activeTerminal` mà
+   trên terminal đang active CỦA PANEL. Đo: `show()` một terminal đang ở vùng editor rồi gọi
+   lệnh đó → VS Code lôi một terminal KHÁC dưới panel lên (`tabs 1→2`, active đổi sang cái
+   dưới panel). Đây là lý do bản cũ buộc phải đoán trước "nó đang ở đâu".
+2. `creationOptions.location` chỉ là ảnh chụp lúc TẠO. Chính lệnh ẩn của lưới dời terminal
+   xuống panel sau đó, nên lần xếp lưới kế tiếp nó vẫn khai "editor" trong khi đang nằm dưới
+   panel → không bao giờ được kéo lên nữa. Ghép hai điều: xếp lưới workspace A đẩy terminal
+   của B xuống panel; xếp lưới B thì chúng nằm lại dưới đó và lưới báo "hết terminal để rải".
+
+**Cách làm mới — VÉT RỒI KÉO, không đoán vị trí nữa:**
+
+1. Gom về một nhóm editor.
+2. **Vét**: đẩy MỌI tab terminal khỏi vùng editor xuống panel (lái bằng tab, không cần biết
+   tab nào của ai). Cái vừa bị đẩy nhận diện qua `window.activeTerminal` ngay sau lệnh.
+3. **Kéo lên**: `show()` + `moveToEditor` từng cái trong lưới, đúng thứ tự cây. Lúc này vùng
+   editor sạch bóng terminal nên lệnh là xác định.
+4. Gom lại một nhóm, dựng ô, rải như cũ.
+
+Được thêm ba thứ: thứ tự ô bám đúng thứ tự cây; mọi tab terminal còn trong editor chắc chắn
+thuộc lưới (hết cửa ném nhầm tab của người khác); `daXep` hết nói dối.
+
+**Bài học đắt nhất — lệnh workbench ăn hay không là chuyện may rủi.** Cả `moveToEditor` lẫn
+`moveToTerminalPanel` đều có lúc im lặng không làm gì, kể cả khi tab đang hiện đúng là tab
+terminal, kể cả sau khi đã `focusActiveEditorGroup`. Không API nào cho đọc "vùng nào đang giữ
+focus". Nên MỌI lệnh dời đều phải: ra lệnh → **đếm tab để kiểm** → thử lại (3 lần, nghỉ dài
+dần). Thiếu bước thử lại ở một trong hai pha là bộ test đỏ 6 ca; thêm vào là 28/28 xanh hai
+lượt liên tiếp. Đừng gỡ các vòng thử lại đó ra.
+
+**Bộ test:** `pretest:vscode` nay xoá `.vscode-test/user-data` trước mỗi lượt. Hồ sơ cũ khôi
+phục lại terminal và tab Untitled của lượt trước, làm các ca sau thấy trạng thái bẩn.
+
+**Nợ đã trả:** `daXep` không còn đếm nhầm terminal lạ (mục 22/10 ở trên).
+
+**Nợ còn lại:** `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và
+`tab.label` có lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.

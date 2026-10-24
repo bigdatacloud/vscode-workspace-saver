@@ -566,7 +566,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretest:vscode": "tsc -p tsconfig.json --outDir out",
+    "pretest:vscode": "tsc -p tsconfig.json --outDir out && node -e \"require('fs').rmSync('.vscode-test/user-data',{recursive:true,force:true})\"",
     "test:vscode": "npm run build && vscode-test"
   },
   "devDependencies": {
