@@ -999,7 +999,9 @@ người dùng báo ("chọn 5 mà chỉ 2 cái vào lưới") đã dựng lại
 4. Gom lại một nhóm, dựng ô, rải như cũ.
 
 Được thêm ba thứ: thứ tự ô bám đúng thứ tự cây; mọi tab terminal còn trong editor chắc chắn
-thuộc lưới (hết cửa ném nhầm tab của người khác); `daXep` hết nói dối.
+thuộc lưới (hết cửa ném nhầm tab của người khác); `daXep` hết nói dối — **nhưng chỉ khi vét
+trọn vẹn**. Rơi vào nhánh "vùng editor còn N tab không dọn được" thì pha kéo lên bị bỏ, và
+`daXep` lại đếm cả terminal lạ như cũ.
 
 **Bài học đắt nhất — lệnh workbench ăn hay không là chuyện may rủi.** Cả `moveToEditor` lẫn
 `moveToTerminalPanel` đều có lúc im lặng không làm gì, kể cả khi tab đang hiện đúng là tab
@@ -1013,8 +1015,14 @@ phục lại terminal và tab Untitled của lượt trước, làm các ca sau 
 
 **Nợ đã trả:** `daXep` không còn đếm nhầm terminal lạ (mục 22/10 ở trên).
 
-**Nợ còn lại:** `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và
-`tab.label` có lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.
+**Nợ còn lại:**
+
+- `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và `tab.label` có
+  lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.
+- `themOVaoLuoi` có nhánh "lôi nhầm một terminal dưới panel lên thì trả nó về chỗ cũ".
+  Nhánh đó **chưa ca test nào chạy qua**: hai ca hiện có đều rơi vào trường hợp panel rỗng
+  hoặc chính nó đang ở panel. Đúng nhánh này từng là ca đỏ `daAn === 1` lúc đang sửa.
+- Khi vét không trọn vẹn thì `daXep` đếm cả terminal lạ (xem trên).
 
 ## Phiên trùng tên + trùng thư mục (24/10/2026)
 

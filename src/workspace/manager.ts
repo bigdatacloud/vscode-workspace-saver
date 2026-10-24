@@ -1127,6 +1127,8 @@ export class WorkspaceManager implements vscode.Disposable {
         modal: true,
         detail:
           `Thư mục: ${noi}\n\n` +
+          'Đóng phiên cũ là đóng tab của nó; tiến trình agent bên trong có thể còn vài giây ' +
+          'mới thoát hẳn.\n\n' +
           (cungWs
             ? 'Mở thêm sẽ thành hai phiên agent y hệt nhau trên cùng một thư mục.'
             : `Đưa về đây thì phiên vẫn chạy tiếp, chỉ đổi chỗ trong cây, và mục trùng "${entry.name}" ở workspace này được bỏ đi. Mở thêm sẽ thành hai phiên agent y hệt nhau trên cùng một thư mục.`),
@@ -1136,8 +1138,12 @@ export class WorkspaceManager implements vscode.Disposable {
     if (tra === undefined) return 'boQua';
     if (tra === NUT_MO) return 'vanMo';
     if (tra === NUT_DONG) {
-      // Người dùng chọn bỏ cái cũ: đóng nó rồi để activate mở phiên mới như thường.
+      // Gỡ khỏi sổ TRƯỚC khi dispose, cùng lý do như `TerminalManager.create`:
+      // `onDidCloseTerminal` chạy sau một nhịp, mà entry kế tiếp trong cùng đợt kích hoạt
+      // tra sổ ngay — thấy cái vừa đóng thì lại đi hỏi về một xác chết.
+      this.terminals.release(chu.entry.id);
       terminal.dispose();
+      this.onChanged.fire();
       return 'vanMo';
     }
     if (tra === NUT_CHUYEN) {

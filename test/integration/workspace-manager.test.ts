@@ -79,6 +79,12 @@ interface ManagerHarness {
   noiLaiTerminalHoiSinh(ws: Workspace): Promise<{ ids: string[]; boQua: string[] }>;
   adoptInto(ws: Workspace, terminal: vscode.Terminal): TerminalEntry | null;
   removeTerminal(workspaceId: string, terminalId: string): Promise<void>;
+  hoiTrungCho(
+    wsId: string,
+    entry: TerminalEntry,
+    terminalId: string,
+  ): Promise<'daDung' | 'boQua' | 'vanMo'>;
+  timTheoTerminalId(id: string): { ws: Workspace; entry: TerminalEntry } | null;
 }
 
 function bareManager(store: StoreFile, terminals: ManagerHarness['terminals']): ManagerHarness {
@@ -617,5 +623,89 @@ describe('WorkspaceManager — chuyển và sắp xếp terminal', () => {
     await m.thaTerminal([t1], U('9'), null);
 
     expect(st.workspaces[0]?.terminals).toHaveLength(3);
+  });
+});
+
+describe('WorkspaceManager — phiên trùng tên + trùng thư mục', () => {
+  beforeEach(() => {
+    vscodeMock.window.terminals = [];
+    vscodeMock.window.showWarningMessage.mockReset();
+  });
+
+  const dungBo = (): {
+    manager: ManagerHarness;
+    cu: TerminalEntry;
+    moi: TerminalEntry;
+    live: ReturnType<typeof fakeTerminal>;
+    terminals: ManagerHarness['terminals'];
+  } => {
+    const cu: TerminalEntry = {
+      id: U('1'), name: 'vof', cwd: String.raw`D:\repo`, kind: 'plain',
+    };
+    const moi: TerminalEntry = {
+      id: U('2'), name: 'vof', cwd: String.raw`D:\repo`, kind: 'plain',
+    };
+    const wsCu: Workspace = {
+      id: U('3'), name: 'Cũ', lastActiveAt: null, activeWindowId: null, terminals: [cu],
+    };
+    const wsMoi: Workspace = {
+      id: U('4'), name: 'Mới', lastActiveAt: null, activeWindowId: null, terminals: [moi],
+    };
+    const live = fakeTerminal();
+    const terminals: ManagerHarness['terminals'] = {
+      adopt: vi.fn(),
+      get: vi.fn((id: string) => (id === cu.id ? live : undefined)),
+      has: vi.fn((id: string) => id === cu.id),
+      ownsTerminal: vi.fn(() => null),
+      release: vi.fn(),
+    };
+    const manager = bareManager({ version: 2, workspaces: [wsCu, wsMoi] }, terminals);
+    return { manager, cu, moi, live, terminals };
+  };
+
+  it('chọn "đóng phiên cũ" → gỡ khỏi sổ TRƯỚC rồi mới đóng, và cho phép mở phiên mới', async () => {
+    const { manager, moi, cu, live, terminals } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên cũ rồi mở phiên mới');
+
+    const quyet = await manager.hoiTrungCho(U('4'), moi, cu.id);
+
+    expect(quyet).toBe('vanMo');
+    expect(terminals.release).toHaveBeenCalledWith(cu.id);
+    expect(live.dispose).toHaveBeenCalledOnce();
+    // Thứ tự quan trọng: sổ phải sạch trước khi tab đóng, kẻo entry kế tiếp hỏi về xác chết.
+    const thuTuRelease = (terminals.release as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!;
+    const thuTuDispose = (live.dispose as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!;
+    expect(thuTuRelease).toBeLessThan(thuTuDispose);
+  });
+
+  it('bấm Esc → không đóng gì, không mở gì', async () => {
+    const { manager, moi, cu, live, terminals } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue(undefined);
+
+    const quyet = await manager.hoiTrungCho(U('4'), moi, cu.id);
+
+    expect(quyet).toBe('boQua');
+    expect(live.dispose).not.toHaveBeenCalled();
+    expect(terminals.release).not.toHaveBeenCalled();
+  });
+
+  it('chọn "mở thêm" → không đụng vào phiên cũ', async () => {
+    const { manager, moi, cu, live } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Mở thêm một phiên nữa');
+
+    const quyet = await manager.hoiTrungCho(U('4'), moi, cu.id);
+
+    expect(quyet).toBe('vanMo');
+    expect(live.dispose).not.toHaveBeenCalled();
+  });
+
+  it('terminal cũ biến mất giữa chừng → đừng chặn người dùng, cứ mở', async () => {
+    const { manager, moi, cu, terminals } = dungBo();
+    (terminals.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+
+    const quyet = await manager.hoiTrungCho(U('4'), moi, cu.id);
+
+    expect(quyet).toBe('vanMo');
+    expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
   });
 });
