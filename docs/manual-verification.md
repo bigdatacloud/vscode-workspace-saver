@@ -1075,3 +1075,42 @@ tên chính là cách dùng nhiều vai trên một dự án.
 - [ ] Trùng trong CHÍNH workspace đó → không có nút "Đưa về workspace này" (vô nghĩa)
 - [ ] Hai worktree khác nhau của cùng một repo, cùng tên terminal → KHÔNG hỏi (khác chỗ làm việc)
 - [ ] Cùng thư mục nhưng tên khác (nhiều vai) → KHÔNG hỏi
+
+## Bộ test Extension Host chập chờn — nguyên nhân và cách chữa (25/10/2026)
+
+Nhiều ngày nay bộ test dao động **30/0 ↔ 25/5** trên CÙNG một mã. Hậu quả không chỉ là phiền:
+ngày 25/10 tôi đã kết luận NHẦM rằng một thay đổi là thủ phạm (hai lượt liền 25/5), rồi gỡ
+nó ra và vẫn 25/5. **Bộ test không phân biệt được tín hiệu với nhiễu thì không thẩm định được
+gì** — mọi kết luận "đã sửa xong" dựa trên nó đều đáng ngờ.
+
+**Nguyên nhân:** `donBanLamViec` chỉ đóng tab trong vùng editor. Terminal mà ca trước để sót
+DƯỚI PANEL vẫn sống sang ca sau, mà mọi lệnh dời của VS Code đều làm việc trên "terminal
+active của panel" — nên cái sót lại bị kéo lên thay cho cái cần kéo. Dấu hiệu nhận biết: một
+tab nhãn `pwsh` lạ nằm trong lưới.
+
+**Chữa:** mỗi ca dọn MỌI terminal (`window.terminals.forEach(dispose)`), chờ về 0, rồi mới
+dọn tab. Sau khi chữa: 30/0, 30/0, 29/1.
+
+**Ca đỏ còn lại chỉ thẳng một lỗi thật khác** — và lần này log sạch đủ để đọc:
+
+```
+[luoi] trước khi dựng ô: #1:nam-0,nam-1,nam-2,nam-3,nam-4   ← vét+kéo ĐÚNG cả 5, đúng thứ tự
+[luoi] dừng ở ô 3: VS Code không nhận lệnh dời tab sang ô kế
+[luoi] bố cục lúc dừng: #1:nam-0,nam-1,nam-2 | #2:nam-4,nam-3 | #3: | #4: | #5:
+```
+
+Hai tab cùng rơi vào ô 2. Giả thuyết: vòng rải nhảy `k` lần `moveEditorToNextGroup` với nhịp
+nghỉ CỐ ĐỊNH 90 ms giữa hai cú; lệnh đó vừa dời tab vừa đưa focus sang nhóm đích, focus chuyển
+không đồng bộ nên 90 ms không đủ thì cú nhảy thứ hai rơi vào quãng trống.
+
+**Đã THỬ và ĐÃ GỠ** (25/10/2026): thay nhịp cố định bằng chờ `activeTabGroup.viewColumn` tăng
+thật. Lượt chạy sau đó tụt xuống 25/5 với dấu hiệu khác hẳn (vét bỏ sót terminal lạ), nên bản
+vá **chưa được kiểm chứng** và đã trả về. Giả thuyết trên vẫn chưa bác bỏ cũng chưa xác nhận —
+cần bộ test sạch hơn nữa mới đo được. Đừng áp lại y nguyên mà không đo kỹ.
+
+**Luật rút ra, áp cho MỌI lệnh workbench trong file này:** ra lệnh → chờ ĐÚNG điều kiện mình
+cần → kiểm lại. Không bao giờ "ra lệnh rồi nghỉ N mili giây rồi tin là xong".
+
+**Luật thứ hai, đắt hơn:** bộ test này nhiễu tới mức **hai lượt chạy KHÔNG đủ để kết luận**.
+Ngày 25/10 tôi đã hai lần kết luận sai vì chỉ dựa vào hai lượt. Muốn khẳng định một thay đổi
+là tốt hay xấu thì phải ít nhất ba lượt, và phải so với mốc nền đo cùng ngày.
