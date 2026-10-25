@@ -1,6 +1,6 @@
 <img src="media/icon.png" width="96" alt="">
 
-# AI Workspace Session Manager
+# AI Workspaces
 
 [English](README.md) | **Tiếng Việt**
 

@@ -1,6 +1,6 @@
 <img src="media/icon.png" width="96" alt="">
 
-# AI Workspace Session Manager
+# AI Workspaces
 
 **English** | [Tiếng Việt](README.vi.md)
 
@@ -254,6 +254,21 @@ Workspace settings** in its context menu — the choice is saved with the worksp
 applies to both new and restored terminals. For terminals you open yourself with
 <kbd>Ctrl+Shift+`</kbd>, use VS Code's own setting
 `terminal.integrated.defaultLocation: "editor"`.
+
+## What this extension touches on your machine
+
+Full transparency before you install — this extension does more than move tabs around:
+
+| What | Where | Why |
+|---|---|---|
+| Reads your Claude Code session registry | `~/.claude/` (and `$CODEX_HOME` / `~/.codex/` for Codex) | To reattach a terminal to the conversation it was running, instead of starting a second process on the same conversation file |
+| Lists running processes | OS process table | To tell "this conversation is already running somewhere" from "it is safe to resume" |
+| Creates and deletes git worktrees | Inside the repos you point terminals at | Only when you ask for a per-role worktree; removal is a separate, explicit command |
+| Runs recorded shell commands | Terminals you created | Only after you explicitly trust that exact command text; editing the command revokes the trust |
+| Stores its own state | VS Code global storage (`workspaces/<id>.json`) | Nothing is written inside your repos — no manifest file is added to your projects |
+| Moves terminals between the editor area and the bottom panel | Your VS Code window | That is how the grid view works; terminals are **moved, never closed**, so agent sessions keep running |
+
+It does **not** send anything over the network, and has no telemetry.
 
 ## Safety principles
 

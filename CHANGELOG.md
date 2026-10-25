@@ -1,9 +1,9 @@
 # Changelog
 
-Mọi thay đổi đáng kể của **AI Workspace Session Manager** được ghi ở đây.
+Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
-## [0.0.1] — 2026-10-25
+## [0.1.0] — 2026-10-25
 
 Bản phát hành công khai đầu tiên.
 

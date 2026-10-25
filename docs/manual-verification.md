@@ -1088,8 +1088,24 @@ DƯỚI PANEL vẫn sống sang ca sau, mà mọi lệnh dời của VS Code đ�
 active của panel" — nên cái sót lại bị kéo lên thay cho cái cần kéo. Dấu hiệu nhận biết: một
 tab nhãn `pwsh` lạ nằm trong lưới.
 
-**Chữa:** mỗi ca dọn MỌI terminal (`window.terminals.forEach(dispose)`), chờ về 0, rồi mới
-dọn tab. Sau khi chữa: 30/0, 30/0, 29/1.
+**Chữa một phần:** mỗi ca dọn MỌI terminal (`window.terminals.forEach(dispose)`), chờ về 0,
+rồi mới dọn tab. Ngay sau đó đo 30/0, 30/0, 29/1 — và tôi đã vội kết luận là ĐÃ CHỮA XONG.
+**Sai.** Lượt sau vẫn 25/5 trên đúng mã đó. Dọn terminal là việc đúng và phải giữ, nhưng
+không phải nguyên nhân chính.
+
+**Nguyên nhân chính (tìm ra sau, đo 25/10):** TẢI MÁY. Lượt xanh chạy 4–5 phút, lượt đỏ chạy
+6–9 phút — cùng một mã. Hai vòng thử lại (`dayMotTabXuongPanel`, `keoLenTheoThuTu`) chờ 700 ms
+ở hai lượt đầu rồi mới thử lại; máy tải nặng thì lệnh trước CHƯA KỊP XONG mà lượt thử lại đã
+bắn tiếp, thành ra dời luôn tab THỨ HAI. Dấu hiệu khớp chính xác: `#1:trong-1,trong-0 |
+#2:ngoai-luoi` — tab lạ nằm lại trong lưới còn hai tab của lưới chồng lên nhau.
+
+Đã sửa: chờ đủ `HAN_CHO_MS` ở MỌI lượt thử lại, không rút ngắn hai lượt đầu. **Nhưng CHƯA
+chứng minh được là cải thiện**: ba lượt sau khi sửa cho 25/5, 29/1, 29/1 — vẫn trong khoảng
+dao động cũ. Giữ thay đổi vì tự thân nó đúng (thử lại trong lúc lệnh trước còn chạy dở là
+sai), KHÔNG vì đo được là tốt hơn. Lượt chạy lúc này 8–10 phút, tức máy đang tải rất nặng. Chờ thêm vài giây
+rẻ hơn nhiều so với dời nhầm tab. Điều này không chỉ là chuyện test: **máy anh Ý chạy nhiều
+agent cùng lúc nên "tải nặng" là trạng thái thường ngày**, không phải ngoại lệ của môi trường
+test.
 
 **Ca đỏ còn lại chỉ thẳng một lỗi thật khác** — và lần này log sạch đủ để đọc:
 

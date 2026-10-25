@@ -1,8 +1,8 @@
 {
-  "name": "ai-workspace-session-manager",
-  "displayName": "AI Workspace Session Manager",
+  "name": "ai-workspaces",
+  "displayName": "AI Workspaces",
   "description": "Manage global workspaces of terminals — auto-save state, restore terminals, and resume Claude Code sessions right where you left off",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "bigdatacloud",
   "icon": "media/icon.png",
   "galleryBanner": {

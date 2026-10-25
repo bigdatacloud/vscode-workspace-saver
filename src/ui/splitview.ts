@@ -120,7 +120,12 @@ async function dayMotTabXuongPanel(truoc: number, ghiLog: (d: string) => void): 
       return false;
     }
     await chay('workbench.action.terminal.moveToTerminalPanel');
-    await cho(() => soTabTerminal() < truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
+    // Chờ ĐỦ LÂU ở MỌI lượt, không rút ngắn hai lượt đầu. Thử lại trong khi lệnh trước còn
+    // đang chạy dở là đẩy luôn tab THỨ HAI xuống — hỏng nặng hơn hẳn việc chờ thêm vài giây.
+    // Đo được 25/10/2026: cùng một mã, máy rảnh thì bộ test 30/0 (4-5 phút), máy tải nặng thì
+    // 25/5 (6-9 phút), dấu hiệu luôn là tab bị dời sai chỗ. Máy anh Ý chạy nhiều agent cùng
+    // lúc nên "tải nặng" là trạng thái THƯỜNG, không phải ngoại lệ.
+    await cho(() => soTabTerminal() < truoc, HAN_CHO_MS);
     if (soTabTerminal() < truoc) return true;
     // Lần sau thử một tab terminal KHÁC: cố mãi vào đúng một tab là cách chắc chắn nhất để
     // kẹt vĩnh viễn nếu riêng nó không chịu dời (tiến trình đã chết, tab hỏng…).
@@ -183,7 +188,7 @@ async function keoLenTheoThuTu(
         ghiMot(`không kéo được "${t.name}" lên vùng editor`);
         break;
       }
-      await cho(() => soTabTerminal() > truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
+      await cho(() => soTabTerminal() > truoc, HAN_CHO_MS); // xem ghi chú ở dayMotTabXuongPanel
       lenDuoc = soTabTerminal() > truoc;
     }
     if (lenDuoc) len += 1;
