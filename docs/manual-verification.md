@@ -1130,3 +1130,47 @@ cần → kiểm lại. Không bao giờ "ra lệnh rồi nghỉ N mili giây r�
 **Luật thứ hai, đắt hơn:** bộ test này nhiễu tới mức **hai lượt chạy KHÔNG đủ để kết luận**.
 Ngày 25/10 tôi đã hai lần kết luận sai vì chỉ dựa vào hai lượt. Muốn khẳng định một thay đổi
 là tốt hay xấu thì phải ít nhất ba lượt, và phải so với mốc nền đo cùng ngày.
+
+## Đo trên máy này KHÔNG cho ra tín hiệu (25/10/2026) — đọc trước khi tin bất kỳ con số nào
+
+Ngày 25/10 tôi kết luận sai **ba lần** về cùng một chuyện, lần nào cũng vì so hai phép đo ở
+hai điều kiện TẢI MÁY khác nhau. Ghi lại đầy đủ để người sau khỏi đi lại:
+
+| Lần | Tôi kết luận | Thực tế |
+|---|---|---|
+| 1 | "`thuPanel` làm bộ test tụt" (2 lượt 25/5) | Gỡ ra vẫn 25/5 |
+| 2 | "Đã chữa nhiễu bằng cách dọn terminal" (30/0, 30/0, 29/1) | Lượt sau vẫn 25/5 trên đúng mã đó |
+| 3 | "Nhóm `xem song song` chạy riêng thì sạch" (19/19 ×3) → dùng làm mốc nền → "`thuPanel` thật sự gây hỏng" | Gỡ `thuPanel` ra rồi đo lại cùng cách: **14/5, 17/2, 14/5** — tệ hơn cả lúc có vá |
+
+**Sự thật đo được, chỉ mỗi điều này:** kết quả bám theo tải máy. Lượt chạy 6 phút thì gần sạch,
+lượt 8–10 phút thì 5 ca đỏ — trên cùng một mã. Máy anh Ý chạy nhiều agent song song nên tải
+thay đổi liên tục trong ngày.
+
+**Hệ quả bắt buộc:**
+
+- **608 vitest là thứ duy nhất đáng tin** để bảo đảm chất lượng. Con số Extension Host trên máy
+  này KHÔNG dùng để phán quyết một thay đổi là tốt hay xấu được — dù chạy riêng nhóm, dù ba lượt.
+- Muốn đo thật thì phải **đóng hết agent khác rồi mới chạy**, và ghi lại thời gian mỗi lượt
+  cạnh con số; hai phép đo khác thời lượng rõ rệt thì không so với nhau được.
+- Thấy mình sắp viết "đo được X nên kết luận Y" → kiểm lại xem mốc nền có đo cùng điều kiện không.
+
+## Món nợ "thu panel sau khi xếp lưới" — CHƯA LÀM ĐƯỢC, và vì sao
+
+Người dùng hỏi đúng chỗ (25/10): xếp lưới xong thì panel hiện ra kèm tab Debug Console — tab
+đang mở sẵn của panel, extension không chọn tab nào cả. Nó chiếm mất phần màn hình mà
+"xem song song" vốn sinh ra để giải phóng.
+
+Đã thử hai bản: `closePanel` ở cuối lượt; và bản đó cộng `focusPanel` ở đầu lượt sau. **Không
+bản nào chứng minh được là an toàn hay nguy hiểm** — vì công cụ đo trên máy này không phân
+biệt nổi (xem mục trên). Đã gỡ cả hai: thêm một thay đổi không kiểm chứng được vào một
+extension đã phát hành công khai thì rủi ro lớn hơn cái phiền nó chữa.
+
+**Giả thuyết còn treo** (hợp với các dấu hiệu quan sát được, CHƯA xác nhận): cơ chế lưới dựa
+vào bất biến "terminal đang active CỦA PANEL phải xác định" — cả `moveToEditor`,
+`moveToTerminalPanel` lẫn cách nhận diện cái vừa bị đẩy đều dựa vào nó — và đóng panel có thể
+phá đúng bất biến đó. Ba dấu hiệu từng thấy: `#1:trong-1,trong-0 | #2:ngoai-luoi` (vét không
+đẩy nổi terminal lạ), `#4:pwsh` (terminal dưới panel trồi lên chiếm ô), `#3:Untitled-1` (rải
+ném nhầm tab file). Nhưng cả ba cũng xuất hiện khi KHÔNG có bản vá, nên chưa quy tội được.
+
+**Tạm thời: Ctrl+J để thu panel bằng tay.** Muốn làm tiếp thì việc đầu tiên là dựng được môi
+trường đo sạch, không phải viết thêm mã.
