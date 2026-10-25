@@ -14,11 +14,29 @@
     "type": "git",
     "url": "https://github.com/bigdatacloud/vscode-workspace-saver.git"
   },
+  "bugs": {
+    "url": "https://github.com/bigdatacloud/vscode-workspace-saver/issues"
+  },
+  "homepage": "https://github.com/bigdatacloud/vscode-workspace-saver#readme",
+  "qna": "https://github.com/bigdatacloud/vscode-workspace-saver/issues",
+  "keywords": [
+    "claude",
+    "claude code",
+    "terminal",
+    "session manager",
+    "workspace",
+    "ai agent",
+    "codex",
+    "split view",
+    "git worktree",
+    "restore session"
+  ],
   "engines": {
     "vscode": "^1.93.0",
     "node": ">=20"
   },
   "categories": [
+    "AI",
     "Other"
   ],
   "main": "./dist/extension.js",
