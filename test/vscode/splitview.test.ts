@@ -63,6 +63,14 @@ const moTaNhom = (): string =>
  * lưu và đóng, không hỏi gì.
  */
 async function donBanLamViec(): Promise<void> {
+  // Dọn MỌI terminal, không chỉ tab trong editor. Ca trước để sót terminal dưới panel thì ca
+  // sau bắt đầu từ trạng thái bẩn: lệnh dời của VS Code làm việc trên "terminal active của
+  // panel", nên một cái sót lại có thể bị kéo lên thay cho cái cần kéo. Đo được 25/10/2026:
+  // cùng một mã mà bộ test dao động 30/0 ↔ 25/5 giữa các lượt, dấu hiệu luôn là một tab
+  // "pwsh" lạ trong lưới.
+  for (const t of vscode.window.terminals) t.dispose();
+  await cho(() => vscode.window.terminals.length === 0, 8000);
+
   for (let i = 0; i < 20; i++) {
     const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
     if (tabs.length === 0) break;
@@ -712,6 +720,9 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
       const ok = await hienTerminal(dich, (x) => log.push(x));
 
       assert.equal(ok, true, `phải hiện được dù nhãn tab rỗng — log: ${log.join(' | ')}`);
+      // Chờ focus lắng rồi mới đọc: hàm trả về ngay khi điều kiện đúng, nhưng VS Code còn
+      // chuyển focus thêm một nhịp — đọc tức thì có lúc vớ phải terminal của panel.
+      await cho(() => vscode.window.activeTerminal === dich);
       assert.equal(
         vscode.window.activeTerminal,
         dich,
