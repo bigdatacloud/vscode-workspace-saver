@@ -4,6 +4,14 @@
 
 **English** | [Tiếng Việt](README.vi.md)
 
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/bigdatacloud.ai-workspaces?label=Marketplace&color=4F46E5)](https://marketplace.visualstudio.com/items?itemName=bigdatacloud.ai-workspaces)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/bigdatacloud.ai-workspaces?label=installs&color=4F46E5)](https://marketplace.visualstudio.com/items?itemName=bigdatacloud.ai-workspaces)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/bigdatacloud.ai-workspaces?label=rating&color=4F46E5)](https://marketplace.visualstudio.com/items?itemName=bigdatacloud.ai-workspaces)
+[![MIT](https://img.shields.io/badge/license-MIT-4F46E5)](LICENSE)
+
+**Install:** search **AI Workspaces** in the Extensions tab, or run
+`code --install-extension bigdatacloud.ai-workspaces`
+
 A VS Code extension that manages **multiple global workspaces**, each holding **multiple open
 terminals** — both terminals you open by hand and terminals running Claude Code. No manifest
 lives inside your repo: each workspace is stored as its own file in the extension's global storage

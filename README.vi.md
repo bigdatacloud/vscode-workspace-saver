@@ -4,6 +4,14 @@
 
 [English](README.md) | **Tiếng Việt**
 
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/bigdatacloud.ai-workspaces?label=Marketplace&color=4F46E5)](https://marketplace.visualstudio.com/items?itemName=bigdatacloud.ai-workspaces)
+[![Lượt cài](https://img.shields.io/visual-studio-marketplace/i/bigdatacloud.ai-workspaces?label=l%C6%B0%E1%BB%A3t%20c%C3%A0i&color=4F46E5)](https://marketplace.visualstudio.com/items?itemName=bigdatacloud.ai-workspaces)
+[![Đánh giá](https://img.shields.io/visual-studio-marketplace/r/bigdatacloud.ai-workspaces?label=%C4%91%C3%A1nh%20gi%C3%A1&color=4F46E5)](https://marketplace.visualstudio.com/items?itemName=bigdatacloud.ai-workspaces)
+[![MIT](https://img.shields.io/badge/license-MIT-4F46E5)](LICENSE)
+
+**Cài đặt:** tìm **AI Workspaces** trong tab Extensions, hoặc chạy
+`code --install-extension bigdatacloud.ai-workspaces`
+
 Extension VS Code quản lý **nhiều workspace toàn cục**, mỗi workspace giữ **nhiều terminal
 đang mở** — kể cả terminal bạn tự mở tay lẫn terminal chạy Claude Code. Không còn manifest
 sống trong repo: mỗi workspace được lưu thành MỘT FILE riêng trong global storage của extension
