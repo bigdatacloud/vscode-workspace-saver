@@ -505,6 +505,44 @@ suite('xem song song — thêm ô vào lưới đang có', () => {
     }
   });
 
+  /**
+   * Nhánh "lôi nhầm rồi trả về panel" — ghi nợ 24/10/2026 là chưa ca nào chạy qua.
+   *
+   * Dựng đúng điều kiện kích hoạt nó: `t` ĐÃ ở vùng editor, và panel đang giữ một terminal
+   * khác. `moveToEditor` làm việc trên terminal active CỦA PANEL nên nó sẽ lôi cái dưới
+   * panel lên; phần phòng thủ phải nhận ra và trả cái đó về chỗ cũ.
+   */
+  test('thêm vào lưới một terminal VỐN ĐÃ ở editor: không được lôi terminal panel lên theo', async () => {
+    const trong = vscode.window.createTerminal({
+      name: 'da-o-editor',
+      location: vscode.TerminalLocation.Editor,
+    });
+    const duoiPanel = vscode.window.createTerminal({
+      name: 'yen-duoi-panel',
+      location: vscode.TerminalLocation.Panel,
+    });
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 1);
+      await xepLuoiTerminal([trong]);
+      await cho(() => tabTerminal() === 1);
+      assert.equal(tabTerminal(), 1, `tiền đề: chỉ "da-o-editor" ở vùng editor — ${moTaNhom()}`);
+
+      await themOVaoLuoi(trong, (x) => log.push(x));
+
+      // Điều phải giữ: terminal dưới panel KHÔNG được trồi lên vùng editor.
+      await doi(400);
+      assert.equal(
+        tabTerminal(),
+        1,
+        `panel phải ở yên dưới panel — ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+      assert.ok(vscode.window.terminals.includes(duoiPanel), 'không được đóng terminal nào');
+    } finally {
+      await donDep([trong, duoiPanel]);
+    }
+  });
+
   test('terminal đang ở panel cũng thêm vào lưới được, không mở lại', async () => {
     const trong = vscode.window.createTerminal({
       name: 'da-trong-luoi',

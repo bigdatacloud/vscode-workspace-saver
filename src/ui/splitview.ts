@@ -156,8 +156,9 @@ async function donTerminalKhoiEditor(ghiLog: (d: string) => void): Promise<vscod
 async function keoLenTheoThuTu(
   ds: readonly vscode.Terminal[],
   ghiLog: (d: string) => void,
-): Promise<string | undefined> {
+): Promise<{ len: number; lyDo?: string }> {
   let lyDo: string | undefined;
+  let len = 0;
   const ghiMot = (d: string): void => {
     lyDo ??= d;
     ghiLog(`[luoi] ${d}`);
@@ -170,8 +171,8 @@ async function keoLenTheoThuTu(
     // Thử lại như bên vét, và vì cùng một lý do: lệnh workbench chỉ ăn khi đúng vùng đang
     // giữ focus, mà focus thì chuyển không đồng bộ. Mỗi lần thử tự kiểm bằng số tab nên thử
     // lại không kéo dư cái nào.
-    let len = false;
-    for (let lan = 0; lan < 3 && !len; lan++) {
+    let lenDuoc = false;
+    for (let lan = 0; lan < 3 && !lenDuoc; lan++) {
       const truoc = soTabTerminal();
       try {
         t.show(true);
@@ -183,11 +184,10 @@ async function keoLenTheoThuTu(
         break;
       }
       await cho(() => soTabTerminal() > truoc, lan === 2 ? HAN_CHO_MS : HAN_CHO_NGAN_MS);
-      len = soTabTerminal() > truoc;
+      lenDuoc = soTabTerminal() > truoc;
     }
-    if (!len) {
-      ghiMot(`"${t.name}" không lên được vùng editor`);
-    }
+    if (lenDuoc) len += 1;
+    else ghiMot(`"${t.name}" không lên được vùng editor`);
     await nghi(NHIP_UI_MS);
     // Đối chiếu danh tính CHỈ để ghi log, không coi là lý do hỏng: ngay sau khi một terminal
     // rời panel thì `window.activeTerminal` còn bám theo panel một nhịp, nên nó hay báo cái
@@ -200,7 +200,35 @@ async function keoLenTheoThuTu(
       );
     }
   }
-  return lyDo;
+  return lyDo === undefined ? { len } : { len, lyDo };
+}
+
+/**
+ * Bảo đảm `t` đang nằm DƯỚI PANEL, để cú kéo lên sau đó là xác định.
+ *
+ * Vì sao cần: `moveToEditor` làm việc trên terminal active của panel, nên gọi nó khi `t` vốn
+ * đã ở vùng editor sẽ lôi một terminal KHÁC dưới panel lên. Bản trước định bắt ca đó bằng
+ * `activeTerminal !== t`, nhưng đo được 25/10/2026 là vô dụng: tab lạ đã trồi lên (1→2 tab)
+ * mà `activeTerminal` vẫn báo đúng `t`. Đếm tab mới là bằng chứng, không phải danh tính.
+ *
+ * Đẩy xuống thì ngược lại: `activeTerminal` NGAY SAU lệnh chính là cái vừa rơi xuống — đó là
+ * bằng chứng mà `donTerminalKhoiEditor` đang dựa vào. Nên ở đây đẩy một cái xuống, nếu đẩy
+ * nhầm người khác thì trả ngay nó lên (lúc này nó là active của panel nên kéo lên là đúng nó).
+ */
+async function dayVePanel(t: vscode.Terminal, ghiLog: (d: string) => void): Promise<void> {
+  const truoc = soTabTerminal();
+  t.show(true);
+  await cho(() => vscode.window.activeTerminal === t);
+  await nghi(NHIP_UI_MS);
+  await chay('workbench.action.terminal.moveToTerminalPanel');
+  await cho(() => soTabTerminal() < truoc, HAN_CHO_NGAN_MS);
+  if (soTabTerminal() >= truoc) return; // không có gì rời editor → `t` vốn đã ở panel
+  const vua = vscode.window.activeTerminal;
+  if (vua === t || vua === undefined) return; // đúng `t` vừa xuống
+  ghiLog(`[luoi] đẩy nhầm "${vua.name}" xuống panel, trả nó lên lại`);
+  await chay('workbench.action.terminal.moveToEditor');
+  await cho(() => soTabTerminal() >= truoc, HAN_CHO_NGAN_MS);
+  await nghi(NHIP_UI_MS);
 }
 
 /**
@@ -361,20 +389,13 @@ export async function themOVaoLuoi(
 ): Promise<boolean> {
   if (t.exitStatus !== undefined) return false;
   try {
-    // Không đoán `t` đang ở đâu: cứ ra lệnh kéo lên rồi kiểm. Lệnh này làm việc trên
-    // terminal active CỦA PANEL, nên khi `t` vốn đã ở vùng editor nó sẽ lôi nhầm một cái
-    // dưới panel lên — thấy vậy thì trả ngay cái đó về panel.
-    const truocTab = soTabTerminal();
-    t.show(true);
-    await cho(() => vscode.window.activeTerminal === t);
-    await nghi(NHIP_UI_MS);
-    await chay('workbench.action.terminal.moveToEditor');
-    await cho(() => soTabTerminal() > truocTab, HAN_CHO_NGAN_MS);
-    if (soTabTerminal() > truocTab && vscode.window.activeTerminal !== t) {
-      ghiLog(`[luoi] lôi nhầm "${vscode.window.activeTerminal?.name ?? '?'}" lên, trả về panel`);
-      await chay('workbench.action.terminal.moveToTerminalPanel');
-      await cho(() => soTabTerminal() <= truocTab, HAN_CHO_NGAN_MS);
-      await nghi(NHIP_UI_MS);
+    // Đẩy về panel rồi kéo lên, hệt `xepLuoiTerminal` và vì cùng một lý do: kéo lên chỉ xác
+    // định khi biết chắc `t` đang ở dưới panel.
+    await dayVePanel(t, ghiLog);
+    const keo = await keoLenTheoThuTu([t], ghiLog);
+    if (keo.len === 0) {
+      ghiLog(`[luoi] không đưa được "${t.name}" vào vùng editor`);
+      return false;
     }
     t.show(true);
     await cho(
@@ -454,12 +475,16 @@ export async function xepLuoiTerminal(
   const giu = new Set(ds);
   const daAn = (await donTerminalKhoiEditor(ghiLog)).filter((t) => !giu.has(t)).length;
   if (daAn > 0) ghiLog(`[luoi] đã đưa ${daAn} terminal không thuộc lưới xuống panel`);
-  if (soTabTerminal() > 0) {
-    lyDo = `vùng editor còn ${soTabTerminal()} tab terminal không dọn được`;
+  // Vét sót thì vẫn PHẢI kéo lên. Bản trước bỏ hẳn pha kéo trong ca này, nghĩa là những
+  // terminal của lưới vừa bị vét xuống panel sẽ nằm lại dưới đó — người dùng bấm "xem song
+  // song" xong lại thấy ÍT hơn lúc chưa bấm. Tab lạ còn sót chỉ chiếm một ô, chịu được.
+  const laSot = soTabTerminal();
+  if (laSot > 0) {
+    lyDo = `vùng editor còn ${laSot} tab terminal không dọn được`;
     ghiLog(`[luoi] ${lyDo}`);
-  } else {
-    lyDo = await keoLenTheoThuTu(ds, ghiLog);
   }
+  const keo = await keoLenTheoThuTu(ds, ghiLog);
+  lyDo ??= keo.lyDo;
   // Gom LẠI: vét có thể đóng nhóm rỗng, kéo lên có thể mở nhóm mới — đo được 24/10/2026 là
   // sau hai pha đó tab nằm ở nhóm 2,3,4 còn nhóm 1 rỗng, nên vòng rải thấy "nhóm 1 còn 0
   // tab" rồi dừng ngay. Pha rải chỉ đúng khi xuất phát từ ĐÚNG MỘT nhóm giữ mọi tab.
@@ -509,7 +534,10 @@ export async function xepLuoiTerminal(
 
   const coTerm = soNhomCoTerminal();
   ghiLog(`[luoi] kết quả: ${coTerm} ô có terminal / ${soNhom()} ô`);
-  const daXep = Math.min(coTerm, ds.length);
+  // Chặn trên là SỐ CÁI THỰC SỰ KÉO LÊN ĐƯỢC, không phải `ds.length`: `soNhomCoTerminal`
+  // đếm "ô nào có terminal bất kỳ", nên khi vét sót thì một ô của terminal lạ cũng được tính
+  // là thành công. Không thể xếp được nhiều hơn số đã kéo lên.
+  const daXep = Math.min(coTerm, keo.len);
   // Rải trọn lượt mà vẫn thiếu: ô đã dựng rồi lại mất terminal. Không `break` nào xảy ra nên
   // không đặt lý do ở đây là lại im lặng như cũ.
   if (lyDo === undefined && daXep < ds.length) {

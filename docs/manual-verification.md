@@ -779,6 +779,8 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       phải lên lưới, không ô nào rỗng (trước đây terminal của B bị lượt A đẩy xuống panel thì
       nằm lại dưới đó vĩnh viễn)
 - [ ] **(24/10/2026)** Thứ tự ô bám đúng thứ tự trong cây
+- [ ] **(25/10/2026)** Đang xem song song, có terminal khác nằm dưới panel → chuột phải một
+      terminal ĐÃ Ở TRONG LƯỚI → **Thêm vào lưới** → terminal dưới panel phải ở yên dưới đó
 - [ ] Lặp lại thao tác trên với `terminal.integrated.defaultLocation` đặt là `editor` (máy anh Ý
       đang đặt thế) — đây chính là ca đã lọt lưới
 
@@ -1015,14 +1017,23 @@ phục lại terminal và tab Untitled của lượt trước, làm các ca sau 
 
 **Nợ đã trả:** `daXep` không còn đếm nhầm terminal lạ (mục 22/10 ở trên).
 
-**Nợ còn lại:**
+**Đã trả nợ 25/10/2026** (ba việc, mỗi việc một lỗi thật chứ không chỉ thiếu test):
 
-- `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và `tab.label` có
-  lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.
-- `themOVaoLuoi` có nhánh "lôi nhầm một terminal dưới panel lên thì trả nó về chỗ cũ".
-  Nhánh đó **chưa ca test nào chạy qua**: hai ca hiện có đều rơi vào trường hợp panel rỗng
-  hoặc chính nó đang ở panel. Đúng nhánh này từng là ca đỏ `daAn === 1` lúc đang sửa.
-- Khi vét không trọn vẹn thì `daXep` đếm cả terminal lạ (xem trên).
+1. **`themOVaoLuoi` lôi nhầm terminal dưới panel lên.** Nhánh phòng thủ cũ dựa vào
+   `activeTerminal !== t` — **không bao giờ chạy**: đo được 25/10 là tab lạ đã trồi lên
+   (1→2 tab) mà `activeTerminal` vẫn báo đúng `t`. Danh tính vô dụng ở chiều KÉO LÊN; chỉ
+   chiều ĐẨY XUỐNG mới đọc được `activeTerminal` (cái vừa rơi xuống). Nay `themOVaoLuoi`
+   đẩy `t` về panel trước (`dayVePanel`) rồi mới kéo lên — hệt `xepLuoiTerminal`.
+   Ca test `thêm vào lưới một terminal VỐN ĐÃ ở editor` phủ đúng nhánh này; đã xác nhận
+   bằng cách tắt tạm phòng thủ → đỏ, bật lại → xanh.
+2. **Vét sót thì pha kéo lên bị bỏ hẳn** — nghĩa là terminal của lưới vừa bị vét xuống panel
+   nằm lại dưới đó, người dùng bấm "xem song song" xong thấy ÍT hơn lúc chưa bấm. Nay luôn
+   kéo lên; tab lạ còn sót chỉ chiếm một ô.
+3. **`daXep` đếm cả terminal lạ.** Chặn trên nay là SỐ CÁI THỰC SỰ KÉO LÊN ĐƯỢC, không phải
+   `ds.length`.
+
+**Nợ còn lại:** `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và
+`tab.label` có lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.
 
 ## Phiên trùng tên + trùng thư mục (24/10/2026)
 
