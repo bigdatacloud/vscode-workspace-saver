@@ -319,11 +319,21 @@ export async function hienTerminal(
   /**
    * Đã tới nơi chưa?
    *
-   * `activeTerminal` là bằng chứng mạnh nhưng KHÔNG đủ: khi panel và vùng editor cùng có
-   * terminal, nó báo cái của panel ngay cả lúc tab editor đang hiện cái khác (đo được:
-   * tab="doi-d" mà `activeTerminal`="doi-c" nằm dưới panel). Nên nhận thêm bằng chứng từ
-   * tab đang hiện. Giá phải trả: nhận diện bằng NHÃN, nên hai terminal trùng tên thì có thể
-   * dừng ở nhầm cái — chấp nhận được vì nhánh này chỉ chạy khi `show()` đã thất bại.
+   * Hai bằng chứng BÙ CHO NHAU, đo được 25/10/2026 — phải giữ cả hai:
+   *
+   * - `activeTerminal` sai khi panel đang giữ focus terminal: nó báo cái của panel ngay cả
+   *   lúc tab editor đang hiện cái khác (đo: tab="doi-d" mà `activeTerminal`="doi-c" dưới
+   *   panel). Nhưng khi vùng editor giữ focus thì nó ĐÚNG, kể cả lúc nhãn tab rỗng.
+   * - `tab.label` rỗng với mọi tab terminal CHƯA từng được hiện, và rỗng vĩnh viễn (đo 4
+   *   giây vẫn rỗng) — đúng loại tab mà nhánh này phải tìm. Nhưng với tab đã từng hiện thì
+   *   nhãn có, và đó là lúc nó cứu được ca `activeTerminal` nói sai.
+   *
+   * Đo bằng cách ghi log mỗi khi mệnh đề nhãn là thứ QUYẾT ĐỊNH: chạy cả bộ thì nó bật đúng
+   * 2 lần, đều ở ca "terminal ĐÃ BỊ DỜI chỗ (panel↔editor)". Nên đây KHÔNG phải mã chết, gỡ
+   * là ca đó đỏ.
+   *
+   * Giá phải trả còn lại: hai terminal TRÙNG TÊN thì mệnh đề nhãn có thể dừng ở nhầm cái.
+   * Chưa chữa được — API công khai không cho nối một tab với terminal sinh ra nó.
    */
   const dungNo = (): boolean => {
     if (vscode.window.activeTerminal === t) return true;

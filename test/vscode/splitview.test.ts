@@ -677,6 +677,51 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
     }
   });
 
+  /**
+   * Nợ ghi 24/10/2026: nhánh dự phòng của `hienTerminal` nhận diện tab bằng
+   * `tab.label === t.name`. Đo 25/10 cho thấy cách đó hỏng từ gốc:
+   *
+   * - Tab terminal CHƯA từng được hiện có `label` là chuỗi RỖNG, và nó rỗng vĩnh viễn
+   *   (đo 4 giây vẫn rỗng) — mà đó đúng là loại tab nhánh dự phòng phải tìm.
+   * - Nhãn có lúc là tên tiến trình (`pwsh`) chứ không phải tên lúc tạo.
+   * - Ngược lại, `window.activeTerminal` gọi ĐÚNG tên ngay cả khi nhãn rỗng, miễn là vùng
+   *   editor đang giữ focus — kể cả khi panel cũng có terminal.
+   *
+   * Ca này dựng đúng tình huống đó: nhiều terminal trong editor (nhãn rỗng) + một terminal
+   * dưới panel đang giữ focus, rồi bấm vào một cái KHÔNG phải tab đang hiện.
+   */
+  test('tab chưa có nhãn + panel đang giữ focus: vẫn hiện đúng terminal', async () => {
+    const ds = [0, 1, 2].map((i) =>
+      vscode.window.createTerminal({ name: `nhan-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const duoiPanel = vscode.window.createTerminal({
+      name: 'nhan-panel',
+      location: vscode.TerminalLocation.Panel,
+    });
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 3);
+      await gopVeMotNhom();
+      await cho(() => soNhom() === 1);
+      // Panel giữ focus → `activeTerminal` báo cái dưới panel, đúng ca mà nhánh dự phòng sinh ra để lo.
+      duoiPanel.show(true);
+      await cho(() => vscode.window.activeTerminal === duoiPanel);
+      await doi(300);
+
+      const dich = ds[0]!;
+      const ok = await hienTerminal(dich, (x) => log.push(x));
+
+      assert.equal(ok, true, `phải hiện được dù nhãn tab rỗng — log: ${log.join(' | ')}`);
+      assert.equal(
+        vscode.window.activeTerminal,
+        dich,
+        `active phải là nhan-0 — ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+    } finally {
+      await donDep([...ds, duoiPanel]);
+    }
+  });
+
   test('terminal đã đóng: trả false chứ không ném', async () => {
     // `window.terminals` còn liệt kê terminal vừa đóng một nhịp, nên ca này canh đúng chỗ
     // `show()` ném "Terminal has already been disposed" và làm hỏng cú bấm.

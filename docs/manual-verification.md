@@ -899,6 +899,8 @@ cho biết vùng nào đang giữ focus, mọi luật thay thế đều đánh �
 - [ ] Kéo một terminal sang workspace khác rồi bấm vào item cũ (nếu cây chưa kịp làm mới) →
       báo "cây đang hiển thị thông tin cũ", không im lặng
 - [ ] Ctrl+Tab giữa các terminal sau khi thoát lưới: nhảy đúng vòng, không bỏ sót cái nào
+- [ ] **(25/10/2026)** Nhiều terminal trong lưới + một terminal dưới panel đang được gõ dở →
+      bấm trong cây một terminal KHÔNG phải tab đang hiện → đúng cái đó lên active
 - [ ] Ctrl+Tab trong bố cục HỖN HỢP (một terminal ở panel + số còn lại ở editor): bấm một terminal
       trong cây rồi Ctrl+Tab → nếu nhảy từ nhầm chỗ thì đó là nợ ở trên, ghi lại tên hai terminal
 
@@ -1032,8 +1034,25 @@ phục lại terminal và tab Untitled của lượt trước, làm các ca sau 
 3. **`daXep` đếm cả terminal lạ.** Chặn trên nay là SỐ CÁI THỰC SỰ KÉO LÊN ĐƯỢC, không phải
    `ds.length`.
 
-**Nợ còn lại:** `t.name` có lúc trả tên tiến trình (`pwsh`) chứ không phải tên lúc tạo, và
-`tab.label` có lúc rỗng — nên `hienTerminal` nhận diện tab theo tên vẫn chưa chắc.
+**Nợ "nhận diện tab theo tên" — đã ĐO, kết luận ngược giả định ban đầu (25/10/2026):**
+
+Giả định cũ: mệnh đề `tab.label === t.name` là chỗ yếu nên gỡ đi. **Sai.** Số đo:
+
+| Đo gì | Kết quả |
+|---|---|
+| Nhãn tab terminal CHƯA từng được hiện | Rỗng, và rỗng **vĩnh viễn** (đo tới 4 giây vẫn rỗng) |
+| Nhãn tab ĐÃ từng được hiện | Có tên đúng (có lúc là tên tiến trình, vd `pwsh`) |
+| `activeTerminal` khi vùng editor giữ focus | **Đúng**, kể cả lúc nhãn tab rỗng — xoay tab tới đâu nó theo tới đó |
+| `activeTerminal` khi panel giữ focus terminal | Sai — báo cái dưới panel |
+| Mệnh đề nhãn có thật sự quyết định bao giờ không | **Có**: ghi log rồi chạy cả bộ → bật đúng 2 lần, đều ở ca "terminal ĐÃ BỊ DỜI chỗ" |
+
+Nên hai bằng chứng **bù cho nhau**, không cái nào thừa: `activeTerminal` lo ca nhãn rỗng,
+nhãn lo ca `activeTerminal` nói sai. Gỡ mệnh đề nhãn là ca "terminal ĐÃ BỊ DỜI chỗ" đỏ.
+**Đã giữ nguyên mã, chỉ viết lại ghi chú cho đúng số đo.**
+
+**Nợ thật sự còn lại (hẹp hơn nhiều so với ghi chú cũ):** hai terminal **TRÙNG TÊN** thì mệnh
+đề nhãn có thể dừng ở nhầm cái. Chưa chữa được — API công khai không cho nối một tab với
+terminal sinh ra nó. Chưa ai gặp.
 
 ## Phiên trùng tên + trùng thư mục (24/10/2026)
 
