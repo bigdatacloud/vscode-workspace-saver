@@ -7,6 +7,9 @@ const vscodeMock = vi.hoisted(() => ({
     showWarningMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showErrorMessage: vi.fn(),
+    createOutputChannel: vi.fn(() => ({
+      appendLine: vi.fn(), show: vi.fn(), dispose: vi.fn(),
+    })),
   },
   workspace: {
     workspaceFolders: undefined,
@@ -29,6 +32,7 @@ vi.mock('vscode', () => vscodeMock);
 
 import type * as vscode from 'vscode';
 import type { RunningSession } from '../../src/agent/types';
+import type { HangTienTrinh } from '../../src/proc/dongphien';
 import type { StoreFile, TerminalEntry, Workspace } from '../../src/model/schema';
 import type { TerminalManager } from '../../src/terminal/manager';
 import { MANAGED_TERMINAL_ID_ENV } from '../../src/terminal/manager';
@@ -91,7 +95,8 @@ interface ManagerHarness {
     phanXu: { loai: 'ngoai'; soTienTrinh: number },
   ): Promise<'daDung' | 'boQua' | 'vanMo'>;
   phienLucKhoiPhuc: RunningSession[];
-  docDongLenhTienTrinh(): Promise<Map<number, string>>;
+  docBangTienTrinhDayDu(): Promise<Map<number, HangTienTrinh>>;
+  pidConSong(pid: number): boolean;
   gietTienTrinh(pid: number): Promise<void>;
   hanDongPhienMs: number;
   timTheoTerminalId(id: string): { ws: Workspace; entry: TerminalEntry } | null;
@@ -723,18 +728,17 @@ describe('WorkspaceManager — phiên trùng tên + trùng thư mục', () => {
 
 describe('WorkspaceManager — giành lại hội thoại đang chạy ở cửa sổ khác', () => {
   const SESSION = U('9');
-  const CLAUDE = String.raw`node C:
-pm\@anthropic-ai\claude-code\cli.js --resume x`;
+  const CLAUDE = String.raw`node C:\npm\@anthropic-ai\claude-code\cli.js --resume x`;
+  /** Một hàng bảng tiến trình. `cha` mặc định là pid không thuộc terminal nào ta giữ. */
+  const H = (lenh: string, cha = 7000): HangTienTrinh => ({ cha, lenh });
 
   const phien = (pid: number): RunningSession => ({
-    sessionId: SESSION, name: null, cwd: String.raw`D:
-epo`, pid, kind: 'interactive', status: 'idle',
+    sessionId: SESSION, name: null, cwd: String.raw`D:\repo`, pid, kind: 'interactive', status: 'idle',
   });
 
   const dungBo = (): { manager: ManagerHarness; entry: TerminalEntry } => {
     const entry: TerminalEntry = {
-      id: U('1'), name: 'openclaw', cwd: String.raw`D:
-epo`, kind: 'claude', claudeSessionId: SESSION,
+      id: U('1'), name: 'openclaw', cwd: String.raw`D:\repo`, kind: 'claude', claudeSessionId: SESSION,
     };
     const ws: Workspace = {
       id: U('3'), name: 'W', lastActiveAt: null, activeWindowId: null, terminals: [entry],
@@ -745,12 +749,15 @@ epo`, kind: 'claude', claudeSessionId: SESSION,
     };
     const manager = bareManager({ version: 2, workspaces: [ws] }, terminals);
     manager.hanDongPhienMs = 0;
+    // Mặc định: lệnh đóng có tác dụng ngay. `taskkill /F` là đồng bộ nên đây là ca thường.
+    manager.pidConSong = () => false;
     return { manager, entry };
   };
 
   beforeEach(() => {
     vscodeMock.window.showWarningMessage.mockReset();
     vscodeMock.window.showErrorMessage.mockReset();
+    vscodeMock.window.terminals = [];
   });
 
   it('đóng MỌI tiến trình của hội thoại rồi mới cho mở lại ở đây', async () => {
@@ -758,11 +765,10 @@ epo`, kind: 'claude', claudeSessionId: SESSION,
     vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
     manager.agent = { listRunning: async () => [phien(111), phien(222)] };
     manager.phienLucKhoiPhuc = [phien(111), phien(222)];
-    let daGiet = false;
-    manager.docDongLenhTienTrinh = vi.fn(async () =>
-      daGiet ? new Map([[9, 'explorer.exe']]) : new Map([[111, CLAUDE], [222, CLAUDE], [9, 'explorer.exe']]),
+    manager.docBangTienTrinhDayDu = vi.fn(async () =>
+      new Map([[111, H(CLAUDE)], [222, H(CLAUDE)], [9, H('explorer.exe')]]),
     );
-    manager.gietTienTrinh = vi.fn(async () => { daGiet = true; });
+    manager.gietTienTrinh = vi.fn();
 
     const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 2 });
 
@@ -774,11 +780,94 @@ epo`, kind: 'claude', claudeSessionId: SESSION,
     expect(manager.phienLucKhoiPhuc).toEqual([]);
   });
 
+  it('tiến trình chết ngay thì KHÔNG quét lại bảng tiến trình lần nào nữa', async () => {
+    // Đo trên máy thật 26/10/2026: mỗi lần quét 1,44–1,77 giây lúc máy đang tải. `taskkill
+    // /F` là đồng bộ nên tiến trình đã chết lúc nó trả về — vòng chờ cũ vẫn bỏ ra một lần
+    // quét nữa chỉ để xác nhận điều đó.
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docBangTienTrinhDayDu = vi.fn(async () => new Map([[111, H(CLAUDE)]]));
+    manager.gietTienTrinh = vi.fn();
+
+    await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(manager.docBangTienTrinhDayDu).toHaveBeenCalledTimes(1);
+  });
+
+  it('đóng luôn terminal đang chứa tiến trình vừa đóng, không để lại cột rác', async () => {
+    // Ca thật 26/10/2026: `taskkill /T` đi XUỐNG nên claude chết mà vỏ shell ở lại. Đo trên
+    // máy cho thấy 7 shell pwsh đều là con của cùng một ptyhost — tức terminal "ở nơi khác"
+    // nằm ngay trong cửa sổ này, và mỗi lần giành lại phiên là lưới mọc thêm một cột rác.
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    const vo = fakeTerminal('cu', String.raw`D:\repo`, undefined, 5568);
+    const khac = fakeTerminal('khac', String.raw`D:\khac`, undefined, 9999);
+    vscodeMock.window.terminals = [vo, khac];
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docBangTienTrinhDayDu = vi.fn(async () =>
+      new Map([[111, H(CLAUDE, 5568)], [5568, H('pwsh.exe', 15980)], [15980, H('ptyhost', 1)]]),
+    );
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('vanMo');
+    expect(vo.dispose).toHaveBeenCalled();
+    expect(khac.dispose).not.toHaveBeenCalled();
+  });
+
+  it('không tra ra terminal nào chứa nó thì không đụng vào terminal nào', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    const khac = fakeTerminal('khac', String.raw`D:\khac`, undefined, 9999);
+    vscodeMock.window.terminals = [khac];
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docBangTienTrinhDayDu = vi.fn(async () => new Map([[111, H(CLAUDE)]]));
+    manager.gietTienTrinh = vi.fn();
+
+    expect(await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 })).toBe('vanMo');
+    expect(khac.dispose).not.toHaveBeenCalled();
+  });
+
+  it('chưa chắc đã đóng được thì KHÔNG đóng terminal — người dùng còn cần nó', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    const vo = fakeTerminal('cu', String.raw`D:\repo`, undefined, 5568);
+    vscodeMock.window.terminals = [vo];
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docBangTienTrinhDayDu = vi.fn(async () =>
+      new Map([[111, H(CLAUDE, 5568)], [5568, H('pwsh.exe', 15980)]]),
+    );
+    manager.gietTienTrinh = vi.fn();
+    manager.pidConSong = () => true;
+
+    expect(await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 })).toBe('boQua');
+    expect(vo.dispose).not.toHaveBeenCalled();
+  });
+
+  it('hết hạn mà pid đã bị cấp cho chương trình khác → coi như đã đóng xong', async () => {
+    // Hệ điều hành cấp lại pid vừa chết cho tiến trình mới là chuyện có thật. Thấy pid "còn
+    // sống" mà kết luận chưa đóng được là từ chối oan — nên lúc hết hạn phải soi dòng lệnh.
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [phien(111)] };
+    let lan = 0;
+    manager.docBangTienTrinhDayDu = vi.fn(async () => {
+      lan += 1;
+      return lan === 1 ? new Map([[111, H(CLAUDE)]]) : new Map([[111, H('notepad.exe')]]);
+    });
+    manager.gietTienTrinh = vi.fn();
+    manager.pidConSong = () => true;
+
+    expect(await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 })).toBe('vanMo');
+  });
+
   it('pid giờ thuộc chương trình khác (sổ còn hàng cũ) → không giết gì, không mở', async () => {
     const { manager, entry } = dungBo();
     vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
     manager.agent = { listRunning: async () => [phien(111)] };
-    manager.docDongLenhTienTrinh = vi.fn(async () => new Map([[111, 'notepad.exe']]));
+    manager.docBangTienTrinhDayDu = vi.fn(async () => new Map([[111, H('notepad.exe')]]));
     manager.gietTienTrinh = vi.fn();
 
     const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
@@ -792,8 +881,9 @@ epo`, kind: 'claude', claudeSessionId: SESSION,
     const { manager, entry } = dungBo();
     vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
     manager.agent = { listRunning: async () => [phien(111)] };
-    manager.docDongLenhTienTrinh = vi.fn(async () => new Map([[111, CLAUDE]]));
+    manager.docBangTienTrinhDayDu = vi.fn(async () => new Map([[111, H(CLAUDE)]]));
     manager.gietTienTrinh = vi.fn();
+    manager.pidConSong = () => true;
 
     const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
 
@@ -806,7 +896,7 @@ epo`, kind: 'claude', claudeSessionId: SESSION,
     const { manager, entry } = dungBo();
     vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
     manager.agent = { listRunning: async () => [phien(111)] };
-    manager.docDongLenhTienTrinh = vi.fn(async () => new Map());
+    manager.docBangTienTrinhDayDu = vi.fn(async () => new Map());
     manager.gietTienTrinh = vi.fn();
 
     const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
@@ -819,7 +909,7 @@ epo`, kind: 'claude', claudeSessionId: SESSION,
     const { manager, entry } = dungBo();
     vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
     manager.agent = { listRunning: async () => [] };
-    manager.docDongLenhTienTrinh = vi.fn();
+    manager.docBangTienTrinhDayDu = vi.fn();
     manager.gietTienTrinh = vi.fn();
 
     const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });

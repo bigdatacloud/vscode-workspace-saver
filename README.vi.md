@@ -55,9 +55,10 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   mở lại ở đây"**: đóng mọi tiến trình đang bám hội thoại ấy rồi mới `--resume` ở đây. Trước
   khi đóng, mỗi pid được soi dòng lệnh để chắc chắn nó vẫn là tiến trình claude (sổ phiên còn
   hàng cũ, mà pid thì hệ điều hành cấp lại cho chương trình khác); sau khi đóng, phải thấy nó
-  biến mất khỏi bảng tiến trình thì mới mở. Lịch sử giữ nguyên — transcript ghi dần theo từng
-  lượt; cái mất là việc tiến trình kia đang chạy dở. Terminal bên cửa sổ kia chỉ hiện lại dấu
-  nhắc, không bị đóng.
+  chết thật thì mới mở. Lịch sử giữ nguyên — transcript ghi dần theo từng lượt; cái mất là
+  việc tiến trình kia đang chạy dở. `taskkill /T` đi *xuống* nên nó để lại cái vỏ shell đã
+  sinh ra claude: vỏ nào nằm trong **chính cửa sổ này** thì được đóng theo (không để lại ô
+  rỗng trong lưới), vỏ ở cửa sổ khác thì chỉ hiện lại dấu nhắc.
 - **Kích hoạt / chuyển workspace**: bấm một workspace chưa active → mở lại từng terminal đã
   lưu. Nếu đang có workspace khác active, extension hỏi modal "Lưu và đóng X trước khi mở
   Y?" trước khi chuyển; hủy modal thì không làm gì.

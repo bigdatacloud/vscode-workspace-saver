@@ -60,9 +60,11 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
   process attached to that conversation is terminated first, and only then does this window
   `--resume` it. Before killing, each pid's command line is checked to confirm it is still a
   claude process (the session registry keeps stale rows, and the OS recycles pids); after
-  killing, the pid must be gone from the process table before anything is opened. History is
+  killing, the process must be confirmed dead before anything is opened. History is
   preserved — the transcript is appended turn by turn; what is lost is the work that process
-  had in flight. The terminal in the other window simply returns to its prompt.
+  had in flight. `taskkill /T` walks *down* the tree, so it leaves behind the shell that
+  spawned claude: a leftover shell living in **this** window is closed along with it (no
+  empty cell left in the grid), while one in another window simply returns to its prompt.
 - **Activate / switch workspaces**: click an inactive workspace → each saved terminal is
   reopened. If another workspace is currently active, the extension shows a modal
   "Save and close X before opening Y?" before switching; cancelling does nothing.

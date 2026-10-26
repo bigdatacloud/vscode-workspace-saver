@@ -1,3 +1,5 @@
+import { timTerminalTheoToTien } from './tree';
+
 /**
  * Chọn lọc pid nào được phép đóng khi người dùng giành lại một hội thoại đang chạy ở nơi khác.
  *
@@ -77,4 +79,79 @@ export function parseBangDongLenh(text: string): Map<number, string> {
     if (posix) bang.set(Number(posix[1]), posix[2]!.trim());
   }
   return bang;
+}
+
+/** Một hàng của bảng tiến trình: ai sinh ra nó, và nó đang chạy lệnh gì. */
+export interface HangTienTrinh {
+  /** pid của tiến trình cha. */
+  cha: number;
+  /** Rỗng = tiến trình hệ thống không cho đọc dòng lệnh, KHÔNG phải "không có". */
+  lenh: string;
+}
+
+/**
+ * Đọc bảng tiến trình đầy đủ: pid → { cha, dòng lệnh }.
+ *
+ * Gộp hai thứ vào MỘT lần quét vì quét rất đắt: đo trên máy thật 26/10/2026 lúc máy đang
+ * tải (CPU 67 %, 5 phiên claude) mỗi lần `Get-CimInstance Win32_Process` mất 1,44–1,77
+ * giây. Luồng giành lại phiên cần cả hai — dòng lệnh để biết pid nào được phép đóng, phả
+ * hệ để biết terminal nào phải đóng theo — nên đọc tách làm hai là trả giá hai lần.
+ *
+ * Nhận cả hai định dạng, như `parseBangTienTrinh` bên `tree.ts`:
+ * - Windows (PowerShell/CIM): mỗi dòng `pid|ppid|dòng lệnh`
+ * - POSIX (`ps -eo pid=,ppid=,args=`): mỗi dòng `  pid  ppid  args`
+ */
+export function parseBangTienTrinhDayDu(text: string): Map<number, HangTienTrinh> {
+  const bang = new Map<number, HangTienTrinh>();
+  for (const line of text.split('\n')) {
+    const sach = line.replace(/\r$/, '');
+    const win = sach.match(/^(\d+)\|(\d+)\|(.*)$/);
+    if (win) {
+      bang.set(Number(win[1]), { cha: Number(win[2]), lenh: win[3]!.trim() });
+      continue;
+    }
+    const posix = sach.match(/^\s*(\d+)\s+(\d+)\s+(\S.*)$/);
+    if (posix) bang.set(Number(posix[1]), { cha: Number(posix[2]), lenh: posix[3]!.trim() });
+  }
+  return bang;
+}
+
+/** Rút phần dòng lệnh ra để đưa cho `locPidDongDuoc`. */
+export function dongLenhTu(bang: ReadonlyMap<number, HangTienTrinh>): Map<number, string> {
+  const ra = new Map<number, string>();
+  for (const [pid, hang] of bang) ra.set(pid, hang.lenh);
+  return ra;
+}
+
+/**
+ * Terminal nào đang CHỨA những pid sắp bị đóng — tức phải đóng theo.
+ *
+ * Vì sao cần: `taskkill /T` đi XUỐNG, nên nó giết claude và đám con của claude mà để lại
+ * cái vỏ shell đã sinh ra claude. Khi phiên "ở nơi khác" thật sự ở cửa sổ khác thì vỏ ấy
+ * không với tới được và để lại là đúng. Nhưng đo trên máy thật 26/10/2026 cho thấy ca
+ * thường gặp lại khác hẳn: cả 7 shell pwsh đều là con của cùng một ptyhost — tức chúng
+ * nằm NGAY trong cửa sổ này, chỉ là extension không nhận nuôi được. Để lại vỏ shell ở đây
+ * nghĩa là lưới mọc thêm một cột rác cho mỗi phiên giành lại.
+ *
+ * Phải gọi TRƯỚC khi giết: giết xong thì phả hệ không còn để mà truy.
+ *
+ * @param shellPids pid shell của terminal → khoá terminal (bất cứ thứ gì caller dùng để
+ *   tra ngược). Chỉ pid SHELL mới được có mặt: ptyhost là cha chung của mọi terminal
+ *   trong cửa sổ, nhận nhầm nó là đóng sạch cả cửa sổ.
+ */
+export function terminalChuaPid(
+  pids: readonly number[],
+  bang: ReadonlyMap<number, HangTienTrinh>,
+  shellPids: ReadonlyMap<number, string>,
+): string[] {
+  const cha = new Map<number, number>();
+  for (const [pid, hang] of bang) cha.set(pid, hang.cha);
+  const ra: string[] = [];
+  for (const pid of pids) {
+    // Không còn trong bảng = đã chết từ trước; không có gì để lần theo.
+    if (!bang.has(pid)) continue;
+    const khoa = timTerminalTheoToTien(pid, cha, shellPids);
+    if (khoa !== null && !ra.includes(khoa)) ra.push(khoa);
+  }
+  return ra;
 }

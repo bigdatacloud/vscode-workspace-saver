@@ -3,6 +3,29 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.1] — 2026-10-26
+
+### Sửa
+
+- **"Đóng phiên đó rồi mở lại ở đây" không còn để lại terminal rỗng.** `taskkill /T` đi
+  *xuống* nên nó kết thúc claude mà để lại cái vỏ shell đã sinh ra claude. Đo trên máy thật
+  cho thấy ca thường gặp không phải "terminal ở cửa sổ khác" mà là terminal nằm **ngay trong
+  cửa sổ này**, chỉ là extension không nhận nuôi được nó — nên mỗi lần giành lại một hội
+  thoại là lưới xem song song mọc thêm một ô rỗng. Nay phả hệ tiến trình được tra **trước**
+  khi đóng, và terminal nào của cửa sổ này đang chứa tiến trình bị đóng thì được đóng theo.
+  Chỉ dọn sau khi đã chắc tiến trình chết: chưa chắc mà đóng là vừa không giành được hội
+  thoại vừa làm mất chỗ người dùng đang nhìn.
+- **Bớt một lần quét bảng tiến trình cho mỗi hội thoại.** `taskkill /F` là đồng bộ nên tiến
+  trình đã chết lúc nó trả về, vậy mà vòng chờ vẫn quét lại cả bảng chỉ để xác nhận điều đó —
+  mất thêm 1,44–1,77 giây trên máy đang tải. Nay vòng chờ hỏi hệ điều hành bằng tín hiệu 0
+  (đo được: nhận ra tiến trình chết ngay khi `taskkill` trả về), và chỉ quét bảng khi hết hạn
+  mà pid vẫn sống — đúng lúc cần phân biệt "claude chưa chết" với "pid đã được cấp cho chương
+  trình khác". Các lệnh đóng chạy song song thay vì lần lượt (mỗi `taskkill` mất ~0,6 giây),
+  và một lần quét giờ lấy cả phả hệ lẫn dòng lệnh thay vì quét hai lượt. Ước tính ~4,5 giây
+  xuống dưới 3 giây cho một hội thoại; chưa đo đầu-cuối trên phiên thật.
+- **Nhật ký.** Luồng giành lại phiên ghi vào kênh Output *AI Workspace — Điều phối* (và file
+  kiểm toán của workspace): pid nào bị đóng, bao nhiêu terminal vỏ được dọn, hết bao lâu.
+
 ## [0.2.0] — 2026-10-26
 
 ### Thêm

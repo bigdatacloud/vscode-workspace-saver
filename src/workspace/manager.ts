@@ -60,10 +60,16 @@ import { moTaKichHoat, phamViKichHoat } from './kichhoat';
 import { dungEntryNhanBan, duocNhanBan, lenhCodexChoBanSao, vaiChoTenWorktree } from './nhanban';
 import { chonWorkspaceNhan } from './receiving';
 import { chuyenViTri, doiChoHangXom, ghimSauKhiKeo, sapXepWorkspace, vaiTuongUng } from './sapxep';
-import { locPidDongDuoc } from '../proc/dongphien';
 import {
+  type HangTienTrinh,
+  dongLenhTu,
+  locPidDongDuoc,
+  terminalChuaPid,
+} from '../proc/dongphien';
+import {
+  conSong as conSongThat,
   docBangTienTrinh,
-  docDongLenhTienTrinh as docDongLenhThat,
+  docBangTienTrinhDayDu as docBangDayDuThat,
   gietTienTrinh as gietTienTrinhThat,
 } from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
@@ -1058,7 +1064,7 @@ export class WorkspaceManager implements vscode.Disposable {
         {
           modal: true,
           detail:
-            'Cửa sổ VS Code này không với tới terminal đó được (có thể nó ở cửa sổ khác, hoặc ngoài VS Code), nên không nhận nuôi được. Mở lại ở đây sẽ thành hai tiến trình cùng ghi một file hội thoại — lịch sử bị xé đôi thì không khôi phục được.\n\nĐóng phiên đó: tiến trình claude kia bị kết thúc (terminal bên cửa sổ kia chỉ hiện lại dấu nhắc), rồi hội thoại được mở lại ở đây. Lịch sử giữ nguyên vì transcript ghi dần theo từng lượt; cái mất là việc nó đang chạy dở.',
+            'Cửa sổ VS Code này không với tới terminal đó được (có thể nó ở cửa sổ khác, hoặc ngoài VS Code), nên không nhận nuôi được. Mở lại ở đây sẽ thành hai tiến trình cùng ghi một file hội thoại — lịch sử bị xé đôi thì không khôi phục được.\n\nĐóng phiên đó: tiến trình claude kia bị kết thúc. Nếu terminal giữ nó nằm trong chính cửa sổ này thì terminal đó được đóng luôn (không để lại ô trống trong lưới); ở cửa sổ khác thì nó chỉ hiện lại dấu nhắc. Rồi hội thoại được mở lại ở đây. Lịch sử giữ nguyên vì transcript ghi dần theo từng lượt; cái mất là việc nó đang chạy dở.',
         },
         NUT_DONG,
         NUT_MO,
@@ -1068,7 +1074,7 @@ export class WorkspaceManager implements vscode.Disposable {
       const sessionId = entry.claudeSessionId;
       // 'ngoai' chỉ sinh ra khi entry có sessionId; nhánh này là để TS thu hẹp kiểu.
       if (sessionId === undefined) return 'vanMo';
-      const kq = await this.gianhLaiPhienNgoai(sessionId);
+      const kq = await this.gianhLaiPhienNgoai(sessionId, wsId);
       if (kq.xong) return 'vanMo';
       void vscode.window.showErrorMessage(
         `Không giành lại được hội thoại "${entry.name}": ${kq.lyDo} Không mở ở đây để khỏi thành hai tiến trình ghi chung một file.`,
@@ -1120,8 +1126,12 @@ export class WorkspaceManager implements vscode.Disposable {
   /** Hạn chờ tiến trình chết sau khi đã bắn lệnh đóng. */
   private readonly hanDongPhienMs = 5000;
 
-  private docDongLenhTienTrinh(): Promise<Map<number, string>> {
-    return docDongLenhThat();
+  private docBangTienTrinhDayDu(): Promise<Map<number, HangTienTrinh>> {
+    return docBangDayDuThat();
+  }
+
+  private pidConSong(pid: number): boolean {
+    return conSongThat(pid);
   }
 
   private gietTienTrinh(pid: number): Promise<void> {
@@ -1139,54 +1149,128 @@ export class WorkspaceManager implements vscode.Disposable {
    *  1. Đọc LẠI registry lúc bấm nút, không dùng ảnh chụp lúc kích hoạt — pid trong ảnh có
    *     thể đã chết hoặc đã bị cấp cho chương trình khác.
    *  2. Soi dòng lệnh trước khi giết: registry claude còn hàng CŨ, pid thì được tái sử dụng.
-   *  3. Xác minh bằng BẢNG TIẾN TRÌNH chứ không bằng registry — registry còn hàng cũ sau khi
-   *     tiến trình chết, chờ nó biến mất là chờ mãi và ta sẽ từ chối mở dù đã đóng xong.
+   *  3. Xác minh pid đã chết thật rồi mới mở. Vòng chờ hỏi hệ điều hành bằng tín hiệu 0
+   *     (tức thì); chỉ khi hết hạn mà pid vẫn sống mới quét bảng tiến trình, vì lúc đó mới
+   *     cần phân biệt "claude chưa chết" với "pid đã được cấp cho chương trình khác".
+   *
+   * Và một việc dọn dẹp: `taskkill /T` đi XUỐNG nên nó để lại cái vỏ shell đã sinh ra claude.
+   * Vỏ ở cửa sổ khác thì không với tới được, nhưng đo trên máy thật 26/10/2026 cho thấy ca
+   * thường gặp lại là nó nằm ngay trong cửa sổ này — để lại thì lưới mọc thêm một cột rỗng
+   * cho mỗi lần giành lại phiên. Thấy được thì đóng luôn.
    */
   private async gianhLaiPhienNgoai(
     sessionId: string,
+    wsId: string,
   ): Promise<{ xong: true } | { xong: false; lyDo: string }> {
+    const batDau = Date.now();
+    const ghi = (dong: string): void =>
+      this.ghiKiemToan(`giành lại hội thoại ${sessionId.slice(0, 8)}: ${dong}`, wsId);
+
     const pids = pidDangChay(sessionId, await this.agent.listRunning());
     // Tự thoát trong lúc người dùng còn đọc hộp thoại: không còn gì để đóng.
     if (pids.length === 0) {
+      ghi('registry không còn pid nào — nó tự thoát trong lúc ta hỏi');
       this.quenPhienTrongAnhChup(sessionId);
       return { xong: true };
     }
 
-    const phanLoai = locPidDongDuoc(pids, await this.docDongLenhTienTrinh());
+    const bang = await this.docBangTienTrinhDayDu();
+    const phanLoai = locPidDongDuoc(pids, dongLenhTu(bang));
     if (!phanLoai.docDuoc) {
+      ghi('KHÔNG đọc được bảng tiến trình — không đóng pid nào');
       return { xong: false, lyDo: 'không đọc được bảng tiến trình của máy nên không dám đóng pid nào.' };
     }
     if (phanLoai.laNguoiKhac.length > 0) {
+      ghi(`pid ${phanLoai.laNguoiKhac.join(', ')} giờ là chương trình khác — không đụng tới`);
       return {
         xong: false,
         lyDo: `pid ${phanLoai.laNguoiKhac.join(', ')} giờ thuộc về chương trình khác (sổ phiên của claude còn hàng cũ), không đụng tới.`,
       };
     }
     if (phanLoai.dong.length === 0) {
+      ghi('mọi pid đã thoát từ trước — sổ phiên còn hàng cũ');
       this.quenPhienTrongAnhChup(sessionId);
       return { xong: true };
     }
 
-    for (const pid of phanLoai.dong) await this.gietTienTrinh(pid);
+    // Tra phả hệ TRƯỚC khi giết: giết xong là mất đường lần ngược về terminal.
+    const voTerminal = await this.terminalChuaTienTrinh(phanLoai.dong, bang);
+
+    // Song song chứ không lần lượt: mỗi `taskkill` là một tiến trình con, mà một hội thoại
+    // có thể đang bị vài tiến trình bám (đo 17/10/2026: có cái tới ba).
+    await Promise.all(phanLoai.dong.map((pid) => this.gietTienTrinh(pid)));
 
     const conSong = await this.choTienTrinhChet(phanLoai.dong);
     if (conSong.length > 0) {
+      ghi(`pid ${conSong.join(', ')} vẫn sống sau ${Date.now() - batDau} ms — KHÔNG mở ở đây`);
       return { xong: false, lyDo: `pid ${conSong.join(', ')} vẫn còn sống sau khi đóng.` };
     }
+
+    // Chỉ dọn vỏ khi đã chắc tiến trình chết: chưa chắc mà đóng terminal là vừa không giành
+    // được hội thoại vừa làm mất chỗ người dùng đang nhìn.
+    for (const terminal of voTerminal) terminal.dispose();
+    ghi(
+      `đóng xong pid ${phanLoai.dong.join(', ')}` +
+        ` và ${voTerminal.length} terminal vỏ trong ${Date.now() - batDau} ms`,
+    );
     this.quenPhienTrongAnhChup(sessionId);
     return { xong: true };
   }
 
+  /**
+   * Terminal nào của CỬA SỔ NÀY đang chứa các pid sắp bị đóng.
+   *
+   * Khoá trung gian là chỉ số trong `window.terminals`, chỉ sống trong một lần gọi — đủ để
+   * `terminalChuaPid` (thuần, test được) trả về rồi ta tra ngược ra đối tượng terminal.
+   * Chỉ pid SHELL mới được đưa vào bảng tra: ptyhost là cha chung của mọi terminal trong
+   * cửa sổ, nhận nhầm nó là đóng sạch cả cửa sổ.
+   *
+   * Terminal tìm được có thể đang thuộc về một entry khác mà extension vẫn giữ. Vẫn đóng:
+   * claude bên trong nó đã chết rồi, giữ lại chỉ còn cái vỏ. `onDidCloseTerminal` lo phần
+   * gỡ nó khỏi sổ terminal.
+   */
+  private async terminalChuaTienTrinh(
+    pids: readonly number[],
+    bang: ReadonlyMap<number, HangTienTrinh>,
+  ): Promise<vscode.Terminal[]> {
+    const shellPids = new Map<number, string>();
+    const theoKhoa = new Map<string, vscode.Terminal>();
+    const ds = vscode.window.terminals;
+    for (let i = 0; i < ds.length; i += 1) {
+      const terminal = ds[i]!;
+      let pid: number | undefined;
+      try {
+        pid = await terminal.processId;
+      } catch {
+        // Terminal vừa đóng giữa chừng — không có pid thì cũng không có gì để dọn.
+        continue;
+      }
+      if (pid === undefined) continue;
+      const khoa = String(i);
+      shellPids.set(pid, khoa);
+      theoKhoa.set(khoa, terminal);
+    }
+    return terminalChuaPid(pids, bang, shellPids)
+      .map((khoa) => theoKhoa.get(khoa))
+      .filter((t): t is vscode.Terminal => t !== undefined);
+  }
+
   /** Trả về những pid VẪN còn là tiến trình claude sau hạn chờ — rỗng nghĩa là đã đóng xong. */
-  private async choTienTrinhChet(pids: number[]): Promise<number[]> {
+  private async choTienTrinhChet(pids: readonly number[]): Promise<number[]> {
     const han = Date.now() + this.hanDongPhienMs;
-    let conSong = pids;
     for (;;) {
-      const bang = await this.docDongLenhTienTrinh();
-      // Đọc hỏng ở vòng xác minh thì giữ nguyên danh sách: thà từ chối mở còn hơn mở chồng.
-      if (bang.size > 0) conSong = locPidDongDuoc(conSong, bang).dong;
-      if (conSong.length === 0 || Date.now() >= han) return conSong;
-      await new Promise((r) => setTimeout(r, 300));
+      const conSong = pids.filter((pid) => this.pidConSong(pid));
+      if (conSong.length === 0) return [];
+      if (Date.now() >= han) {
+        // Chỉ tới đây mới đáng bỏ 1,5 giây quét bảng: pid "còn sống" sau hạn chờ có thể là
+        // claude chưa chết, mà cũng có thể là pid vừa được cấp cho chương trình khác — kết
+        // luận bừa theo hướng nào cũng sai một kiểu.
+        const bang = await this.docBangTienTrinhDayDu();
+        // Đọc hỏng ở vòng xác minh thì giữ nguyên: thà từ chối mở còn hơn mở chồng.
+        if (bang.size === 0) return [...conSong];
+        return locPidDongDuoc(conSong, dongLenhTu(bang)).dong;
+      }
+      await new Promise((r) => setTimeout(r, 50));
     }
   }
 

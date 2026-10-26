@@ -866,8 +866,19 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Phiên đang chạy ở **cửa sổ VS Code khác**: hộp thoại nói "không với tới terminal đó được",
       có [Đóng phiên đó rồi mở lại ở đây] (nút mặc định), [Vẫn mở phiên thứ hai] và Esc
 - [ ] Bấm **Đóng phiên đó rồi mở lại ở đây** → tiến trình claude bên cửa sổ kia kết thúc
-      (terminal bên đó hiện lại dấu nhắc, KHÔNG bị đóng), hội thoại mở lại ở workspace này và
-      `claude --resume` nối đúng chỗ đang dở — transcript không mất lượt nào
+      (terminal bên đó hiện lại dấu nhắc, KHÔNG bị đóng — cửa sổ này không với tới nó được),
+      hội thoại mở lại ở workspace này và `claude --resume` nối đúng chỗ đang dở — transcript
+      không mất lượt nào
+- [ ] **Terminal giữ phiên nằm trong CHÍNH cửa sổ này** (ca thường gặp: reload xong extension
+      không nhận nuôi được terminal hồi sinh): bấm nút đóng → terminal cũ **biến mất khỏi lưới**,
+      không để lại ô `pwsh` rỗng, và lưới có đúng số ô bằng số terminal của workspace
+- [ ] Đo thời gian ca trên: từ lúc bấm nút tới lúc terminal mới hiện ra **dưới 3 giây** với
+      một hội thoại (ước tính trước 26/10/2026 là ~4,5 giây — một lần quét bảng để lọc pid,
+      một lần nữa để xác nhận đã chết). Nhiều entry cùng rơi vào ca này thì cộng dồn, và mỗi
+      entry còn một hộp thoại phải trả lời — đó mới là chỗ cảm thấy chậm nhất
+- [ ] Mở Output → **AI Workspace — Điều phối**: có dòng `giành lại hội thoại <id>: đóng xong
+      pid … và N terminal vỏ trong … ms`. Ca từ chối cũng phải có dòng nói rõ vì sao
+- [ ] Ca từ chối (pid vẫn sống / bảng đọc hỏng) → **không terminal nào bị đóng**, lưới nguyên vẹn
 - [ ] Cùng ca trên nhưng hội thoại đang bị NHIỀU tiến trình bám (`claude agents --json` cho
       2–3 pid cùng `sessionId`) → đóng HẾT, không sót cái nào
 - [ ] Dựng ca pid tái sử dụng: giết tay tiến trình claude rồi kích hoạt lại ngay khi sổ phiên
