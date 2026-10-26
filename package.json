@@ -2,7 +2,7 @@
   "name": "ai-workspaces",
   "displayName": "AI Workspaces",
   "description": "Manage global workspaces of terminals — auto-save state, restore terminals, and resume Claude Code sessions right where you left off",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "bigdatacloud",
   "icon": "media/icon.png",
   "galleryBanner": {

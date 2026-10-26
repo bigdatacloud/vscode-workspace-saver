@@ -32,6 +32,17 @@ describe('bieuTuongTerminal — màu theo nhà cung cấp, xoay = đang làm', (
     expect(bieuTuongTerminal('closed', 'claude')).toEqual({ id: 'circle-slash', color: 'disabledForeground' });
   });
 
+  it('vỏ trống (phiên đã thoát, shell còn sống): KHÁC hẳn "đang mở" và mất màu nhà cung cấp', () => {
+    // Đây là toàn bộ lý do có trạng thái này: trước 0.2.4 nó vẽ y hệt "đang mở" — chấm đầy
+    // màu Anthropic — nên người dùng nhìn một phiên đã chết mà tưởng nó đang chạy.
+    const vo = bieuTuongTerminal('voTrong', 'claude');
+    expect(vo.id).not.toBe('circle-filled');
+    expect(vo.id).not.toMatch(/~spin$/);
+    expect(vo.color).not.toBe(MAU_NHA_CUNG_CAP.claude);
+    // Cũng không được trùng "chưa mở": hai thứ này dọn bằng hai cách khác nhau.
+    expect(vo.id).not.toBe('circle-slash');
+  });
+
   it('CHỜ BẠN TRẢ LỜI: chấm VÀNG đứng yên; lỗi: ĐỎ — hai màu này đè lên màu nhà cung cấp', () => {
     expect(bieuTuongTerminal('blocked', 'claude')).toEqual({ id: 'circle-filled', color: 'charts.yellow' });
     expect(bieuTuongTerminal('error', 'codex')).toEqual({ id: 'error', color: 'charts.red' });

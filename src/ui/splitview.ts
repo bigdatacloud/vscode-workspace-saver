@@ -355,7 +355,12 @@ export async function hienTerminal(
   t: vscode.Terminal,
   ghiLog: (d: string) => void = () => undefined,
 ): Promise<boolean> {
-  if (t.exitStatus !== undefined) return false;
+  if (t.exitStatus !== undefined) {
+    // Trả `false` im lặng ở đây từng là lỗ chẩn đoán duy nhất của hàm: bên gọi báo "không đưa
+    // ra trước được" mà Output không có dòng nào nói vì sao.
+    ghiLog(`[hien] "${t.name}" đã thoát (mã ${String(t.exitStatus.code)}) nên không hiện được`);
+    return false;
+  }
   /**
    * Đã tới nơi chưa?
    *

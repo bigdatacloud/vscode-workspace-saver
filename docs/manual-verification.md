@@ -31,6 +31,27 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Đóng cửa sổ Extension Host, mở lại → cây vẫn hiện đúng danh sách workspace đã tạo (đọc
       lại từ `workspaces.json` trong global storage), KHÔNG có workspace nào tự động active
 
+## Phiên đã thoát, vỏ shell còn sống (0.2.4)
+
+Dựng ca: mở một terminal Claude, chờ cây hiện trạng thái thật (`đang chạy`/`rảnh` — tức sổ
+phiên đã thấy nó), rồi **thoát phiên mà giữ terminal**: gõ `/exit` trong claude, hoặc
+`taskkill /PID <pid claude> /F` từ một terminal khác. Tab terminal phải còn đó.
+
+- [ ] Trong vòng một nhịp poll (3 giây), item đổi thành **`phiên đã thoát · shell trống`** với
+      icon vòng tròn **rỗng**, màu mờ — KHÔNG còn là chấm đầy màu nhà cung cấp
+- [ ] Hover nó → tooltip có hai dòng "Phiên trong terminal này đã thoát…" và "Bấm để đóng vỏ
+      và mở lại phiên"
+- [ ] Bấm vào item → hộp thoại MODAL "Phiên trong terminal "…" đã thoát, chỉ còn shell trống.
+      Mở lại phiên?", phần chi tiết nói sẽ nối lại hội thoại và "Shell trống hiện tại sẽ bị
+      đóng"; **không** còn thông báo "đang chạy nhưng không đưa ra trước được"
+- [ ] Esc / Cancel → không đóng tab nào, không mở phiên nào; item vẫn là "shell trống"
+- [ ] Bấm "Mở lại" → tab vỏ biến mất, một terminal mới mở đúng entry đó và nối lại hội thoại
+      (registry **không** có hai tiến trình claude cho cùng phiên)
+- [ ] Shell **thường** (không phải agent) để ở dấu nhắc → vẫn là `đang mở`, KHÔNG bị gọi là vỏ
+      trống (shell không có phiên nào để mất)
+- [ ] Terminal Claude vừa mở, sổ phiên chưa kịp thấy → hiện `đang tải phiên…` rồi sang trạng
+      thái thật; KHÔNG được nhấp nháy qua "shell trống"
+
 ## Kích hoạt riêng một terminal
 - [ ] Bấm vào terminal Claude ĐANG ĐÓNG (có id phiên) → hộp thoại MODAL "Kích hoạt terminal …?"
       với dòng "Sẽ nối lại hội thoại Claude … tốn token"; bấm Cancel/Esc → KHÔNG có gì được mở,

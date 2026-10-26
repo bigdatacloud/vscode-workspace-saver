@@ -44,6 +44,11 @@ export function bieuTuongTerminal(state: TerminalState, agent: 'claude' | 'codex
       return { id: 'sync~spin', color: 'disabledForeground' };
     case 'closed':
       return { id: 'circle-slash', color: 'disabledForeground' };
+    // Vỏ trống: terminal còn sống, phiên trong nó đã thoát. Vòng RỖNG — vẫn là một cái vòng
+    // (khác "chưa mở" gạch chéo, vì ở đây vẫn còn một terminal thật phải dọn), nhưng rỗng
+    // ruột và mất màu nhà cung cấp: không còn agent nào ngồi trong đó để mà tô màu.
+    case 'voTrong':
+      return { id: 'circle-outline', color: 'disabledForeground' };
     // Hai trạng thái cần người dùng nhìn tới đè lên màu nhà cung cấp: "cần bạn" quan trọng hơn
     // "của ai". Vàng đứng yên = đang chờ bạn bấm; đỏ = hỏng.
     case 'blocked':

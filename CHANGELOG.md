@@ -3,6 +3,40 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.4] — 2026-10-26
+
+### Sửa
+
+- **Phiên đã thoát không còn giả vờ đang chạy, và mở lại được.** Terminate một phiên agent
+  thì cái vỏ shell đã sinh ra nó vẫn sống (`taskkill /T` đi xuống; `/exit` thì chỉ agent
+  thoát). Trước bản này, mọi đường "mở lại một phiên" đều hỏi đúng một câu — *cửa sổ này còn
+  giữ terminal nào cho entry không* — mà câu đó trả lời về **terminal**, không phải về
+  **phiên**. Vỏ còn sống nghĩa là câu trả lời luôn là "có", nên:
+  cây vẽ chấm đầy màu nhà cung cấp y như đang chạy; bấm vào thì nhận "đang chạy nhưng không
+  đưa ra trước được" rồi hết đường; menu "Kích hoạt riêng terminal này" cũng bỏ qua đúng
+  entry đó (nó chỉ mở những entry *chưa* có terminal). Lối duy nhất còn lại là chuột phải →
+  gỡ hẳn terminal khỏi workspace.
+  Nay cây có trạng thái riêng **"phiên đã thoát · shell trống"** (vòng tròn rỗng, màu mờ), và
+  bấm vào nó thì được hỏi mở lại phiên — đồng ý thì vỏ cũ bị đóng rồi phiên bật lại đúng
+  entry ấy.
+- **Thông báo "không đưa ra trước mặt được" nay có lối ra**: hai nút *Đóng và mở lại* và
+  *Xem Output*, và nó không còn khẳng định "đang chạy" — thứ duy nhất extension biết chắc là
+  terminal còn trong sổ.
+- **Kênh "AI Workspace — Xem song song" ghi thêm lý do** khi không hiện được một terminal đã
+  thoát. Nhánh đó trước đây trả về im lặng, nên Output không có dòng nào giải thích.
+
+### Ghi chú kỹ thuật
+
+- Giả thuyết đầu tiên (VS Code giữ terminal đã chết trong sổ với `exitStatus`) đã bị **loại
+  bằng đo**, không bằng suy luận: thăm dò trong Extension Host ngày 26/10/2026 cho thấy
+  `onDidCloseTerminal` bắn sau **426 ms** khi shell bị `taskkill /T /F` từ ngoài và sau
+  **896–3 259 ms** khi tiến trình tự thoát, và terminal rời `window.terminals` ngay trong
+  nhịp đó. Nên `terminals.has()` đúng là "terminal còn sống"; thứ sai là coi nó bằng với
+  "phiên còn sống".
+- Vòng điều phối **không** nhận trạng thái mới: với bus, "không thấy phiên trong sổ" vẫn phải
+  là *chưa xác minh được*, vì coi nó là chết thì một nhịp sổ phiên hỏng cũng đủ làm người
+  điều phối bỏ rơi một worker đang làm việc thật.
+
 ## [0.2.3] — 2026-10-26
 
 ### Sửa

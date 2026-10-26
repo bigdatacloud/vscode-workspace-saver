@@ -120,8 +120,18 @@ import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
 import { gopGoiYDuongDan } from './paths';
 import { decideTerminalRemoval, type RemoveTerminalDecision } from './remove';
+import { laVoTrong } from './votrong';
 
-export type TerminalState = 'busy' | 'idle' | 'blocked' | 'loading' | 'open' | 'closed' | 'error';
+export type TerminalState =
+  | 'busy'
+  | 'idle'
+  | 'blocked'
+  | 'loading'
+  | 'open'
+  | 'closed'
+  | 'error'
+  /** Terminal còn sống nhưng phiên agent trong nó đã thoát — xem `votrong.ts`. */
+  | 'voTrong';
 
 /**
  * Một thành viên tổ SAU khi người dùng đã duyệt: mô tả có thể đã sửa, mô hình do họ chọn.
@@ -352,6 +362,15 @@ export class WorkspaceManager implements vscode.Disposable {
   private loadingTimer: NodeJS.Timeout | null = null;
   /** Terminal không mở được ở lần activate gần nhất (cwd mất, lỗi tạo…). */
   private readonly errorIds = new Set<string>();
+  /**
+   * Entry mà cửa sổ NÀY đã từng nhìn thấy một phiên sống trong sổ phiên.
+   *
+   * Khác hẳn `entry.claudeSessionId` (bền trong store, nói "từng có phiên ở đâu đó"): đây là
+   * bằng chứng tại chỗ, cần để phân biệt "phiên vừa thoát, còn trơ cái vỏ" với "terminal vừa
+   * mở, sổ phiên chưa kịp thấy". Thiếu nó thì mọi entry claude đều hiện "phiên đã thoát"
+   * trong khoảng giữa lúc terminal mở và nhịp poll đầu tiên.
+   */
+  private readonly daThayPhien = new Set<string>();
   /** Nhóm cwd đã hỏi QuickPick trong phiên này — không hỏi lại dù người dùng bỏ qua. */
   private readonly askedCwds = new Set<string>();
   /** PID shell của từng terminal đang track (terminalId → pid) — để tra phả hệ tiến trình. */
@@ -602,7 +621,31 @@ export class WorkspaceManager implements vscode.Disposable {
     // Registry chưa thấy session (claude còn đang boot/resume) — báo "đang tải" thay vì
     // "đang mở" để người dùng biết extension vẫn đang làm việc, không phải đơ.
     if (this.loadingIds.has(entry.id)) return 'loading';
+    // Phiên đã thoát nhưng cái vỏ shell còn sống: trước 0.2.4 chỗ này trả 'open', nên một
+    // phiên đã chết vẫn vẽ chấm đầy màu nhà cung cấp y như đang chạy.
+    if (this.laVoTrong(entry)) return 'voTrong';
     return 'open';
+  }
+
+  /**
+   * Bằng chứng để gọi một terminal là "vỏ trống" — luật thuần nằm ở `votrong.ts`.
+   *
+   * `daThayPhien` là mệnh đề quan trọng nhất và cũng là mệnh đề đắt nhất: nó đòi cửa sổ NÀY
+   * đã từng nhìn thấy phiên sống trong terminal đó, chứ không chỉ "entry có id phiên trong
+   * store". Không có nó thì mỗi lần khôi phục, entry claude nào cũng hiện "phiên đã thoát"
+   * trong khoảng giữa lúc terminal mở và lúc nhịp poll đầu tiên chạy.
+   *
+   * Chỉ áp cho claude: trạng thái từ sổ phiên (`statuses`) hiện chỉ có đường claude, nên với
+   * codex mệnh đề "sổ phiên không còn" luôn đúng và mọi terminal codex sẽ thành vỏ trống.
+   */
+  private laVoTrong(entry: TerminalEntry): boolean {
+    return laVoTrong({
+      laAgent: entry.kind === 'claude',
+      daTungCoPhien: this.daThayPhien.has(entry.id),
+      terminalSong: this.terminals.has(entry.id),
+      registryConPhien: this.statuses.get(entry.id) !== undefined,
+      dangTai: this.loadingIds.has(entry.id),
+    });
   }
 
   /**
@@ -3243,10 +3286,15 @@ export class WorkspaceManager implements vscode.Disposable {
     return ws.terminals.map((entry) => {
       const role = this.vaiCuaEntry(ws, entry);
       const agent = this.agentCuaEntry(entry);
+      const state = this.terminalState(entry);
       return {
         id: entry.id,
         name: entry.name,
-        state: this.terminalState(entry),
+        // Vòng điều phối KHÔNG được nhận 'voTrong', và đây là chỗ duy nhất chặn: `open` với
+        // bus nghĩa là "chưa xác minh được" (xem `phanQuyetSong`), còn coi vỏ trống là chết
+        // thì một nhịp registry hỏng cũng đủ làm người điều phối bỏ rơi worker đang làm
+        // việc thật. Kiểu `TrangThaiAgent` không có 'voTrong' nên tsc giữ hàng rào này.
+        state: state === 'voTrong' ? 'open' : state,
         agent: agent ?? null,
         ...(role === undefined ? {} : { roleName: role.name, roleKind: role.kind }),
         cwd: entry.cwd,
@@ -4816,15 +4864,39 @@ export class WorkspaceManager implements vscode.Disposable {
    */
   async focusTerminal(workspaceId: string, terminalId: string): Promise<void> {
     const dangMo = this.terminals.has(terminalId);
-    const hienDuoc = dangMo ? await this.hienTheoId(terminalId) : false;
+    // Tra vỏ trống TRƯỚC khi gọi `hienTheoId`: với một cái vỏ thì việc đúng không phải là
+    // đưa nó ra trước mặt (người dùng bấm vào để xem PHIÊN, mà phiên thì đã thoát).
+    const entryTruoc = this.findEntry(workspaceId, terminalId);
+    const voTrong = entryTruoc !== undefined && this.laVoTrong(entryTruoc);
+    const hienDuoc = dangMo && !voTrong ? await this.hienTheoId(terminalId) : false;
     const entry = this.findEntry(workspaceId, terminalId);
-    const phan = phanXuBamTerminal({ dangMo, hienDuoc, coEntry: entry !== undefined });
+    const phan = phanXuBamTerminal({ dangMo, hienDuoc, coEntry: entry !== undefined, voTrong });
     if (phan.loai === 'daHien') return;
     if (phan.loai === 'khongHienDuoc') {
-      void vscode.window.showWarningMessage(
-        `Terminal "${entry?.name ?? terminalId}" đang chạy nhưng không đưa ra trước được ` +
-          `(xem kênh "${TEN_KENH_LUOI}" trong Output).`,
+      // KHÔNG nói "đang chạy": tất cả những gì ta biết là cửa sổ này còn giữ một terminal cho
+      // entry. Và không để người dùng ở ngõ cụt — trước 0.2.4 câu này là hết đường, lối duy
+      // nhất còn lại là gỡ hẳn entry khỏi workspace.
+      const tra = await vscode.window.showWarningMessage(
+        `Terminal "${entry?.name ?? terminalId}" còn trong sổ nhưng không đưa ra trước mặt được. ` +
+          `"Đóng và mở lại" sẽ đóng nó, kể cả khi phiên bên trong vẫn đang chạy.`,
+        'Đóng và mở lại',
+        `Xem "${TEN_KENH_LUOI}"`,
       );
+      if (tra === 'Đóng và mở lại' && entry !== undefined) {
+        await this.moLaiTrongVo(workspaceId, terminalId);
+      } else if (tra !== undefined && tra !== 'Đóng và mở lại') {
+        this.kenhLuoi().show(true);
+      }
+      return;
+    }
+    if (phan.loai === 'hoiMoLai' && entry !== undefined) {
+      const tra = await vscode.window.showWarningMessage(
+        `Phiên trong terminal "${entry.name}" đã thoát, chỉ còn shell trống. Mở lại phiên?`,
+        { modal: true, detail: `${moTaKichHoat(entry)}\n\nShell trống hiện tại sẽ bị đóng.` },
+        'Mở lại',
+      );
+      if (tra !== 'Mở lại') return;
+      await this.moLaiTrongVo(workspaceId, terminalId);
       return;
     }
     if (phan.loai === 'entryLacHau' || entry === undefined) {
@@ -4841,6 +4913,36 @@ export class WorkspaceManager implements vscode.Disposable {
         'Kích hoạt',
       );
       if (tra !== 'Kích hoạt') return;
+    }
+    await this.activate(workspaceId, terminalId);
+  }
+
+  /**
+   * Dọn cái vỏ rồi mở lại phiên của entry — lối ra khỏi ngõ cụt "terminal còn trong sổ".
+   *
+   * Thứ tự BẮT BUỘC là release → dispose → activate, không được đảo:
+   * `activate` chỉ mở những entry `!terminals.has()`, mà `onDidCloseTerminal` bắn muộn vài
+   * trăm mili giây (đo 26/10/2026: 426 ms sau khi shell bị giết). Dispose trước rồi activate
+   * ngay thì sổ terminal vẫn còn key, và `activate` bỏ qua đúng cái entry người dùng vừa bấm
+   * — đúng cái bế tắc bản vá này sinh ra để chữa.
+   */
+  private async moLaiTrongVo(workspaceId: string, terminalId: string): Promise<void> {
+    const t = this.terminals.get(terminalId);
+    this.terminals.release(terminalId);
+    this.quenTerminal(terminalId);
+    t?.dispose();
+    this.onChanged.fire();
+    // Và chờ cái vỏ rời `window.terminals` thật sự trước khi kích hoạt. `dispose()` chỉ ra
+    // lệnh; đo 26/10/2026 thì terminal còn nằm trong danh sách thêm 0,4–3,3 giây. Vỏ đã được
+    // release nên không ai sở hữu nó nữa, mà nó vẫn mang `AI_WORKSPACE_TERMINAL_ID` của
+    // entry này trong creationOptions — `noiLaiTerminalHoiSinh` khớp marker đó là bằng chứng
+    // MẠNH NHẤT, nên nó sẽ "nối lại" đúng cái xác sắp biến mất, báo thành công, và không bật
+    // phiên nào. Trần 4 giây: quá hạn thì cứ đi tiếp, tệ nhất là về đúng hành vi cũ.
+    if (t !== undefined) {
+      const het = Date.now() + 4000;
+      while (Date.now() < het && vscode.window.terminals.includes(t)) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
     }
     await this.activate(workspaceId, terminalId);
   }
@@ -5073,6 +5175,9 @@ export class WorkspaceManager implements vscode.Disposable {
     this.loadingIds.delete(terminalId);
     this.statuses.delete(terminalId);
     this.errorIds.delete(terminalId);
+    // Terminal rời tầm quản lý thì bằng chứng "đã thấy phiên trong nó" hết giá trị: lần mở
+    // sau là một terminal khác, phải chờ sổ phiên xác nhận lại từ đầu.
+    this.daThayPhien.delete(terminalId);
     // Terminal đóng rồi thì không còn system prompt cũ nào để lệch: lần mở sau đọc lại file
     // vai. Giữ cờ lại chỉ làm cây báo "vai đã đổi" vĩnh viễn cho một thứ đã hết lệch.
     this.vaiDaDoi.delete(terminalId);
@@ -5357,6 +5462,9 @@ export class WorkspaceManager implements vscode.Disposable {
         const session = entry.claudeSessionId ? bySession.get(entry.claudeSessionId) : undefined;
         const before = this.statuses.get(entry.id);
         if (session) {
+          // Bằng chứng tại chỗ: từ giờ, sổ phiên mất entry này nghĩa là phiên ĐÃ THOÁT, chứ
+          // không phải chưa kịp xuất hiện.
+          this.daThayPhien.add(entry.id);
           // Chỉ soi khi registry nói `idle`: phiên đang bận ghi transcript liên tục nên đọc
           // mỗi nhịp là phí, mà quan sát thực tế thì lúc Claude hỏi, tiến trình luôn ở `idle`
           // (nó dừng hẳn chờ người dùng).

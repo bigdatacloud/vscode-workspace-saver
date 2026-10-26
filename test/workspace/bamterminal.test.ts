@@ -39,4 +39,36 @@ describe('phân xử cú bấm vào terminal trong cây', () => {
       loai: 'daHien',
     });
   });
+
+  /**
+   * Vỏ trống (xem `votrong.test.ts`): terminal còn sống nhưng phiên trong nó đã thoát. Ca này
+   * là lý do bản 0.2.4 tồn tại — trước đó nó trượt vào `daHien`/`khongHienDuoc` và người dùng
+   * mất hẳn đường mở lại phiên.
+   */
+  it('vỏ trống → HỎI MỞ LẠI, dù terminal hiện ra được: hiện một shell trống không phải cái người dùng bấm vào để xem', () => {
+    expect(
+      phanXuBamTerminal({ dangMo: true, hienDuoc: true, coEntry: true, voTrong: true }),
+    ).toEqual({ loai: 'hoiMoLai' });
+  });
+
+  it('vỏ trống và cũng không hiện ra được → vẫn là HỎI MỞ LẠI, không phải ngõ cụt "đang chạy"', () => {
+    expect(
+      phanXuBamTerminal({ dangMo: true, hienDuoc: false, coEntry: true, voTrong: true }),
+    ).toEqual({ loai: 'hoiMoLai' });
+  });
+
+  it('vỏ trống nhưng entry đã rời workspace → cây lạc hậu, không mở lại theo item cũ', () => {
+    expect(
+      phanXuBamTerminal({ dangMo: true, hienDuoc: false, coEntry: false, voTrong: true }),
+    ).toEqual({ loai: 'entryLacHau' });
+  });
+
+  it('KHÔNG vỏ trống thì mọi nhánh cũ giữ nguyên — cờ mới không được đổi hành vi sẵn có', () => {
+    expect(phanXuBamTerminal({ dangMo: true, hienDuoc: false, coEntry: true, voTrong: false })).toEqual({
+      loai: 'khongHienDuoc',
+    });
+    expect(phanXuBamTerminal({ dangMo: false, hienDuoc: false, coEntry: true, voTrong: false })).toEqual({
+      loai: 'hoiKichHoat',
+    });
+  });
 });

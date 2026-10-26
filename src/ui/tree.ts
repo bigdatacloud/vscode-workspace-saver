@@ -16,6 +16,7 @@ const STATE_LABELS: Record<TerminalState, string> = {
   open: 'đang mở',
   closed: 'chưa mở',
   error: 'lỗi',
+  voTrong: 'phiên đã thoát · shell trống',
 };
 
 export class WorkspaceItem extends vscode.TreeItem {
@@ -95,6 +96,10 @@ export class TerminalItem extends vscode.TreeItem {
     // Nhắc ngay ở đây vì đây là chỗ người dùng đang phân vân: trước bản này, terminal của
     // workspace chưa kích hoạt bấm vào chỉ báo "kích hoạt workspace trước".
     if (view.state === 'closed') dong.push('Bấm để bật RIÊNG terminal này (có hỏi xác nhận, không mở cả workspace)');
+    if (view.state === 'voTrong') {
+      dong.push('Phiên trong terminal này đã thoát, cái vỏ shell thì còn sống.');
+      dong.push('Bấm để đóng vỏ và mở lại phiên (có hỏi xác nhận).');
+    }
     this.tooltip = dong.join('\n');
     // Màu = nhà cung cấp, hình = trạng thái — quy tắc thuần nằm ở `bieutuong.ts`.
     const icon = bieuTuongTerminal(view.state, view.agent);
