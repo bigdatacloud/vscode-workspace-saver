@@ -3,6 +3,21 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.0] — 2026-10-26
+
+### Thêm
+
+- **Giành lại hội thoại đang chạy ở nơi khác.** Khi hội thoại Claude của một terminal đang bị
+  một tiến trình ở **cửa sổ VS Code khác** (hoặc ngoài VS Code) giữ, cửa sổ này không nhận
+  nuôi được nó — trước đây chỉ còn cách bỏ qua hoặc mở phiên thứ hai (xé đôi lịch sử). Nay
+  hộp thoại có thêm **"Đóng phiên đó rồi mở lại ở đây"**: đóng mọi tiến trình đang bám hội
+  thoại ấy rồi mới `--resume` ở workspace hiện tại. Lịch sử giữ nguyên (transcript ghi dần
+  theo từng lượt); cái mất là việc tiến trình kia đang chạy dở.
+  - Trước khi đóng, mỗi pid được soi dòng lệnh để chắc chắn nó VẪN là tiến trình claude — sổ
+    phiên của claude còn hàng cũ, mà pid thì hệ điều hành cấp lại cho chương trình khác.
+  - Sau khi đóng, phải xác minh tiến trình đã chết thật bằng bảng tiến trình của hệ điều hành
+    thì mới mở; không xác minh được thì KHÔNG mở.
+
 ## [0.1.0] — 2026-10-25
 
 Bản phát hành công khai đầu tiên.

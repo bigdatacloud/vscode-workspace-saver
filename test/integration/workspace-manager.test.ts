@@ -6,6 +6,7 @@ const vscodeMock = vi.hoisted(() => ({
     activeTerminal: undefined as unknown,
     showWarningMessage: vi.fn(),
     showInformationMessage: vi.fn(),
+    showErrorMessage: vi.fn(),
   },
   workspace: {
     workspaceFolders: undefined,
@@ -84,6 +85,15 @@ interface ManagerHarness {
     entry: TerminalEntry,
     terminalId: string,
   ): Promise<'daDung' | 'boQua' | 'vanMo'>;
+  hoiTrungPhien(
+    wsId: string,
+    entry: TerminalEntry,
+    phanXu: { loai: 'ngoai'; soTienTrinh: number },
+  ): Promise<'daDung' | 'boQua' | 'vanMo'>;
+  phienLucKhoiPhuc: RunningSession[];
+  docDongLenhTienTrinh(): Promise<Map<number, string>>;
+  gietTienTrinh(pid: number): Promise<void>;
+  hanDongPhienMs: number;
   timTheoTerminalId(id: string): { ws: Workspace; entry: TerminalEntry } | null;
 }
 
@@ -94,6 +104,7 @@ function bareManager(store: StoreFile, terminals: ManagerHarness['terminals']): 
     terminals,
     agent: { listRunning: async () => [] },
     phienTrongTerminalThua: new Map(),
+    phienLucKhoiPhuc: [],
     statuses: new Map(),
     touchedIds: new Set(),
     layBangTienTrinh: vi.fn(async () => new Map()),
@@ -707,5 +718,135 @@ describe('WorkspaceManager — phiên trùng tên + trùng thư mục', () => {
 
     expect(quyet).toBe('vanMo');
     expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkspaceManager — giành lại hội thoại đang chạy ở cửa sổ khác', () => {
+  const SESSION = U('9');
+  const CLAUDE = String.raw`node C:
+pm\@anthropic-ai\claude-code\cli.js --resume x`;
+
+  const phien = (pid: number): RunningSession => ({
+    sessionId: SESSION, name: null, cwd: String.raw`D:
+epo`, pid, kind: 'interactive', status: 'idle',
+  });
+
+  const dungBo = (): { manager: ManagerHarness; entry: TerminalEntry } => {
+    const entry: TerminalEntry = {
+      id: U('1'), name: 'openclaw', cwd: String.raw`D:
+epo`, kind: 'claude', claudeSessionId: SESSION,
+    };
+    const ws: Workspace = {
+      id: U('3'), name: 'W', lastActiveAt: null, activeWindowId: null, terminals: [entry],
+    };
+    const terminals: ManagerHarness['terminals'] = {
+      adopt: vi.fn(), get: vi.fn(() => undefined), has: vi.fn(() => false),
+      ownsTerminal: vi.fn(() => null), release: vi.fn(),
+    };
+    const manager = bareManager({ version: 2, workspaces: [ws] }, terminals);
+    manager.hanDongPhienMs = 0;
+    return { manager, entry };
+  };
+
+  beforeEach(() => {
+    vscodeMock.window.showWarningMessage.mockReset();
+    vscodeMock.window.showErrorMessage.mockReset();
+  });
+
+  it('đóng MỌI tiến trình của hội thoại rồi mới cho mở lại ở đây', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [phien(111), phien(222)] };
+    manager.phienLucKhoiPhuc = [phien(111), phien(222)];
+    let daGiet = false;
+    manager.docDongLenhTienTrinh = vi.fn(async () =>
+      daGiet ? new Map([[9, 'explorer.exe']]) : new Map([[111, CLAUDE], [222, CLAUDE], [9, 'explorer.exe']]),
+    );
+    manager.gietTienTrinh = vi.fn(async () => { daGiet = true; });
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 2 });
+
+    expect(quyet).toBe('vanMo');
+    expect(manager.gietTienTrinh).toHaveBeenCalledWith(111);
+    expect(manager.gietTienTrinh).toHaveBeenCalledWith(222);
+    // Ảnh chụp cũ còn hàng của hội thoại vừa đóng thì entry sau trong cùng đợt kích hoạt
+    // sẽ tưởng thư mục này vẫn có phiên sống và không dám `-c`.
+    expect(manager.phienLucKhoiPhuc).toEqual([]);
+  });
+
+  it('pid giờ thuộc chương trình khác (sổ còn hàng cũ) → không giết gì, không mở', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docDongLenhTienTrinh = vi.fn(async () => new Map([[111, 'notepad.exe']]));
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('boQua');
+    expect(manager.gietTienTrinh).not.toHaveBeenCalled();
+    expect(vscodeMock.window.showErrorMessage).toHaveBeenCalled();
+  });
+
+  it('giết rồi mà tiến trình vẫn sống → KHÔNG mở, vì mở là xé đôi lịch sử', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docDongLenhTienTrinh = vi.fn(async () => new Map([[111, CLAUDE]]));
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('boQua');
+    expect(manager.gietTienTrinh).toHaveBeenCalledWith(111);
+    expect(vscodeMock.window.showErrorMessage).toHaveBeenCalled();
+  });
+
+  it('không đọc được bảng tiến trình thì không dám đóng pid nào', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [phien(111)] };
+    manager.docDongLenhTienTrinh = vi.fn(async () => new Map());
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('boQua');
+    expect(manager.gietTienTrinh).not.toHaveBeenCalled();
+  });
+
+  it('tiến trình đã tự thoát giữa lúc hỏi → cứ mở, không có gì để đóng', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Đóng phiên đó rồi mở lại ở đây');
+    manager.agent = { listRunning: async () => [] };
+    manager.docDongLenhTienTrinh = vi.fn();
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('vanMo');
+    expect(manager.gietTienTrinh).not.toHaveBeenCalled();
+  });
+
+  it('vẫn giữ được lối "mở phiên thứ hai" cho người biết rõ mình làm gì', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue('Vẫn mở phiên thứ hai');
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('vanMo');
+    expect(manager.gietTienTrinh).not.toHaveBeenCalled();
+  });
+
+  it('Esc → không đóng gì, không mở gì', async () => {
+    const { manager, entry } = dungBo();
+    vscodeMock.window.showWarningMessage.mockResolvedValue(undefined);
+    manager.gietTienTrinh = vi.fn();
+
+    const quyet = await manager.hoiTrungPhien(U('3'), entry, { loai: 'ngoai', soTienTrinh: 1 });
+
+    expect(quyet).toBe('boQua');
+    expect(manager.gietTienTrinh).not.toHaveBeenCalled();
   });
 });

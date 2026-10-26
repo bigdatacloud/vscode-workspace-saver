@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   choLamViec,
   phanXuTrungPhien,
+  pidDangChay,
   timTerminalTrungCho,
   type PhienDangChay,
   type TerminalDangGiu,
@@ -137,5 +138,21 @@ describe('timTerminalTrungCho — phiên trùng tên và trùng chỗ làm việ
     expect(timTerminalTrungCho(E('e1', 'x', 'D:/a'), [G('t1', 'x', 'D:/a'), G('t2', 'x', 'D:/a')])).toBe(
       't1',
     );
+  });
+});
+
+describe('pidDangChay — tiến trình phải đóng khi giành lại hội thoại', () => {
+  it('gom mọi pid sống của đúng hội thoại đó', () => {
+    // Một hội thoại có thể đang bị nhiều tiến trình bám (đo trên máy thật 17/10/2026: 2–3
+    // cái). Đóng mỗi cái đầu tiên là vẫn còn kẻ ghi chung file phiên.
+    expect(pidDangChay('s1', [P('s1', 10), P('s2', 20), P('s1', 30)])).toEqual([10, 30]);
+  });
+
+  it('hàng registry đã thoát (pid null) thì không có gì để đóng', () => {
+    expect(pidDangChay('s1', [P('s1', null)])).toEqual([]);
+  });
+
+  it('registry liệt kê trùng pid thì chỉ đóng một lần', () => {
+    expect(pidDangChay('s1', [P('s1', 10), P('s1', 10)])).toEqual([10]);
   });
 });

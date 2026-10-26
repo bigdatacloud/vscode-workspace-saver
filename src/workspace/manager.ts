@@ -60,7 +60,12 @@ import { moTaKichHoat, phamViKichHoat } from './kichhoat';
 import { dungEntryNhanBan, duocNhanBan, lenhCodexChoBanSao, vaiChoTenWorktree } from './nhanban';
 import { chonWorkspaceNhan } from './receiving';
 import { chuyenViTri, doiChoHangXom, ghimSauKhiKeo, sapXepWorkspace, vaiTuongUng } from './sapxep';
-import { docBangTienTrinh } from '../proc/real';
+import { locPidDongDuoc } from '../proc/dongphien';
+import {
+  docBangTienTrinh,
+  docDongLenhTienTrinh as docDongLenhThat,
+  gietTienTrinh as gietTienTrinhThat,
+} from '../proc/real';
 import { timTerminalTheoToTien } from '../proc/tree';
 import {
   WorkspaceSchema,
@@ -90,6 +95,7 @@ import { nhayTerminal } from './nhay';
 import { phanXuBamTerminal } from './bamterminal';
 import {
   phanXuTrungPhien,
+  pidDangChay,
   timTerminalTrungCho,
   type PhanXuPhien,
   type TerminalDangGiu,
@@ -1043,16 +1049,31 @@ export class WorkspaceManager implements vscode.Disposable {
   ): Promise<'daDung' | 'boQua' | 'vanMo'> {
     const NUT_MO = 'Vẫn mở phiên thứ hai';
     if (phanXu.loai === 'ngoai') {
+      const NUT_DONG = 'Đóng phiên đó rồi mở lại ở đây';
+      // NUT_DONG đứng trước nên nó là nút mặc định (Enter), đúng thứ tự thiệt hại của module
+      // này: đóng phiên kia mất việc đang chạy dở nhưng lịch sử còn nguyên, còn mở phiên thứ
+      // hai thì xé đôi lịch sử — không bao giờ được là mặc định. Esc vẫn là "không làm gì".
       const tra = await vscode.window.showWarningMessage(
         `Hội thoại của "${entry.name}" đang chạy ở nơi khác (${phanXu.soTienTrinh} tiến trình).`,
         {
           modal: true,
           detail:
-            'Cửa sổ VS Code này không với tới terminal đó được (có thể nó ở cửa sổ khác, hoặc ngoài VS Code), nên không nhận nuôi được. Mở lại ở đây sẽ thành hai tiến trình cùng ghi một file hội thoại — lịch sử bị xé đôi thì không khôi phục được.',
+            'Cửa sổ VS Code này không với tới terminal đó được (có thể nó ở cửa sổ khác, hoặc ngoài VS Code), nên không nhận nuôi được. Mở lại ở đây sẽ thành hai tiến trình cùng ghi một file hội thoại — lịch sử bị xé đôi thì không khôi phục được.\n\nĐóng phiên đó: tiến trình claude kia bị kết thúc (terminal bên cửa sổ kia chỉ hiện lại dấu nhắc), rồi hội thoại được mở lại ở đây. Lịch sử giữ nguyên vì transcript ghi dần theo từng lượt; cái mất là việc nó đang chạy dở.',
         },
+        NUT_DONG,
         NUT_MO,
       );
-      return tra === NUT_MO ? 'vanMo' : 'boQua';
+      if (tra === NUT_MO) return 'vanMo';
+      if (tra !== NUT_DONG) return 'boQua';
+      const sessionId = entry.claudeSessionId;
+      // 'ngoai' chỉ sinh ra khi entry có sessionId; nhánh này là để TS thu hẹp kiểu.
+      if (sessionId === undefined) return 'vanMo';
+      const kq = await this.gianhLaiPhienNgoai(sessionId);
+      if (kq.xong) return 'vanMo';
+      void vscode.window.showErrorMessage(
+        `Không giành lại được hội thoại "${entry.name}": ${kq.lyDo} Không mở ở đây để khỏi thành hai tiến trình ghi chung một file.`,
+      );
+      return 'boQua';
     }
 
     if (phanXu.loai === 'trungCho') return this.hoiTrungCho(wsId, entry, phanXu.terminalId);
@@ -1094,6 +1115,89 @@ export class WorkspaceManager implements vscode.Disposable {
     terminal.show(false);
     this.onChanged.fire();
     return 'daDung';
+  }
+
+  /** Hạn chờ tiến trình chết sau khi đã bắn lệnh đóng. */
+  private readonly hanDongPhienMs = 5000;
+
+  private docDongLenhTienTrinh(): Promise<Map<number, string>> {
+    return docDongLenhThat();
+  }
+
+  private gietTienTrinh(pid: number): Promise<void> {
+    return gietTienTrinhThat(pid);
+  }
+
+  /**
+   * Đóng mọi tiến trình đang bám `sessionId` để hội thoại được mở lại ở CỬA SỔ NÀY.
+   *
+   * Lối thoát cho ca mà extension không với tới được: terminal nằm ở cửa sổ VS Code khác
+   * (mỗi cửa sổ một extension host, `window.terminals` không thấy nhau) hoặc ở hẳn ngoài
+   * VS Code. Không nhận nuôi được thì đành đóng — nhưng phải đóng CHẮC rồi mới mở.
+   *
+   * Ba hàng rào, bỏ cái nào cũng hỏng:
+   *  1. Đọc LẠI registry lúc bấm nút, không dùng ảnh chụp lúc kích hoạt — pid trong ảnh có
+   *     thể đã chết hoặc đã bị cấp cho chương trình khác.
+   *  2. Soi dòng lệnh trước khi giết: registry claude còn hàng CŨ, pid thì được tái sử dụng.
+   *  3. Xác minh bằng BẢNG TIẾN TRÌNH chứ không bằng registry — registry còn hàng cũ sau khi
+   *     tiến trình chết, chờ nó biến mất là chờ mãi và ta sẽ từ chối mở dù đã đóng xong.
+   */
+  private async gianhLaiPhienNgoai(
+    sessionId: string,
+  ): Promise<{ xong: true } | { xong: false; lyDo: string }> {
+    const pids = pidDangChay(sessionId, await this.agent.listRunning());
+    // Tự thoát trong lúc người dùng còn đọc hộp thoại: không còn gì để đóng.
+    if (pids.length === 0) {
+      this.quenPhienTrongAnhChup(sessionId);
+      return { xong: true };
+    }
+
+    const phanLoai = locPidDongDuoc(pids, await this.docDongLenhTienTrinh());
+    if (!phanLoai.docDuoc) {
+      return { xong: false, lyDo: 'không đọc được bảng tiến trình của máy nên không dám đóng pid nào.' };
+    }
+    if (phanLoai.laNguoiKhac.length > 0) {
+      return {
+        xong: false,
+        lyDo: `pid ${phanLoai.laNguoiKhac.join(', ')} giờ thuộc về chương trình khác (sổ phiên của claude còn hàng cũ), không đụng tới.`,
+      };
+    }
+    if (phanLoai.dong.length === 0) {
+      this.quenPhienTrongAnhChup(sessionId);
+      return { xong: true };
+    }
+
+    for (const pid of phanLoai.dong) await this.gietTienTrinh(pid);
+
+    const conSong = await this.choTienTrinhChet(phanLoai.dong);
+    if (conSong.length > 0) {
+      return { xong: false, lyDo: `pid ${conSong.join(', ')} vẫn còn sống sau khi đóng.` };
+    }
+    this.quenPhienTrongAnhChup(sessionId);
+    return { xong: true };
+  }
+
+  /** Trả về những pid VẪN còn là tiến trình claude sau hạn chờ — rỗng nghĩa là đã đóng xong. */
+  private async choTienTrinhChet(pids: number[]): Promise<number[]> {
+    const han = Date.now() + this.hanDongPhienMs;
+    let conSong = pids;
+    for (;;) {
+      const bang = await this.docDongLenhTienTrinh();
+      // Đọc hỏng ở vòng xác minh thì giữ nguyên danh sách: thà từ chối mở còn hơn mở chồng.
+      if (bang.size > 0) conSong = locPidDongDuoc(conSong, bang).dong;
+      if (conSong.length === 0 || Date.now() >= han) return conSong;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  /**
+   * Xoá hội thoại vừa đóng khỏi ảnh chụp registry của lần kích hoạt này.
+   *
+   * Không xoá thì entry KẾ TIẾP trong cùng đợt kích hoạt vẫn thấy thư mục đó "còn phiên sống"
+   * (`coPhienDangChayNgoai`) và không dám `-c`, tức là mất chỗ đang dở mà chẳng vì lý do gì.
+   */
+  private quenPhienTrongAnhChup(sessionId: string): void {
+    this.phienLucKhoiPhuc = this.phienLucKhoiPhuc.filter((r) => r.sessionId !== sessionId);
   }
 
   /**

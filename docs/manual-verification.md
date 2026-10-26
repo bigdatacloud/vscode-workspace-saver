@@ -864,7 +864,17 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Bấm **Vẫn mở phiên thứ hai** → hành vi cũ (resume), dùng khi biết rõ mình làm gì
 - [ ] Esc / đóng hộp thoại → không mở gì, báo cáo ghi entry đó bị bỏ qua
 - [ ] Phiên đang chạy ở **cửa sổ VS Code khác**: hộp thoại nói "không với tới terminal đó được",
-      chỉ có [Vẫn mở phiên thứ hai] và Esc; mặc định là KHÔNG mở
+      có [Đóng phiên đó rồi mở lại ở đây] (nút mặc định), [Vẫn mở phiên thứ hai] và Esc
+- [ ] Bấm **Đóng phiên đó rồi mở lại ở đây** → tiến trình claude bên cửa sổ kia kết thúc
+      (terminal bên đó hiện lại dấu nhắc, KHÔNG bị đóng), hội thoại mở lại ở workspace này và
+      `claude --resume` nối đúng chỗ đang dở — transcript không mất lượt nào
+- [ ] Cùng ca trên nhưng hội thoại đang bị NHIỀU tiến trình bám (`claude agents --json` cho
+      2–3 pid cùng `sessionId`) → đóng HẾT, không sót cái nào
+- [ ] Dựng ca pid tái sử dụng: giết tay tiến trình claude rồi kích hoạt lại ngay khi sổ phiên
+      còn hàng cũ → hoặc mở bình thường (hàng cũ, pid đã biến mất), hoặc báo lỗi "pid … giờ
+      thuộc về chương trình khác" và KHÔNG mở. Tuyệt đối không được giết nhầm chương trình nào
+- [ ] Phiên đang chạy **ngoài VS Code** (chạy `claude --resume <id>` trong Windows Terminal)
+      → nút đóng vẫn kết thúc đúng tiến trình đó rồi mở lại ở đây
 - [ ] Sau khi dùng hàng rào, `claude agents --json` KHÔNG còn hai pid cùng một `sessionId`
 - [ ] Kích hoạt một workspace bình thường (hội thoại chưa chạy ở đâu) → không hỏi gì thêm
 - [ ] Registry đọc lỗi (tắt mạng / `claude` không chạy được) → không chặn oan, mở như cũ

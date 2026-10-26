@@ -97,3 +97,19 @@ export function timTerminalTrungCho(
   }
   return null;
 }
+
+/**
+ * Mọi pid đang bám hội thoại `sessionId` — danh sách phải đóng khi người dùng giành lại phiên.
+ *
+ * Một hội thoại có thể đang bị NHIỀU tiến trình bám (đo trên máy thật 17/10/2026: có hội
+ * thoại tới ba cái), nên đóng mỗi cái đầu là vô nghĩa: kẻ còn lại vẫn ghi chung file phiên.
+ * Hàng `pid === null` là bản ghi của phiên đã thoát, không có gì để đóng.
+ */
+export function pidDangChay(sessionId: string, dangChay: readonly PhienDangChay[]): number[] {
+  const ra: number[] = [];
+  for (const r of dangChay) {
+    if (r.sessionId !== sessionId || r.pid === null) continue;
+    if (!ra.includes(r.pid)) ra.push(r.pid);
+  }
+  return ra;
+}
