@@ -23,3 +23,6 @@ scripts/**
 # 106 KB tài liệu đọc tay, không mã nào nạp — không thuộc gói cài đặt
 huong-dan-ai-workspace.html
 *.vsix
+# Và mọi thứ ĐỔI TÊN từ một .vsix: 0.2.2 suýt đóng gói kèm nguyên gói 0.2.0 có lỗi (114 KB)
+# chỉ vì file đó được đặt tên `...vsix.DUNG-PUBLISH-co-loi-terminal-thua` nên luật trên trượt.
+*.vsix.*
