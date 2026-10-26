@@ -482,6 +482,44 @@ export async function themOVaoLuoi(
 }
 
 /**
+ * Bảo đảm mỗi ô đang HIỆN một tab terminal. Trả về số ô đã phải xoay.
+ *
+ * `xepLuoiTerminal` bảo đảm mỗi ô CHỨA terminal, không bảo đảm ô đang HIỆN terminal — hai
+ * chuyện khác nhau, và người dùng chỉ nhìn thấy chuyện thứ hai. 26/10/2026 anh Ý chụp
+ * lưới 2×2: ô trái-trên có đủ terminal nhưng đang hiện tab `Untitled-1` nên nhìn như ô
+ * rỗng. Nguyên nhân nằm ở chỗ không ai chọn: dời một tab khỏi nhóm thì VS Code tự chọn
+ * tab active kế tiếp, và tab đứng cạnh có thể là tab file.
+ *
+ * Trước đây bất biến này đúng MỘT CÁCH TÌNH CỜ — phụ thuộc tab nào đứng cạnh tab vừa
+ * rời đi. Đây là chỗ nói thành lời.
+ *
+ * Chỉ đụng vào ô NÀO CÓ tab terminal: ô thuần file là của người dùng, extension không có
+ * quyền đổi tab đang mở của họ.
+ */
+export async function hienTabTerminalMoiNhom(
+  ghiLog: (d: string) => void = () => undefined,
+): Promise<number> {
+  let daSua = 0;
+  // Đọc số nhóm MỖI VÒNG: `focusNhom` + xoay tab không đóng nhóm nào, nhưng đọc lại thì
+  // không phải tin vào một ảnh chụp cũ.
+  for (let i = 0; i < vscode.window.tabGroups.all.length; i++) {
+    const g = vscode.window.tabGroups.all[i];
+    if (g === undefined) continue;
+    if (demTermTrongNhom(g) === 0) continue;
+    if (g.activeTab?.input instanceof vscode.TabInputTerminal) continue;
+    const dangHien = g.activeTab?.label ?? 'không có';
+    await focusNhom(i);
+    if (await xoayToiTabTerminal(vscode.window.tabGroups.activeTabGroup)) {
+      daSua++;
+      ghiLog(`[luoi] ô ${i + 1} đang hiện tab "${dangHien}" — đã xoay về tab terminal`);
+    } else {
+      ghiLog(`[luoi] ô ${i + 1} đang hiện tab "${dangHien}", không xoay về tab terminal được`);
+    }
+  }
+  return daSua;
+}
+
+/**
  * Xếp các terminal thành lưới.
  *
  * Ba điều học được khi chạy thật trên VS Code 1.142, cả ba đều đi ngược trực giác:
@@ -595,6 +633,9 @@ export async function xepLuoiTerminal(
     ghiLog(`[luoi] ${lyDo}`);
   }
   if (daXep < ds.length) ghiLog(`[luoi] bố cục lúc dừng: ${moTaBoCuc()}`);
+  // Sau khi mọi cuú dời đã xong mới chốt tab đang hiện: xoay sớm thì vòng rải kế tiếp lại
+  // đổi tab active của nhóm 1, công xoay thành công toàng.
+  await hienTabTerminalMoiNhom(ghiLog);
   // DÒNG CUỐI, sau khi mọi thao tác dời đã lắng — xem ghi chú ở `thuPanel`.
   await thuPanel(ghiLog);
   return { daXep, qua: ds.length - daXep, daAn, lyDo };

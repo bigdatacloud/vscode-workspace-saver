@@ -3,6 +3,24 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.3] — 2026-10-26
+
+### Sửa
+
+- **Mỗi ô của lưới giờ luôn ĐANG HIỆN terminal của nó.** Trước đây "xem song song" chỉ
+  bảo đảm mỗi ô **chứa** một terminal, không bảo đảm ô đang **hiện** nó — hai chuyện khác
+  nhau, và người dùng chỉ nhìn thấy chuyện thứ hai. Ô nào còn tab file đứng cạnh thì sau khi
+  rải xong VS Code có thể chọn đúng tab file làm tab đang hiện — ô đó trông như một ô rỗng
+  dù terminal vẫn nằm trong đó. Bất biến này trước giờ đúng một cách tình cờ, phụ thuộc tab
+  nào đứng cạnh tab vừa bị dời đi; nay có một pha cuối nói thành lời.
+  Ô **không** chứa terminal nào thì không bị đụng tới — tab đang mở ở đó là của người dùng.
+
+### Lưu ý
+
+- Bản vá này **không dọn** tab `Untitled-1` cũ. 0.2.2 chặn việc sinh ra tab nháp mới, còn tab
+  đã có thì VS Code khôi phục qua mỗi lần khởi động lại — đóng tay một lần là xong. Pha mới ở
+  trên không đóng tab nào, nó chỉ đẩy tab terminal lên trước mặt.
+
 ## [0.2.2] — 2026-10-26
 
 ### Sửa

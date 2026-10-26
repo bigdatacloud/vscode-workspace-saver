@@ -1,6 +1,12 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
-import { gopVeMotNhom, hienTerminal, themOVaoLuoi, xepLuoiTerminal } from '../../src/ui/splitview';
+import {
+  gopVeMotNhom,
+  hienTabTerminalMoiNhom,
+  hienTerminal,
+  themOVaoLuoi,
+  xepLuoiTerminal,
+} from '../../src/ui/splitview';
 
 /**
  * Chạy thật trong Extension Host: ba lệnh workbench mà `splitview.ts` dựa vào
@@ -352,6 +358,85 @@ suite('xem song song — xếp terminal thành lưới', () => {
       // Đóng tab nháp theo DANH TÍNH, không bằng `revertAndCloseActiveEditor`: sau khi vá thì
       // tab đang hiện là terminal, nên lệnh theo-focus sẽ ăn nhầm tab terminal và để tab nháp
       // lọt sang ca sau.
+      for (const g of vscode.window.tabGroups.all) {
+        for (const tab of g.tabs) {
+          if (
+            doc !== undefined &&
+            tab.input instanceof vscode.TabInputText &&
+            tab.input.uri.toString() === doc.uri.toString()
+          ) {
+            await vscode.window.tabGroups.close(tab, false);
+          }
+        }
+      }
+      await donDep(ds);
+    }
+  });
+
+  /**
+   * Bất biến người dùng NHÌN THẤY, tách khỏi câu hỏi "tab file từ đâu ra".
+   *
+   * 26/10/2026 anh Ý chụp ảnh lưới 2×2: ô trái-trên có đủ terminal nhưng đang hiện tab
+   * `Untitled-1`, nên nhìn như một ô rỗng. `xepLuoiTerminal` chỉ bảo đảm mỗi ô CHỨA
+   * terminal — không có bước nào bảo đảm ô đang HIỆN terminal. Sau khi dời một tab đi,
+   * VS Code tự chọn tab active kế tiếp trong nhóm, và đó có thể là tab file.
+   *
+   * Ca này đo đúng đơn vị làm việc đó, không đi qua cả lưới: dựng tận tay một nhóm
+   * đang hiện tab file tuy trong nhóm có terminal, rồi hỏi hàm có xoay về không. Nhờ
+   * dựng tay nên nó PHÂN BIỆT được trước/sau bản vá — khác ca đi qua `xepLuoiTerminal`,
+   * ca đó xanh cả khi chưa vá nên không nói được gì.
+   */
+  test('ô chứa terminal nhưng đang hiện tab FILE: phải xoay về tab terminal', async () => {
+    const log: string[] = [];
+    let doc: vscode.TextDocument | undefined;
+    const ds: vscode.Terminal[] = [];
+    try {
+      ds.push(
+        vscode.window.createTerminal({
+          name: 'xoay-0',
+          location: vscode.TerminalLocation.Editor,
+        }),
+      );
+      await cho(() => tabTerminal() >= 1);
+
+      // Đo CỤC BỘ trên ĐÚNG ô của terminal, không đòi cả bàn làm việc sạch: ô rỗng sót lại từ
+      // ca trước làm `gopVeMotNhom()` không gom về một ô được, và bản đầu của ca này vì thế
+      // tự chối đo (đỏ trong lượt đầy đủ 26/10/2026, xanh khi chạy riêng). Buộc tab file vào
+      // đúng `viewColumn` của ô đó thì điều kiện luôn dựng được, bẩn hay sạch cũng vậy.
+      const oTerm = vscode.window.tabGroups.all.find((g) =>
+        g.tabs.some((x) => x.input instanceof vscode.TabInputTerminal),
+      );
+      assert.ok(oTerm !== undefined, `không tìm thấy ô nào chứa terminal — ${moTaHien()}`);
+      const cot = oTerm.viewColumn;
+
+      doc = await vscode.workspace.openTextDocument({ content: '', language: 'plaintext' });
+      await vscode.window.showTextDocument(doc, { viewColumn: cot, preview: false });
+
+      /** Ô đang đo, tìm lại theo cột — object `TabGroup` không giữ nguyên giữa hai lần đọc. */
+      const o = (): vscode.TabGroup | undefined =>
+        vscode.window.tabGroups.all.find((g) => g.viewColumn === cot);
+      const oDangHienTerm = (): boolean =>
+        o()?.activeTab?.input instanceof vscode.TabInputTerminal;
+
+      await cho(() => !oDangHienTerm());
+      // Không dựng được điều kiện thì ca này không đo gì cả — nói thẳng ra, đừng xanh oan.
+      assert.ok(
+        !oDangHienTerm(),
+        `dựng sai điều kiện: ô ${cot} đáng lẽ đang hiện tab file — ${moTaHien()}`,
+      );
+      assert.ok(
+        (o()?.tabs.filter((x) => x.input instanceof vscode.TabInputTerminal).length ?? 0) >= 1,
+        `dựng sai điều kiện: ô ${cot} phải vừa chứa terminal vừa hiện tab file — ${moTaHien()}`,
+      );
+
+      const sua = await hienTabTerminalMoiNhom((x) => log.push(x));
+
+      assert.ok(
+        oDangHienTerm(),
+        `ô ${cot} phải đang hiện tab terminal — thực tế: ${moTaHien()} — log: ${log.join(' | ')}`,
+      );
+      assert.ok(sua >= 1, `đáng lẽ sửa ít nhất 1 ô — log: ${log.join(' | ')}`);
+    } finally {
       for (const g of vscode.window.tabGroups.all) {
         for (const tab of g.tabs) {
           if (

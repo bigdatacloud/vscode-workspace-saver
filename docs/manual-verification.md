@@ -884,6 +884,28 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       pid … và N terminal vỏ trong … ms`. Ca từ chối cũng phải có dòng nói rõ vì sao
 - [ ] Ca từ chối (pid vẫn sống / bảng đọc hỏng) → **không terminal nào bị đóng**, lưới nguyên vẹn
 
+## Mỗi ô phải ĐANG HIỆN terminal của nó (0.2.3)
+
+Ảnh anh Ý chụp 26/10/2026: lưới 2×2 đủ bốn ô, nhưng ô trái-trên đang hiện tab `Untitled-1`
+— terminal của ô đó nằm ngay cạnh, chỉ là bị che. Lưới **báo thành công** vì nó đếm "ô nào
+CÓ terminal", trong khi thứ người dùng nhìn thấy là "ô đang HIỆN cái gì".
+
+Ca tự động `ô chứa terminal nhưng đang hiện tab FILE` chọc thẳng vào đơn vị
+`hienTabTerminalMoiNhom` (dựng tay một nhóm đang hiện tab file tuy có terminal) — nó ĐỎ với bản
+chưa vá và XANH với bản đã vá. Ca đi qua cả `xepLuoiTerminal` thì **không** phân biệt được: nó
+xanh cả trước lẫn sau, và đó chính là lý do lỗi này lọt đến tay người dùng ở 0.2.2.
+
+- [ ] Mở một tab file bất kỳ (hoặc Ctrl+N) → bấm **Xem song song** → mọi ô có terminal đều
+      đang hiện tab terminal, không ô nào trông rỗng
+- [ ] Tab file đó **vẫn còn** (chưa bị đóng) — bản vá chỉ đẩy tab terminal lên trước mặt,
+      không đóng tab nào của người dùng
+- [ ] Kênh Output "AI Workspace — Xem song song" ghi `ô N đang hiện tab "..." — đã xoay về tab
+      terminal` đúng số ô bị che
+- [ ] Lưới tự khai **nhiều ô hơn số terminal** (ví dụ 3×3 với 2 terminal) → ô rỗng và ô chỉ chứa
+      tab file **không bị đụng tới**, không báo lỗi gì
+- [ ] Tab `Untitled-1` cũ **vẫn còn sau bản vá này** — đúng như thiết kế. 0.2.2 chặn sinh tab
+      mới, 0.2.3 đẩy terminal lên trước nó; **không bản nào dọn tab cũ** — đóng tay một lần
+
 ## Thu panel sau khi xếp lưới (0.2.2) — KHÔNG test tự động được, phải nhìn bằng mắt
 
 Không API nào đọc được panel đang mở hay đóng, nên bốn mục này là cách kiểm duy nhất. Hai lần
