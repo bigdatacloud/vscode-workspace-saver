@@ -61,10 +61,14 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
       NỐI LẠI chứ không mở tab thứ hai
 
 ## Nghe giọng nói vào terminal (Ctrl+Shift+Y)
-- [ ] Mở cửa sổ mới → sau ~4 s thanh trạng thái hiện "Đang nạp model giọng nói (~40 s…)", một tab
-      Untitled mở ra; sau ~40 s tab tự đóng, thanh trạng thái báo "Giọng nói sẵn sàng"; kênh Output
-      ghi "làm nóng xong"
-- [ ] Đặt `aiWorkspace.voice.warmUpOnStartup: false`, reload → KHÔNG có làm nóng, micro không sáng
+- [ ] **Mặc định (0.2.2 trở đi): mở cửa sổ mới → KHÔNG có làm nóng, micro KHÔNG sáng, KHÔNG có
+      tab `Untitled` nào mọc ra.** Đây là ca gác cho lỗi báo 26/10/2026 — tab nháp rơi vào đúng
+      ô của lưới xem song song
+- [ ] Đặt `aiWorkspace.voice.warmUpOnStartup: true`, reload → sau ~4 s thanh trạng thái hiện
+      "Đang nạp model giọng nói (~40 s…)", một tab Untitled mở ra; sau ~40 s tab tự đóng, thanh
+      trạng thái báo "Giọng nói sẵn sàng"; kênh Output ghi "làm nóng xong"
+- [ ] Vẫn với `warmUpOnStartup: true`: **reload cửa sổ TRONG 40 giây đó** → tab nháp ở lại (không
+      ai đóng nó nữa). Đây là cách tab `Untitled-1` tích tụ; chưa có cơ chế dọn, phải đóng tay
 - [ ] Bấm Ctrl+Shift+Y → bảng chọn hiện; mục mặc định có dấu ✓ và được chọn sẵn; Enter → đi ngay
 - [ ] QUAN-Transcribe đứng ĐẦU bảng, dưới tiêu đề "Trên máy — tiếng Việt"; mặc định (✓) vẫn là
       Nemotron chứ KHÔNG phải QUAN
@@ -879,6 +883,21 @@ Chạy trên một repo git thật (một số mục ở "Vòng đời cơ bản
 - [ ] Mở Output → **AI Workspace — Điều phối**: có dòng `giành lại hội thoại <id>: đóng xong
       pid … và N terminal vỏ trong … ms`. Ca từ chối cũng phải có dòng nói rõ vì sao
 - [ ] Ca từ chối (pid vẫn sống / bảng đọc hỏng) → **không terminal nào bị đóng**, lưới nguyên vẹn
+
+## Thu panel sau khi xếp lưới (0.2.2) — KHÔNG test tự động được, phải nhìn bằng mắt
+
+Không API nào đọc được panel đang mở hay đóng, nên bốn mục này là cách kiểm duy nhất. Hai lần
+thử trước đã bị gỡ vì không chứng minh được an toàn (xem mục cuối tài liệu này).
+
+- [ ] Mở workspace có ≥ 2 terminal, panel đang mở (Ctrl+J) → bấm **Xem song song** → lưới dựng
+      xong thì **panel thu lại**, lưới chiếm trọn chiều cao
+- [ ] Bấm Ctrl+J → panel hiện lại, **mọi terminal bị đẩy xuống đó vẫn sống** (gõ được, không
+      mất lịch sử)
+- [ ] **Bấm Xem song song LẦN THỨ HAI** (đây là ca rủi ro: đóng panel có thể phá bất biến
+      "terminal active của panel" mà cơ chế lưới dựa vào) → lưới vẫn đủ ô, không ô nào rỗng,
+      không terminal nào rơi sai ô
+- [ ] Đặt `aiWorkspace.splitView.closePanelAfterLayout: false` → bấm Xem song song → panel
+      **không** bị thu; kênh Output ghi "không thu panel (đã tắt trong cài đặt)"
 - [ ] Cùng ca trên nhưng hội thoại đang bị NHIỀU tiến trình bám (`claude agents --json` cho
       2–3 pid cùng `sessionId`) → đóng HẾT, không sót cái nào
 - [ ] Dựng ca pid tái sử dụng: giết tay tiến trình claude rồi kích hoạt lại ngay khi sổ phiên
@@ -1175,7 +1194,24 @@ thay đổi liên tục trong ngày.
   cạnh con số; hai phép đo khác thời lượng rõ rệt thì không so với nhau được.
 - Thấy mình sắp viết "đo được X nên kết luận Y" → kiểm lại xem mốc nền có đo cùng điều kiện không.
 
-## Món nợ "thu panel sau khi xếp lưới" — CHƯA LÀM ĐƯỢC, và vì sao
+## Thu panel sau khi xếp lưới — ĐÃ LÀM ở 0.2.2, với hai điều kiện
+
+Mục dưới đây giữ nguyên làm hồ sơ vì sao hai lần trước bị gỡ. Lần thứ ba (26/10/2026) giữ lại
+được là nhờ hai thứ hai lần trước không có:
+
+1. **Một ca gác đo đúng rủi ro bị nghi**, thay vì đo con số tổng: `xếp lưới HAI lượt liên
+   tiếp` trong `test/vscode/splitview.test.ts`. Giả thuyết nói đóng panel phá bất biến
+   "terminal active của panel" và làm hỏng LƯỢT SAU — ca này hỏi thẳng điều đó. Xanh cả khi
+   chạy riêng lẫn trong lượt 13 phút (lượt nặng nhất đo được).
+2. **Một van thoát**: `aiWorkspace.splitView.closePanelAfterLayout: false` đưa hành vi về
+   đúng như 0.2.1, không cần gỡ bản hay chờ bản vá.
+
+Đo ngày 26/10/2026, cùng một mã: lượt 9 phút → 2 ca đỏ; lượt 13 phút → 6 ca đỏ. Ba trong số
+đó đúng là ba dấu hiệu đã ghi bên dưới — và bên dưới cũng đã ghi rằng **cả ba xuất hiện khi
+KHÔNG có bản vá**, nên vẫn không quy tội được cho việc thu panel. Con số tổng trên máy này
+vẫn không phán quyết được điều gì; chỉ ca gác hẹp mới nói được.
+
+## (Hồ sơ cũ) Món nợ "thu panel sau khi xếp lưới" — vì sao hai lần trước bị gỡ
 
 Người dùng hỏi đúng chỗ (25/10): xếp lưới xong thì panel hiện ra kèm tab Debug Console — tab
 đang mở sẵn của panel, extension không chọn tab nào cả. Nó chiếm mất phần màn hình mà
@@ -1193,8 +1229,10 @@ phá đúng bất biến đó. Ba dấu hiệu từng thấy: `#1:trong-1,trong-
 đẩy nổi terminal lạ), `#4:pwsh` (terminal dưới panel trồi lên chiếm ô), `#3:Untitled-1` (rải
 ném nhầm tab file). Nhưng cả ba cũng xuất hiện khi KHÔNG có bản vá, nên chưa quy tội được.
 
-**Tạm thời: Ctrl+J để thu panel bằng tay.** Muốn làm tiếp thì việc đầu tiên là dựng được môi
-trường đo sạch, không phải viết thêm mã.
+**Lúc đó kết luận: Ctrl+J để thu panel bằng tay**, và muốn làm tiếp thì việc đầu tiên là dựng
+được môi trường đo sạch, không phải viết thêm mã. Kết luận đó vẫn đúng — 0.2.2 không dựng được
+môi trường đo sạch, nó chỉ thu hẹp câu hỏi xuống một ca gác đo được, và để lại van thoát cho
+trường hợp giả thuyết kia hoá ra đúng.
 
 ## Ca gác phát hành chết âm thầm vì đổi tên extension (26/10/2026)
 

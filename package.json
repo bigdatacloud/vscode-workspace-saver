@@ -2,7 +2,7 @@
   "name": "ai-workspaces",
   "displayName": "AI Workspaces",
   "description": "Manage global workspaces of terminals — auto-save state, restore terminals, and resume Claude Code sessions right where you left off",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "bigdatacloud",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -308,8 +308,13 @@
         },
         "aiWorkspace.voice.warmUpOnStartup": {
           "type": "boolean",
+          "default": false,
+          "description": "Nạp sẵn model nhận dạng giọng nói của VS Code ngay sau khi mở cửa sổ, để lần bấm phím nghe đầu tiên nói được ngay. Mặc định TẮT vì nó bật micro khoảng 40 giây ngay sau khi cửa sổ mở và mở một tab nháp trong vùng editor. Bật nếu hay dùng giọng nói và chấp nhận hai điều đó."
+        },
+        "aiWorkspace.splitView.closePanelAfterLayout": {
+          "type": "boolean",
           "default": true,
-          "description": "Nạp sẵn model nhận dạng giọng nói của VS Code ngay sau khi mở cửa sổ (micro sáng khoảng 40 giây, một lần mỗi cửa sổ) để lần bấm phím nghe đầu tiên nói được ngay. Tắt nếu không muốn micro tự bật lúc khởi động."
+          "description": "Thu panel (Terminal, Debug Console…) sau khi xếp lưới xem song song, để lưới dùng trọn màn hình. Terminal nằm dưới panel vẫn chạy — bấm Ctrl+J để hiện lại. Tắt nếu thấy lượt xếp lưới SAU bị sai ô."
         },
         "aiWorkspace.terminalLocation": {
           "type": "string",

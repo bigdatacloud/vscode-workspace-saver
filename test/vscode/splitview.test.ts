@@ -44,6 +44,29 @@ const moiNhomMotTerminal = (): boolean =>
     (g) => g.tabs.filter((t) => t.input instanceof vscode.TabInputTerminal).length === 1,
   );
 
+/**
+ * Mọi ô ĐANG HIỆN một tab terminal.
+ *
+ * Khác `moiNhomMotTerminal` ở chỗ nó hỏi ô đang hiện CÁI GÌ, không phải ô có chứa gì. Ô vừa
+ * chứa terminal vừa chứa tab file mà đang hiện tab file thì người dùng nhìn thấy một ô rỗng —
+ * đúng cái họ báo 26/10/2026. Ô không có tab nào (lưới tự khai thừa ô) không tính.
+ */
+const moiOHienTerminal = (): boolean =>
+  vscode.window.tabGroups.all
+    .filter((g) => g.tabs.length > 0)
+    .every((g) => g.activeTab?.input instanceof vscode.TabInputTerminal);
+
+/** Mỗi ô đang hiện tab nào — để thông báo lỗi chỉ thẳng ra ô sai. */
+const moTaHien = (): string =>
+  JSON.stringify(
+    vscode.window.tabGroups.all.map((g) => ({
+      col: g.viewColumn,
+      hien: `${g.activeTab?.label ?? 'trống'}|${
+        g.activeTab?.input instanceof vscode.TabInputTerminal ? 'term' : 'khac'
+      }`,
+    })),
+  );
+
 /** Mô tả bố cục để thông báo lỗi nói được chuyện gì đã xảy ra. */
 const moTaNhom = (): string =>
   JSON.stringify(
@@ -128,6 +151,45 @@ suite('xem song song — xếp terminal thành lưới', () => {
       assert.ok(
         moiNhomMotTerminal(),
         `mỗi nhóm đúng một terminal — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+    } finally {
+      await donDep(ds);
+    }
+  });
+
+  /**
+   * Ca gác cho rủi ro của việc THU PANEL (0.2.2).
+   *
+   * Giả thuyết còn treo từ 25/10/2026, chưa ai xác nhận: cơ chế lưới dựa vào bất biến
+   * "terminal đang active CỦA PANEL phải xác định" — `moveToEditor`, `moveToTerminalPanel` và
+   * cách nhận diện cái vừa bị đẩy đều dựa vào nó — và đóng panel ở cuối lượt có thể phá đúng
+   * bất biến đó, làm hỏng LƯỢT SAU. Đó là lý do hai bản thử trước bị gỡ.
+   *
+   * Không API nào đọc được panel đang mở hay đóng, nên không test được "panel có thu không".
+   * Nhưng cái đáng sợ thì test được: xếp lưới hai lượt liên tiếp, lượt thứ hai vẫn phải đủ ô.
+   */
+  test('xếp lưới HAI lượt liên tiếp: lượt sau vẫn đủ ô (thu panel không phá lượt kế)', async () => {
+    const ds = [0, 1, 2].map((i) =>
+      vscode.window.createTerminal({ name: `hai-${i}`, location: vscode.TerminalLocation.Editor }),
+    );
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 3);
+      await xepLuoiTerminal(ds, { cot: 3, dong: 1 }, (x) => log.push(`L1 ${x}`));
+      await cho(() => soNhomCoTerminal() === 3);
+
+      // Lượt hai ngay sau lượt một — panel lúc này đã bị thu.
+      await xepLuoiTerminal(ds, { cot: 3, dong: 1 }, (x) => log.push(`L2 ${x}`));
+
+      await cho(() => soNhomCoTerminal() === 3);
+      assert.equal(
+        soNhomCoTerminal(),
+        3,
+        `lượt hai vẫn phải đủ ba ô có terminal — thực tế: ${moTaNhom()} — log: ${log.join(' | ')}`,
+      );
+      assert.ok(
+        moiOHienTerminal(),
+        `lượt hai: mọi ô phải hiện terminal — thực tế: ${moTaHien()} — log: ${log.join(' | ')}`,
       );
     } finally {
       await donDep(ds);
@@ -240,6 +302,67 @@ suite('xem song song — xếp terminal thành lưới', () => {
       assert.equal(kq.daXep, 3, `phải xếp đủ 3 — log: ${log.join(' | ')}`);
     } finally {
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+      await donDep(ds);
+    }
+  });
+
+  /**
+   * Hỏi "ô đang HIỆN cái gì", trong khi ca ngay trên chỉ hỏi "ô có CHỨA terminal không" —
+   * người dùng nhìn thấy cái đang hiện, nên đây mới là câu hỏi khớp với trải nghiệm.
+   *
+   * Viết ra khi điều tra ảnh chụp 26/10/2026 (lưới 2x2 đủ bốn terminal nhưng ô 1 hiện tab
+   * `Untitled-1`). Ca này KHÔNG tái hiện được lỗi đó — thử cả hai thứ tự tab đều xanh với mã
+   * hiện có, tức vòng rải vẫn để lại tab terminal ở trước mặt. Kết luận rút ra: tab nháp đó
+   * xuất hiện SAU khi lưới đã xếp xong (làm nóng giọng nói chạy ở giây thứ 4 mỗi lần mở hoặc
+   * reload cửa sổ, và `showTextDocument` ném tab vào đúng nhóm đang active), nên không có
+   * thay đổi nào trong `xepLuoiTerminal` chạm tới được. Cái chạm tới được là tắt làm nóng.
+   *
+   * Giữ lại làm hàng rào: bỏ bước xoay tab trong vòng rải thì ca này đỏ.
+   */
+  test('tab FILE còn trong nhóm: mọi ô phải HIỆN tab terminal, không phải tab file', async () => {
+    const log: string[] = [];
+    // Khai ngoài `try` để bước dọn dẹp còn đóng được nó theo danh tính.
+    let doc: vscode.TextDocument | undefined;
+    let ds: vscode.Terminal[] = [];
+    try {
+      // THỨ TỰ quan trọng, và phải giống đời thật: tab nháp sinh ra lúc cửa sổ vừa mở (làm
+      // nóng giọng nói chạy ở giây thứ 4), nên nó là tab ĐẦU của nhóm — các terminal mở sau
+      // đứng bên phải nó. Mở nháp sau cùng thì nó nằm cuối và ca này xanh oan.
+      doc = await vscode.workspace.openTextDocument({ content: '', language: 'plaintext' });
+      await vscode.window.showTextDocument(doc, { preview: false });
+      await cho(() => vscode.window.tabGroups.all.some((g) => g.tabs.length === 1));
+
+      ds = [0, 1, 2, 3].map((i) =>
+        vscode.window.createTerminal({ name: `hien-${i}`, location: vscode.TerminalLocation.Editor }),
+      );
+      await cho(() => tabTerminal() === 4);
+
+      const kq = await xepLuoiTerminal(ds, { cot: 2, dong: 2 }, (x) => log.push(x));
+
+      await cho(() => moiOHienTerminal());
+      // CỐ Ý không đòi `kq.daXep === 4`: con số đó báo "kéo lên được mấy cái", tụt xuống khi
+      // pha vét trượt lúc máy tải nặng — đã có ca riêng cho nó. Ca này chỉ hỏi một điều:
+      // người dùng nhìn vào lưới thì thấy terminal hay thấy tab file.
+      void kq;
+      assert.ok(
+        moiOHienTerminal(),
+        `mọi ô phải đang hiện tab terminal — thực tế: ${moTaHien()} — log: ${log.join(' | ')}`,
+      );
+    } finally {
+      // Đóng tab nháp theo DANH TÍNH, không bằng `revertAndCloseActiveEditor`: sau khi vá thì
+      // tab đang hiện là terminal, nên lệnh theo-focus sẽ ăn nhầm tab terminal và để tab nháp
+      // lọt sang ca sau.
+      for (const g of vscode.window.tabGroups.all) {
+        for (const tab of g.tabs) {
+          if (
+            doc !== undefined &&
+            tab.input instanceof vscode.TabInputText &&
+            tab.input.uri.toString() === doc.uri.toString()
+          ) {
+            await vscode.window.tabGroups.close(tab, false);
+          }
+        }
+      }
       await donDep(ds);
     }
   });

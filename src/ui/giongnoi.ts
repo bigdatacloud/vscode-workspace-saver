@@ -529,7 +529,9 @@ ${huongDanCaiQuan(python)}` },
    * setting để tắt, và thanh trạng thái nói rõ đang làm gì.
    */
   async lamNong(): Promise<void> {
-    if (vscode.workspace.getConfiguration().get<boolean>(KHOA_CAI_DAT_LAM_NONG, true) !== true) return;
+    // Dự phòng FALSE, khớp `default` khai trong package.json: khoá vắng mặt (bản cài hỏng,
+    // package.json cũ) thì chọn phương án không tự bật micro, không phải ngược lại.
+    if (vscode.workspace.getConfiguration().get<boolean>(KHOA_CAI_DAT_LAM_NONG, false) !== true) return;
     if (this.phien !== null || this.modelNong) return;
     this.thanh.backgroundColor = undefined;
     this.thanh.text = `$(sync~spin) Đang nạp model giọng nói (~${LAM_NONG_MS / 1000} s, một lần mỗi cửa sổ) — bấm ${PHIM} để nghe luôn`;
@@ -639,8 +641,10 @@ ${huongDanCaiQuan(python)}` },
     try {
       await vscode.window.showTextDocument(nhap, { preview: true, preserveFocus: false });
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
-    } catch {
-      /* tài liệu đã bị người dùng đóng — không sao */
+    } catch (e) {
+      // Ghi lại thay vì nuốt im: tab nháp sót lại trong vùng editor là chuyện người dùng
+      // thật sự gặp (26/10/2026), mà `catch` rỗng thì không để lại dấu vết nào để lần ra.
+      this.ghi(`không đóng được tab nháp: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

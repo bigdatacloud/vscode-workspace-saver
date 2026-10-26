@@ -253,6 +253,41 @@ export interface YeuCauLuoi {
   dong: number;
 }
 
+/** Khoá bật/tắt việc thu panel sau khi xếp lưới. */
+const KHOA_THU_PANEL = 'aiWorkspace.splitView.closePanelAfterLayout';
+
+/**
+ * Thu panel sau khi lưới đã dựng xong — và CHỈ ở bước cuối cùng.
+ *
+ * Vì sao cần: pha vét đẩy mọi terminal không thuộc lưới xuống panel, nên panel bật lên cùng
+ * tab đang mở sẵn của nó (hay gặp nhất là Debug Console) và ăn mất phần màn hình mà "xem
+ * song song" vốn sinh ra để giải phóng. Người dùng báo đúng chuyện này 25/10 rồi 26/10/2026.
+ *
+ * Vì sao phải là dòng CUỐI: cả `moveToEditor` lẫn `moveToTerminalPanel` đều làm việc trên
+ * "terminal đang active của panel". Đóng panel giữa chừng là đụng vào đúng bất biến mà toàn
+ * bộ cơ chế lưới dựa vào.
+ *
+ * KHÔNG kiểm chứng được bằng test tự động: không API nào đọc được panel đang mở hay đóng, và
+ * bộ test Extension Host trên máy này bám theo tải máy nên không phán quyết được (xem
+ * `docs/manual-verification.md`). Hai lần thử trước vì thế đã bị gỡ. Lần này giữ lại kèm một
+ * van thoát: tắt `aiWorkspace.splitView.closePanelAfterLayout` là về đúng hành vi cũ, không
+ * cần gỡ bản hay chờ bản vá.
+ */
+async function thuPanel(ghiLog: (d: string) => void): Promise<void> {
+  if (vscode.workspace.getConfiguration().get<boolean>(KHOA_THU_PANEL, true) !== true) {
+    ghiLog('[luoi] không thu panel (đã tắt trong cài đặt)');
+    return;
+  }
+  try {
+    await chay('workbench.action.closePanel');
+    ghiLog('[luoi] đã thu panel');
+  } catch (e) {
+    // Nuốt lỗi: lưới đã xếp xong rồi, hỏng mỗi việc thu panel thì không đáng làm hỏng cả
+    // thao tác. Người dùng bấm Ctrl+J là xong.
+    ghiLog(`[luoi] không thu được panel: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 /** Số tab terminal trong một nhóm. */
 const demTermTrongNhom = (g: vscode.TabGroup): number =>
   g.tabs.filter((t) => t.input instanceof vscode.TabInputTerminal).length;
@@ -560,5 +595,7 @@ export async function xepLuoiTerminal(
     ghiLog(`[luoi] ${lyDo}`);
   }
   if (daXep < ds.length) ghiLog(`[luoi] bố cục lúc dừng: ${moTaBoCuc()}`);
+  // DÒNG CUỐI, sau khi mọi thao tác dời đã lắng — xem ghi chú ở `thuPanel`.
+  await thuPanel(ghiLog);
   return { daXep, qua: ds.length - daXep, daAn, lyDo };
 }

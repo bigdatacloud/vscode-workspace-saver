@@ -3,6 +3,38 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.2] — 2026-10-26
+
+### Sửa
+
+- **Không còn tab `Untitled-1` tự mọc ra cạnh lưới.** Việc nạp sẵn model giọng nói lúc mở cửa
+  sổ nay **mặc định TẮT** (`aiWorkspace.voice.warmUpOnStartup`). Nó chạy ở giây thứ 4 sau mỗi
+  lần mở hoặc reload cửa sổ, và để nạp model thì buộc phải mở một tài liệu nháp rồi bật
+  dictation vào đó 40 giây — không có API nào nạp model mà không mở micro. Hai hệ quả đều gặp
+  ngoài đời thực: micro tự sáng mỗi lần mở cửa sổ, và tab nháp bị ném vào ĐÚNG nhóm editor
+  đang active, tức một ô của lưới xem song song vừa xếp xong. Bật lại nếu hay dùng giọng nói
+  và chấp nhận hai điều đó.
+- **Thu panel sau khi xếp lưới.** Pha vét đẩy mọi terminal không thuộc lưới xuống panel, nên
+  panel bật lên kèm tab đang mở sẵn của nó (hay gặp nhất là Debug Console) và ăn mất phần màn
+  hình mà "xem song song" vốn sinh ra để giải phóng. Lệnh đóng panel đặt ở **dòng cuối**, sau
+  khi mọi thao tác dời đã lắng — cả `moveToEditor` lẫn `moveToTerminalPanel` đều làm việc
+  trên "terminal đang active của panel", nên đóng panel giữa chừng là đụng vào đúng bất biến
+  mà cơ chế lưới dựa vào. Terminal nằm dưới panel vẫn chạy; Ctrl+J hiện lại.
+- **Ghi lại khi không đóng được tab nháp** thay vì nuốt im — trước đây `catch` rỗng nên không
+  để lại dấu vết nào để lần ra.
+
+### Lưu ý
+
+- Việc thu panel **không kiểm chứng được bằng test tự động**: không API nào đọc được panel
+  đang mở hay đóng, và bộ test Extension Host trên máy này bám theo tải máy nên không phán
+  quyết được (xem `docs/manual-verification.md`). Hai lần thử trước vì thế đã bị gỡ. Lần này
+  giữ lại kèm một van thoát: tắt `aiWorkspace.splitView.closePanelAfterLayout` là về đúng
+  hành vi cũ, không cần gỡ bản.
+- Lỗi báo "ô thứ nhất của lưới hiện tab trống": đã thử tái hiện bằng hai ca Extension Host
+  (tab file đứng đầu nhóm, và đứng cuối nhóm) — **cả hai đều xanh với mã hiện có**, tức vòng
+  rải vẫn để lại tab terminal ở trước mặt. Nên nguyên nhân không nằm trong `xepLuoiTerminal`
+  mà ở chỗ tab nháp xuất hiện SAU khi lưới đã xếp xong. Ca test mới được giữ lại làm hàng rào.
+
 ## [0.2.1] — 2026-10-26
 
 ### Sửa
