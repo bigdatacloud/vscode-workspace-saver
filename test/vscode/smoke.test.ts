@@ -1,7 +1,26 @@
 import * as assert from 'node:assert';
 import { tmpdir } from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../../src/terminal/manager';
+
+/**
+ * Extension ĐANG PHÁT TRIỂN, tra theo ĐƯỜNG DẪN chứ không theo id.
+ *
+ * Id `<publisher>.<name>` đổi theo package.json, mà test thì không ai nhớ sửa: ca này đỏ âm
+ * thầm từ 25/10/2026 — extension đổi tên thành `ai-workspaces`, test vẫn tra id cũ
+ * `ai-workspace-session-manager`, và lời đỏ ("không tìm thấy extension") nghe hệt một trục
+ * trặc khởi động nên càng dễ bỏ qua. Thư mục thì không đổi: vscode-test luôn nạp bằng
+ * `--extensionDevelopmentPath` trỏ vào gốc repo, nên so đường dẫn là tra được mọi lần đổi tên.
+ */
+function extensionDangPhatTrien(): vscode.Extension<unknown> {
+  const goc = path.normalize(path.resolve(__dirname, '..', '..', '..')).toLowerCase();
+  const ext = vscode.extensions.all.find(
+    (e) => path.normalize(e.extensionPath).toLowerCase() === goc,
+  );
+  assert.ok(ext, `không tìm thấy extension đang phát triển (${goc}) trong Extension Host`);
+  return ext;
+}
 
 /**
  * Mọi lệnh KHAI trong package.json phải thật sự được đăng ký.
@@ -11,9 +30,7 @@ import { MANAGED_TERMINAL_ID_ENV, TerminalManager } from '../../src/terminal/man
  * và người dùng là người phát hiện, bằng một mục menu bấm vào báo "command not found".
  */
 function lenhKhaiTrongManifest(): string[] {
-  const ext = vscode.extensions.getExtension('bigdatacloud.ai-workspace-session-manager');
-  assert.ok(ext, 'không tìm thấy extension trong Extension Host');
-  const pkg = ext.packageJSON as { contributes?: { commands?: { command: string }[] } };
+  const pkg = extensionDangPhatTrien().packageJSON as { contributes?: { commands?: { command: string }[] } };
   const ds = (pkg.contributes?.commands ?? []).map((c) => c.command);
   assert.ok(ds.length > 0, 'manifest không khai lệnh nào — đọc sai chỗ');
   return ds;
@@ -39,8 +56,7 @@ suite('AI Workspace extension', () => {
   // không có gì đảm bảo activate() đã xong trước khi test đầu tiên chạy. Chờ tường minh
   // ở đây thay vì dựa vào may rủi thời gian khởi động của workbench.
   suiteSetup(async () => {
-    const ext = vscode.extensions.getExtension('bigdatacloud.ai-workspace-session-manager');
-    assert.ok(ext, 'không tìm thấy extension đang phát triển trong Extension Host');
+    const ext = extensionDangPhatTrien();
     if (!ext.isActive) await ext.activate();
   });
 

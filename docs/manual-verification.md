@@ -1184,3 +1184,21 @@ ném nhầm tab file). Nhưng cả ba cũng xuất hiện khi KHÔNG có bản v
 
 **Tạm thời: Ctrl+J để thu panel bằng tay.** Muốn làm tiếp thì việc đầu tiên là dựng được môi
 trường đo sạch, không phải viết thêm mã.
+
+## Ca gác phát hành chết âm thầm vì đổi tên extension (26/10/2026)
+
+Smoke test tra extension bằng `vscode.extensions.getExtension('bigdatacloud.ai-workspace-session-manager')`.
+Ngày 25/10 extension đổi tên thành `bigdatacloud.ai-workspaces` (`b194ab8`) — id cũ không còn,
+`suiteSetup` ném, và CẢ BỘ smoke không chạy nữa. Bộ smoke chính là chỗ kiểm *mọi lệnh khai trong
+`package.json` có thật sự được `registerCommand` không* — tức ca gác dễ vỡ nhất khi phát hành đã
+mù suốt hai lần phát hành liên tiếp.
+
+Vì sao không ai thấy: mấy lượt gần đây bộ Extension Host luôn có 2–5 ca đỏ do tải máy (xem mục
+25/10 ở trên), nên "lại đỏ vài ca" nghe quá bình thường. **Đỏ vì nhiễu và đỏ vì hỏng thật trông
+giống hệt nhau nếu chỉ đọc con số tổng.** Lượt nào cũng phải đọc TÊN ca đỏ, không đọc mỗi
+`N passing / M failing`.
+
+Đã chữa: `extensionDangPhatTrien()` trong `test/vscode/smoke.test.ts` tra theo **đường dẫn**
+(`--extensionDevelopmentPath` luôn trỏ vào gốc repo) chứ không theo id, nên đổi tên lần nữa
+cũng không làm nó mù. Sau khi chữa: 29 passing (tăng 5 ca smoke sống lại) / 6 pending / 1 failing,
+ca đỏ còn lại là ca lưới nhiễu quen thuộc.
