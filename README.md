@@ -53,6 +53,16 @@ resuming the right Claude Code conversation (if any) or re-running the recorded
   skipped rather than guessed/adopted. Without this, every reload adds another `--resume` process to a
   conversation that is already running, and several processes end up writing the same
   session file.
+- **Take back a conversation running elsewhere**: when the process holding a conversation
+  lives in **another VS Code window** (each window has its own extension host, so
+  `window.terminals` cannot see across) or outside VS Code entirely, this window cannot
+  reattach to it. The dialog now offers **"Close that session and reopen it here"**: every
+  process attached to that conversation is terminated first, and only then does this window
+  `--resume` it. Before killing, each pid's command line is checked to confirm it is still a
+  claude process (the session registry keeps stale rows, and the OS recycles pids); after
+  killing, the pid must be gone from the process table before anything is opened. History is
+  preserved — the transcript is appended turn by turn; what is lost is the work that process
+  had in flight. The terminal in the other window simply returns to its prompt.
 - **Activate / switch workspaces**: click an inactive workspace → each saved terminal is
   reopened. If another workspace is currently active, the extension shows a modal
   "Save and close X before opening Y?" before switching; cancelling does nothing.
@@ -301,10 +311,13 @@ It does **not** send anything over the network, and has no telemetry.
 - The "one active workspace per window" lock is best-effort only (no heartbeat, no hard
   lock); killing a window abruptly can leave a stale lock — the other window uses "Open
   anyway" to get out of that state.
-- Two entries in two different workspaces can point at the same `claudeSessionId`: session
-  matching only looks at the active workspace, so it can't know a session was already
-  claimed by another workspace. Activating both workspaces will `--resume` the same
-  conversation twice.
+- Two entries in two different workspaces can point at the same `claudeSessionId`. The
+  extension does not prevent that, but activating the second one hits the
+  one-conversation-one-process guard and asks: if the terminal holding the conversation is in
+  **this window**, you can reuse it or move it into the current workspace; if it lives in
+  **another window or outside VS Code**, you can close that session and reopen it here. Only
+  by choosing "Open a second session" yourself do two processes end up resuming one
+  conversation.
 - Multiple VS Code windows: every save merges by id, and **each window only overwrites the
   workspaces it has touched itself** (created, renamed, activated, added/removed
   terminals…). Untouched workspaces follow the latest copy on disk, so another window's

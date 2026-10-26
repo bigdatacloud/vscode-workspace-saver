@@ -49,6 +49,15 @@ workspace để kích hoạt nó, extension mở lại đúng các terminal củ
   — rồi mới mở những cái thực sự còn thiếu. Nhóm Codex legacy mơ hồ được giữ nguyên và bỏ qua,
   không nhận nuôi/khởi chạy đoán. Không có bước này thì mỗi lần reload lại thêm một tiến trình `--resume`
   vào hội thoại đang chạy dở, nhiều tiến trình cùng ghi một file phiên.
+- **Giành lại hội thoại đang chạy ở nơi khác**: tiến trình giữ hội thoại nằm ở **cửa sổ VS
+  Code khác** (mỗi cửa sổ một extension host, `window.terminals` không thấy nhau) hoặc hẳn
+  ngoài VS Code thì cửa sổ này không nhận nuôi được. Hộp thoại cho chọn **"Đóng phiên đó rồi
+  mở lại ở đây"**: đóng mọi tiến trình đang bám hội thoại ấy rồi mới `--resume` ở đây. Trước
+  khi đóng, mỗi pid được soi dòng lệnh để chắc chắn nó vẫn là tiến trình claude (sổ phiên còn
+  hàng cũ, mà pid thì hệ điều hành cấp lại cho chương trình khác); sau khi đóng, phải thấy nó
+  biến mất khỏi bảng tiến trình thì mới mở. Lịch sử giữ nguyên — transcript ghi dần theo từng
+  lượt; cái mất là việc tiến trình kia đang chạy dở. Terminal bên cửa sổ kia chỉ hiện lại dấu
+  nhắc, không bị đóng.
 - **Kích hoạt / chuyển workspace**: bấm một workspace chưa active → mở lại từng terminal đã
   lưu. Nếu đang có workspace khác active, extension hỏi modal "Lưu và đóng X trước khi mở
   Y?" trước khi chuyển; hủy modal thì không làm gì.
@@ -258,9 +267,12 @@ bạn tự mở bằng <kbd>Ctrl+Shift+`</kbd> thì dùng setting có sẵn củ
 - Khóa "một workspace active mỗi cửa sổ" chỉ best-effort (không heartbeat, không lock cứng);
   đóng cửa sổ đột ngột có thể để lại khóa cũ — cửa sổ khác dùng nút "Vẫn mở" để thoát tình
   huống đó.
-- Hai entry ở hai workspace khác nhau có thể cùng trỏ về một `claudeSessionId`: việc đối chiếu
-  session chỉ nhìn workspace đang active, nên nó không biết session đó đã bị workspace khác
-  nhận. Kích hoạt cả hai workspace sẽ `--resume` cùng một hội thoại hai lần.
+- Hai entry ở hai workspace khác nhau có thể cùng trỏ về một `claudeSessionId`. Extension
+  không ngăn chuyện đó, nhưng kích hoạt cái thứ hai thì hàng rào một-hội-thoại-một-tiến-trình
+  chặn lại và hỏi: terminal đang giữ hội thoại nằm trong **cửa sổ này** thì cho dùng lại nó
+  hoặc chuyển nó sang workspace hiện tại; nằm ở **cửa sổ khác / ngoài VS Code** thì cho đóng
+  phiên đó rồi mở lại ở đây. Chỉ khi bạn tự chọn "Vẫn mở phiên thứ hai" mới có hai tiến trình
+  cùng `--resume` một hội thoại.
 - Nhiều cửa sổ VS Code: mỗi lần lưu là gộp theo id, và **mỗi cửa sổ chỉ ghi đè những workspace
   mà chính nó đã đụng tới** (tạo, đổi tên, kích hoạt, thêm/bỏ terminal…). Workspace nó không
   đụng tới sẽ đi theo bản mới nhất trên đĩa, nên việc cửa sổ khác đang làm không bị ghi đè.

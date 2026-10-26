@@ -68,3 +68,28 @@ describe('parseBangDongLenh — đọc bảng pid → dòng lệnh của hệ đ
     expect(parseBangDongLenh('\nPID CMD\nlung tung\n').size).toBe(0);
   });
 });
+
+describe('nhận diện tiến trình claude — đo trên máy thật 26/10/2026', () => {
+  const laClaude = (lenh: string): boolean => locPidDongDuoc([1], new Map([[1, lenh]])).dong.length === 1;
+
+  it('nhận đủ các dạng khởi chạy thật', () => {
+    expect(laClaude(String.raw`"C:\Users\LAPTOP\.local\bin\claude.exe" --dangerously-skip-permissions`)).toBe(true);
+    expect(laClaude(String.raw`node C:\npm\node_modules\@anthropic-ai\claude-code\cli.js --resume x`)).toBe(true);
+    expect(laClaude('/usr/local/bin/claude --resume x')).toBe(true);
+    expect(laClaude(String.raw`C:\npm\claude.cmd --resume x`)).toBe(true);
+  });
+
+  it('KHÔNG nhận tiến trình chỉ vì đường dẫn có thư mục .claude', () => {
+    // Đo thật trên máy này: MCP server và hook đều nằm dưới ~/.claude/plugins/... Lọc bằng
+    // "có chữ claude" là coi mọi MCP server là phiên claude — pid tái sử dụng rơi trúng một
+    // cái là ta giết nhầm.
+    expect(
+      laClaude('node C:/Users/LAPTOP/.claude/plugins/cache/superpowers-chrome/mcp/dist/index.js'),
+    ).toBe(false);
+    expect(laClaude(String.raw`node C:\Users\LAPTOP\.claude\hooks\paste-image.js`)).toBe(false);
+  });
+
+  it('KHÔNG nhận cửa sổ editor mở thư mục tên claude-gì-đó', () => {
+    expect(laClaude(String.raw`Code.exe D:\Coding\claude-plugins`)).toBe(false);
+  });
+});

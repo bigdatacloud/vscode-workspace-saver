@@ -18,8 +18,23 @@ export interface PhanLoaiPid {
   laNguoiKhac: number[];
 }
 
-/** Dòng lệnh của tiến trình claude luôn chứa tên này, dù chạy qua node, qua `claude.exe` hay npx. */
-const DAU_HIEU_CLAUDE = /claude/i;
+/**
+ * Dòng lệnh có đúng là một tiến trình claude đang chạy không.
+ *
+ * KHÔNG được lọc bằng "có chứa chữ claude": đo trên máy thật 26/10/2026 thấy mọi MCP server
+ * và hook đều nằm dưới `~/.claude/plugins/...`, nên luật lỏng ấy coi chúng là phiên claude —
+ * pid tái sử dụng rơi trúng một cái là ta giết nhầm. Phải là TÊN CHƯƠNG TRÌNH:
+ *  - `claude`, `claude.exe`, `claude.cmd`… đứng thành một từ (sau dấu phân cách đường dẫn,
+ *    dấu nháy hay khoảng trắng) — bắt được `"…\.local\bin\claude.exe" --…` và `npx claude …`
+ *    nhưng KHÔNG bắt `…\.claude\hooks\x.js` (trước chữ claude là dấu chấm).
+ *  - hoặc chạy thẳng cli.js của gói: `node …\@anthropic-ai\claude-code\cli.js …`.
+ */
+function laTienTrinhClaude(lenh: string): boolean {
+  return (
+    /(^|[\\/"'\s])claude(\.(exe|cmd|bat|ps1|js))?(["'\s]|$)/i.test(lenh) ||
+    /claude-code[\\/]cli\.js/i.test(lenh)
+  );
+}
 
 export function locPidDongDuoc(
   pids: readonly number[],
@@ -34,7 +49,7 @@ export function locPidDongDuoc(
   for (const pid of pids) {
     const lenh = dongLenh.get(pid);
     if (lenh === undefined) ra.daChet.push(pid);
-    else if (DAU_HIEU_CLAUDE.test(lenh)) ra.dong.push(pid);
+    else if (laTienTrinhClaude(lenh)) ra.dong.push(pid);
     else ra.laNguoiKhac.push(pid);
   }
   return ra;
