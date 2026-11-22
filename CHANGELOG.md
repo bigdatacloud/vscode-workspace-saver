@@ -23,17 +23,15 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 - Hai ca test giữ điều này: một ca Extension Host đo nhãn tab thật trước/sau khi ép (và ghi
   lại giá trị mặc định của VS Code trong thông báo lỗi), một ca kiến trúc đòi cả năm đường tạo
   terminal đều gọi bước ép nhãn.
-- Giới hạn đo lường, đã truy tới cùng rồi mới kết luận: tôi muốn đo nhãn tab với một phiên
-  Claude THẬT, nên viết ca Extension Host khởi chạy `claude --session-id … -n …` trong terminal
-  test. Bốn lần thử (đổi cả cwd sang chính repo), phiên không vào `claude agents --json`. Thăm
-  dò tiếp cho thấy `claude --version` (2.1.330) và `claude agents --json` CHẠY ĐƯỢC trong đúng
-  terminal đó, nên không phải PATH; nhưng không session id nào trong bốn lần để lại transcript ở
-  `~/.claude/projects/<slug>/<id>.jsonl` — tức phiên **interactive** không boot trong môi trường
-  `.vscode-test`, dù lệnh một lần thì chạy. Đây là giới hạn của môi trường test, không phải của
-  extension. Nên mệnh đề "nhãn tab bền khi agent ghi tiêu đề" được chứng minh bằng một shell ghi
-  đúng chuỗi OSC mà Claude dùng — mức bằng chứng cao nhất khả thi bằng máy, và tôi không gọi nó
-  là hơn thế. Đo cuối cùng vẫn đáng ghi: sau khi lệnh `claude` được gửi vào terminal đã ép nhãn,
-  nhãn tab đọc được sau 90 giây vẫn đúng là tên cây.
+- **Đo với một phiên Claude THẬT, và đây là chỗ tôi đã kết luận sai hai lần.** Để chứng minh
+  nhãn tab bền, tôi viết ca Extension Host khởi chạy `claude --session-id … -n …` thật trong
+  terminal. Bốn lần đầu tôi đi tìm phiên ở `claude agents --json` và ở file transcript
+  `~/.claude/projects/<slug>/<id>.jsonl`, không thấy, rồi kết luận "claude không boot trong môi
+  trường test" — SAI. Cả hai nguồn đó chỉ xuất hiện SAU tin nhắn đầu tiên của phiên, nên vắng
+  mặt ở đó không nói gì về việc tiến trình có chạy hay không. Bằng chứng đúng là bảng tiến
+  trình của hệ điều hành: đo được `claude.exe --session-id <id> -n ten-cay-claude-that` ở một
+  pid thật, và nhãn tab lúc đó vẫn đúng là tên cây. Ca này nay nằm trong bộ Extension Host, tự
+  bỏ qua khi máy không có `claude` trong PATH.
 - Ca Extension Host đó đo thêm một mệnh đề nữa: nhãn **giữ được** tên đó khi chương trình
   trong terminal tự ghi tiêu đề bằng OSC 0 — đúng việc Claude làm liên tục ("<ký hiệu trạng
   thái> <tên phiên>"). Không cần chạy Claude thật, chỉ cần một shell ghi đúng chuỗi ấy, và một

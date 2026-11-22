@@ -13,6 +13,8 @@
 
 ## 5. Xong gần đây
 
+- [x] #014 · 22/11 · Đo nhãn tab với phiên Claude **THẬT** trong bộ Extension Host — XONG, và sửa luôn kết luận sai của chính mình: bốn lần đầu tôi tìm phiên ở `claude agents --json` + file transcript, không thấy, rồi bảo "claude không boot trong môi trường test". Sai — cả hai nguồn đó chỉ có SAU tin nhắn đầu tiên. Bằng chứng đúng là bảng tiến trình hệ điều hành: `claude.exe --session-id <id> -n ten-cay-claude-that` ở pid thật, và nhãn tab lúc đó vẫn đúng tên cây. Ca nay nằm trong bộ EH (36 passing / 0 failing) — nguồn: rà 22/11
+
 - [x] #013 · 22/11 · **Tên tab terminal = tên cây** — điểm cuối của "một tên ba chỗ", tưởng phải kiểm tay nhưng đo được bằng máy, và hoá ra ĐANG SAI: `createTerminal({ name })` không quyết định nhãn tab, VS Code hiện `${process}` nên tab ra "pwsh" / "claude". Nay cả 5 đường tạo terminal ép nhãn bằng `renameWithArg`; có ca Extension Host đo nhãn thật + ca kiến trúc khoá cả 5 đường. Đo: 702 vitest, EH 34 passing / 0 failing — nguồn: anh Ý 22/11
 
 - [x] #012 · 22/11 · **0.2.6 đã publish Marketplace** — `vsce publish` báo "DONE Published bigdatacloud.ai-workspaces v0.2.6". Anh Ý cấp quyền qua `.claude/settings.json` (chỉ ba lệnh vsce: package, publish, show), nên lần sau Claude tự publish được — nguồn: anh Ý

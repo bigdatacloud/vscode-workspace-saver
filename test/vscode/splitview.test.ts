@@ -1,8 +1,11 @@
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { docBangTienTrinhDayDu } from '../../src/proc/real';
 import { datNhanTab } from '../../src/ui/nhantab';
 import {
   gopVeMotNhom,
@@ -1044,4 +1047,73 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
     }
   });
 
+
+  /**
+   * Bằng chứng cuối của mệnh đề "tên tab = tên cây", với một phiên Claude THẬT.
+   *
+   * Hai lần trước tôi kết luận sai rằng "claude không boot trong môi trường test", vì đi tìm
+   * nó ở `claude agents --json` và ở file transcript — cả hai chỉ xuất hiện SAU tin nhắn đầu
+   * tiên, nên vắng mặt ở đó không có nghĩa là tiến trình không chạy. Bằng chứng không thể bàn
+   * là BẢNG TIẾN TRÌNH của hệ điều hành: một tiến trình thật mang đúng id phiên trên dòng lệnh.
+   * Đo được 22/11/2026: `claude.exe --session-id <id> -n ten-cay-claude-that` chạy ở pid thật,
+   * và nhãn tab vẫn đúng là tên cây.
+   *
+   * Tự bỏ qua khi máy không có `claude` trong PATH — ở đó ca này không nói được gì.
+   */
+  test('phiên Claude THẬT đang chạy: nhãn tab vẫn là tên cây', async function () {
+    this.timeout(300000);
+    try {
+      execFileSync('claude', ['--version'], { timeout: 20000, stdio: 'ignore' });
+    } catch {
+      this.skip();
+      return;
+    }
+
+    const ten = 'ten-cay-claude-that';
+    const sid = randomUUID();
+    const t = vscode.window.createTerminal({
+      name: ten,
+      location: vscode.TerminalLocation.Editor,
+      cwd: process.cwd(),
+    });
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 1);
+      const nhanCua = (): string | undefined =>
+        vscode.window.tabGroups.all
+          .flatMap((g) => g.tabs)
+          .find((x) => x.input instanceof vscode.TabInputTerminal)?.label;
+      t.show(true);
+      await cho(() => (nhanCua() ?? '') !== '', 5000);
+      assert.equal(await datNhanTab(t, ten, (d) => log.push(d)), true, `log: ${log.join(' | ')}`);
+      await cho(() => nhanCua() === ten, 5000);
+
+      // Khởi chạy y như extension làm: id phiên mint sẵn + `-n <tên cây>`.
+      t.sendText(`claude --session-id ${sid} -n "${ten}"`, true);
+
+      let tienTrinh = '';
+      const het = Date.now() + 120000;
+      while (Date.now() < het && tienTrinh === '') {
+        for (const [pid, hang] of await docBangTienTrinhDayDu()) {
+          if (hang.lenh.includes(sid)) {
+            tienTrinh = `pid=${pid}`;
+            break;
+          }
+        }
+        if (tienTrinh === '') await doi(3000);
+      }
+      assert.notEqual(tienTrinh, '', `phải thấy tiến trình claude mang id ${sid} trong bảng tiến trình`);
+
+      // Cho Claude thời gian ghi tiêu đề (nó đổi ký hiệu trạng thái liên tục).
+      await doi(5000);
+      assert.equal(
+        nhanCua(),
+        ten,
+        `nhãn tab phải VẪN là "${ten}" khi phiên Claude thật (${tienTrinh}) đang chạy — thực tế "${nhanCua()}"`,
+      );
+      assert.equal(t.name, ten, `terminal.name phải vẫn là "${ten}" — thực tế "${t.name}"`);
+    } finally {
+      await donDep([t]);
+    }
+  });
 });
