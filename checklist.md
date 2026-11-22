@@ -9,8 +9,6 @@
 
 ## 4. Nợ kỹ thuật / việc treo
 
-- [-] #014 · 22/11 · Chạy `claude` THẬT trong bộ Extension Host để đo nhãn tab — CHẶN: thử 2 lần, mỗi lần chờ 2 phút, phiên không vào `claude agents --json`; claude không khởi động được từ terminal của môi trường test (đổi cwd sang repo cũng không giúp). Nghi cùng gốc với #003 (gửi chuỗi trước khi shell sẵn sàng) → kênh Output "AI Workspace — Phiên" sẽ cho số khi nợ đó tái hiện. Ca test đã gỡ, không để lại ca đỏ thường trực — nguồn: rà 22/11
-
 
 
 ## 5. Xong gần đây
