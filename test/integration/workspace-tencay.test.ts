@@ -294,6 +294,45 @@ describe('mỗi phiên agent mới một cây riêng, tên cây = tên terminal 
     expect((manager['git'] as { addWorktree: ReturnType<typeof vi.fn> }).addWorktree).not.toHaveBeenCalled();
   });
 
+  it('LẬP TỔ từ một điều phối đang ở TRONG cây: cây thành viên vẫn cạnh repo chính', async () => {
+    // Từ 0.2.5 mọi phiên agent nằm trong một cây, nên terminal điều phối cũng vậy — và gốc của
+    // nó (`--show-toplevel`) là chính cái cây đó. Không chuẩn hoá về cây chính thì tổ sinh ra
+    // `…-worktrees\dieu-phoi-claude-worktrees\viec-reviewer`.
+    const { manager, ws } = dungManager({ repoGoc: CAY });
+    // Vai có SẴN: nhánh "tạo vai mới" ghi file thật bằng `mkdirSync`/`writeFileSync`, và ca test
+    // không được đẻ thư mục ra ổ đĩa (lần đầu viết ca này nó đã tạo `D:\khong-co-thuc-…` thật,
+    // làm hai ca khác đổi kết quả vì `existsSync` hoá true).
+    ws.roles = [{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'reviewer', kind: 'worker' }];
+    (manager['git'] as { listWorktrees: unknown }).listWorktrees = vi.fn(async () => [
+      { path: REPO, branch: 'main', bare: false, detached: false },
+      { path: CAY, branch: 'fix-login-claude', bare: false, detached: false },
+    ]);
+    Object.assign(manager, {
+      coThemChoRole: vi.fn(() => ({})),
+      ghiKhoiVaiChoEntry: vi.fn(),
+      agent: {
+        ...(manager['agent'] as object),
+        buildLaunchCommand: vi.fn(() => 'claude'),
+      },
+    });
+
+    const f = manager['taoThanhVienTeam'] as (
+      w: string,
+      goc: string,
+      viec: string,
+      tv: { role: string; description: string },
+      boHoiQuyen: boolean,
+    ) => Promise<{ ten: string; id: string } | { loi: string }>;
+    // `goc` truyền vào là CÂY (đúng những gì caller đọc được từ cwd của điều phối).
+    await f.call(manager, WS, CAY, 'viec', { role: 'reviewer', description: 'soi mã' }, false);
+
+    const goi = (manager['git'] as { addWorktree: ReturnType<typeof vi.fn> }).addWorktree.mock.calls[0];
+    expect(goi?.[0]).toBe(REPO);
+    expect(goi?.[1]).toBe(
+      path.join(path.dirname(REPO), `${path.basename(REPO)}-worktrees`, 'viec-reviewer'),
+    );
+  });
+
   it('terminal Codex cũng đi đúng đường đó, và cũng không nhận tên trống', async () => {
     const { manager, ws, nhatKy } = dungManager({ repoGoc: REPO });
     vscodeMock.window.showInputBox.mockImplementation(async () => {

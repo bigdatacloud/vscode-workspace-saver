@@ -48,10 +48,13 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
   còn nhìn thấy nhau.
 - Luật "cùng thư mục, khác tên là chủ ý" của `trungphien.ts` KHÔNG bị đổi: nó nói về các
   terminal đang chạy, còn hàng rào mới chỉ áp ở cửa đặt tên.
-- Đo: 692 vitest xanh (thêm 23 ca), `tsc --noEmit` sạch, Extension Host 33 passing / 6 pending
-  / 0 failing (4 phút). Bốn thí nghiệm phân biệt: gỡ phép kiểm trùng tên → đỏ 3 ca; cho tên
-  trống là hợp lệ → đỏ 3 ca; trả tên lệnh về cách cũ (tên repo gốc) → đỏ 2 ca; lấy
-  `--show-toplevel` làm gốc cây → đỏ 1 ca.
+- Đo: 693 vitest xanh (thêm 24 ca), `tsc --noEmit` sạch. Năm thí nghiệm phân biệt: gỡ phép
+  kiểm trùng tên → đỏ 3 ca; cho tên trống là hợp lệ → đỏ 3 ca; trả tên lệnh về cách cũ (tên
+  repo gốc) → đỏ 2 ca; lấy `--show-toplevel` làm gốc cây khi tạo phiên → đỏ 1 ca; lấy nó làm
+  gốc khi lập tổ → đỏ 1 ca.
+- Extension Host: 33 passing / 6 pending / 0 failing (4 phút) — nhưng số đó chạy trên mã TRƯỚC
+  hai bản sửa gốc cây (`goiRepoChinh`). Lần chạy lại trên mã cuối bị hệ thống dừng giữa chừng
+  vì máy cạn RAM, nên bộ Extension Host CHƯA được chạy trọn trên bản 0.2.5 này.
 - CHƯA kiểm trên VS Code thật: tiêu đề tab sau khi Claude khởi động với `-n <tên>`. Mã đặt tên
   tab lúc tạo terminal và truyền cùng tên đó vào `-n`, nhưng thứ hiện trên tab sau đó do chính
   Claude ghi bằng escape sequence — chỉ chạy tay mới biết chắc. Xem mục "Mỗi phiên một tên" trong

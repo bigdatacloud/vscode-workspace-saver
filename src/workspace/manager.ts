@@ -3070,6 +3070,11 @@ export class WorkspaceManager implements vscode.Disposable {
     const wsNow = findWorkspace(this.store, workspaceId);
     if (!wsNow) return { loi: 'workspace không còn tồn tại' };
 
+    // `goc` do caller đọc từ cwd của terminal điều phối, mà từ 0.2.5 MỌI phiên agent nằm trong
+    // một cây — kể cả điều phối. Gốc của một cây (`--show-toplevel`) là chính nó, nên không
+    // chuẩn hoá về cây chính thì tổ sinh ra `…-worktrees/<điều-phối>-worktrees/<việc>-<vai>`.
+    const gocChinh = goiRepoChinh(await this.git.listWorktrees(goc), goc);
+
     const tenVai = tv.role.trim();
     // Tổ đặt tên theo `<việc>-<vai>`, nên lập lại tổ cùng tên việc sinh ra đúng những cái tên
     // đã có. Chặn TRƯỚC khi ghi file vai và trước `addWorktree`, không thì mỗi lần trùng để
@@ -3097,7 +3102,7 @@ export class WorkspaceManager implements vscode.Disposable {
     }
 
     const tenWt = ghepTenWorktree(viec, tenVai);
-    const duongDanWt = duongDanCay(goc, tenWt);
+    const duongDanWt = duongDanCay(gocChinh, tenWt);
     let worktree: WorktreeRef | undefined;
     if (nodeFs.existsSync(duongDanWt)) {
       if ((await this.git.repoRoot(duongDanWt)) === null) {
@@ -3106,7 +3111,7 @@ export class WorkspaceManager implements vscode.Disposable {
       worktree = (await this.nhanhCuaWorktree(duongDanWt)).worktree;
     } else {
       try {
-        await this.git.addWorktree(goc, duongDanWt, tenWt);
+        await this.git.addWorktree(gocChinh, duongDanWt, tenWt);
         worktree = { path: duongDanWt, branch: tenWt };
       } catch (e) {
         return { loi: `không tạo được worktree "${tenWt}": ${e instanceof Error ? e.message : String(e)}` };
@@ -4483,9 +4488,12 @@ export class WorkspaceManager implements vscode.Disposable {
     for (const d of thuMuc) {
       if (!nodeFs.existsSync(d)) continue;
       const ds = await this.git.listWorktrees(d);
-      const chinh = ds[0];
-      if (chinh === undefined) continue;
-      if (!theoRepo.has(chinh.path)) theoRepo.set(chinh.path, ds);
+      if (ds.length === 0) continue;
+      // Cùng một phép lấy "cây chính" như lúc TẠO cây (`goiRepoChinh`): hai phép khác nhau là
+      // hai kết quả có thể lệch, mà lệch ở đây nghĩa là lệnh dọn không thấy chính những cây
+      // mà lệnh tạo vừa sinh ra.
+      const chinh = goiRepoChinh(ds, ds[0]?.path ?? d);
+      if (!theoRepo.has(chinh)) theoRepo.set(chinh, ds);
     }
 
     const trongWt = (t: TerminalEntry, wtPath: string): boolean =>
