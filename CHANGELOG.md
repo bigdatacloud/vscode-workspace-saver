@@ -29,12 +29,14 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
   0.28, mocha 10 → 12, `@vscode/test-cli` 0.0.10 → 0.0.15, `@vscode/test-electron` 2.4 → 3.1,
   `@types/node` 20 → 22 (vitest 5 đòi ≥22). Thêm `overrides` đẩy `serialize-javascript` trong
   nhánh lồng của test-cli lên bản đã vá.
-- Kết quả quét: **15 lỗ hổng → 7** (1 low, 6 moderate; không còn high hay critical). Bảy cái
-  còn lại nằm trong cây lồng của `@vscode/test-cli` và KHÔNG cái nào vào gói VSIX.
-- Ghi rõ một chỗ lệch luật: `vitest` khai `^5.0.5` nên npm cài 5.1.1, phát hành 18/11/2026 —
-  mới 4 ngày, dưới ngưỡng chờ 7 ngày. Ghim 5.0.5 hoặc `~5.0.5` thì npm (arborist) crash
-  `Cannot read properties of null (reading 'edgesOut')` khi giải peer set của vitest 5, nên
-  không có đường kỹ thuật nào khác. Đây là devDependency, không vào gói phát hành.
+- Kết quả quét: **15 lỗ hổng → 0.** Bảy cái cuối nằm trong cây LỒNG của `@vscode/test-cli`
+  (nó ghim mocha cũ bên trong) nên không gói nào ở gốc vá được chúng; `overrides` đẩy từng cái
+  lên bản đã vá: `serialize-javascript` 7.1.4, `glob` 14.0.4, `minimatch` 11.0.8, `diff` 8.0.4,
+  `test-exclude` 8.0.0, `c8` 12.0.0 — mỗi bản đều ghim CHÍNH XÁC và đều quá 7 ngày tuổi.
+- `vitest` ghim **5.0.5** (phát hành 15/10/2026, 38 ngày tuổi) chứ không phải 5.1.1 (18/11,
+  mới 4 ngày — dưới ngưỡng chờ của luật chuỗi cung ứng). `npm install vitest@5.0.5` crash
+  (`Cannot read properties of null (reading 'edgesOut')` trong arborist khi giải peer set của
+  vitest 5), nhưng ghim qua `overrides` thì được — nên không còn chỗ nào lệch luật.
 
 - **Bấm vào một terminal mà "không đưa ra trước được": vá hai nguyên nhân đo được.** (1) Phép
   nhận diện tab so `tab.label === terminal.name` NGUYÊN VĂN, mà agent ghi tiêu đề tab thành
