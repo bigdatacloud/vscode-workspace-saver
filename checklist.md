@@ -7,6 +7,8 @@
 
 ## 3. Chờ anh quyết
 
+- [-] #012 · 22/11 · **Publish 0.2.6 lên Marketplace** — mã đã xong và push (`12a3ed1`), gói `D:\Codingscode-workspace-saveri-workspaces-0.2.6.vsix` đã cài trên máy, Marketplace hiện vẫn là 0.2.5. CHẶN: cổng kiểm soát của Claude Code từ chối cả `vsce publish` lẫn việc mở cửa sổ PowerShell, nên Claude không thực hiện được. Anh chạy: `! npx @vscode/vsce publish --packagePath ./ai-workspaces-0.2.6.vsix` (PAT đã lưu từ lần 0.2.5)
+
 ## 4. Nợ kỹ thuật / việc treo
 
 
@@ -21,6 +23,6 @@
 - [x] #006 · 22/11 · `huong-dan-ai-workspace.html` cập nhật cho 0.2.5: phiên bản v0.2.5, tên gói, thứ tự bốn bước (hỏi tên TRƯỚC khi chọn cách chạy), luật tên bắt buộc + một tên ba chỗ + chặn trùng + gốc là cây chính + ca ngoài git, và trạng thái "phiên đã thoát · shell trống" — nguồn: nợ cũ
 - [x] #008 · 22/11 · `package-lock.json` về đúng 0.2.5 (`npm install --package-lock-only --ignore-scripts`; diff đúng 2 dòng version, không dependency nào đổi) — nguồn: rà 22/11
 - [x] #009 · 22/11 · `zod` 3.23 → **4.6.7**, vá GHSA-mrhx-c7xc-m3w5 (high) — dependency chạy thật duy nhất của extension. tsc sạch, 696 vitest xanh, và cả 8 file store THẬT trên máy (30 terminal) parse đúng bằng schema mới; `zod` rời khỏi danh sách `npm audit` — nguồn: `npm audit` 22/11
-- [x] #001 · 22/11 · Mỗi phiên agent mới = một cây riêng + một tên riêng — 0.2.5 đã publish Marketplace (22/11), commit `2c9ff3b` + `26b7f49`. Còn chưa kiểm tay: tên tab sau khi Claude khởi động; bộ Extension Host chưa chạy trọn trên mã cuối (bị dừng vì máy cạn RAM) — nguồn: anh Ý
+- [x] #001 · 22/11 · Mỗi phiên agent mới = một cây riêng + một tên riêng — **0.2.5 đã publish Marketplace** (xác nhận bằng `vsce show`: 0.2.5 · November 22, 2026), commit `2c9ff3b` + `26b7f49`. Bộ Extension Host nay đã chạy TRỌN trên mã sau đó: 33 passing / 6 pending / 0 failing. Còn chưa kiểm tay đúng một điểm: tên tab sau khi Claude khởi động (chỉ mắt người thấy được) — nguồn: anh Ý
 - [x] #005 · 22/11 · Biến thể `-c` / `-r` trong cây vừa tạo có dòng phụ "cây mới — chưa có hội thoại nào để nối" (vẫn chọn được, chỉ nói trước) — nguồn: rà mã 22/11
 - [x] #000 · 26/10 · 0.2.4 phân biệt "terminal còn sống" với "phiên còn sống" (vỏ trống) — commit `22da7a9`, đã publish Marketplace
