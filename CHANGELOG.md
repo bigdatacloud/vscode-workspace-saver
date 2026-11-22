@@ -23,6 +23,13 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 - Hai ca test giữ điều này: một ca Extension Host đo nhãn tab thật trước/sau khi ép (và ghi
   lại giá trị mặc định của VS Code trong thông báo lỗi), một ca kiến trúc đòi cả năm đường tạo
   terminal đều gọi bước ép nhãn.
+- Giới hạn đo lường, nói rõ vì đã thử và KHÔNG đạt: tôi viết thêm một ca Extension Host khởi
+  chạy `claude` thật trong terminal rồi xác minh phiên qua `claude agents --json` trước khi đọc
+  nhãn tab. Hai lần chạy, mỗi lần chờ 2 phút, phiên không bao giờ xuất hiện trong registry —
+  `claude` không khởi động được từ terminal của môi trường test (đổi cwd sang chính repo cũng
+  không giúp; nghi đúng hiện tượng của nợ #003: chuỗi được gửi trước khi shell sẵn sàng). Ca đó
+  đã gỡ thay vì để lại một ca đỏ thường trực. Nên mệnh đề "nhãn tab bền khi agent ghi tiêu đề"
+  được chứng minh bằng shell ghi đúng chuỗi OSC của Claude, không bằng chính Claude.
 - Ca Extension Host đó đo thêm một mệnh đề nữa: nhãn **giữ được** tên đó khi chương trình
   trong terminal tự ghi tiêu đề bằng OSC 0 — đúng việc Claude làm liên tục ("<ký hiệu trạng
   thái> <tên phiên>"). Không cần chạy Claude thật, chỉ cần một shell ghi đúng chuỗi ấy, và một
