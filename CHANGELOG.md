@@ -36,6 +36,23 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
   `Cannot read properties of null (reading 'edgesOut')` khi giải peer set của vitest 5, nên
   không có đường kỹ thuật nào khác. Đây là devDependency, không vào gói phát hành.
 
+- **Bấm vào một terminal mà "không đưa ra trước được": vá hai nguyên nhân đo được.** (1) Phép
+  nhận diện tab so `tab.label === terminal.name` NGUYÊN VĂN, mà agent ghi tiêu đề tab thành
+  "<ký hiệu trạng thái> <tên phiên>" và đổi liên tục — nên với mọi terminal agent, mệnh đề nhãn
+  chết hẳn và đường tìm tab chỉ còn dựa vào `activeTerminal`; khi số đó nói sai thì vòng xoay
+  quay trọn rồi báo "không tìm thấy". Nay so qua `khopTenTab`, cắt ký hiệu ở cả hai bên (nhãn
+  RỖNG vẫn không khớp với bất cứ gì — tab chưa từng hiện có nhãn rỗng vĩnh viễn, coi rỗng là
+  khớp thì lệnh dời sẽ ném một tab lạ sang ô khác). (2) Terminal sống ở panel: `show()` một
+  mình không luôn kéo nổi khi vùng editor đang giữ focus — nay cho panel nhận focus rồi show
+  lại trước khi xoay tab.
+- **Quét bảng tiến trình không còn bỏ cuộc lúc máy tải.** `Get-CimInstance Win32_Process`
+  không tham số kéo về mọi thuộc tính của mọi tiến trình (hơn 40 cột); đo 22/11/2026, khi bộ
+  vitest chạy 51 worker song song thì lệnh vượt hạn 15 giây và hàm trả map RỖNG — mà rỗng
+  nghĩa là "không biết", nên đường đóng phiên bỏ qua đúng lúc cần nó nhất. Nay truy vấn chỉ
+  ba cột thật sự dùng (`ProcessId`, `ParentProcessId`, `CommandLine`) và hạn nới lên 25 giây.
+  Ca test đọc bảng thật vốn đỏ chập chờn mỗi lần chạy cả bộ, nay xanh.
+- **Gỡ một hàm chết** trong `splitview.ts` (`nhomConDongTerminal` — không nơi nào gọi).
+
 ### Thêm
 
 - **Kênh Output "AI Workspace — Phiên"** ghi nguyên văn mọi chuỗi extension gửi vào shell, kèm
@@ -96,7 +113,7 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
   còn nhìn thấy nhau.
 - Luật "cùng thư mục, khác tên là chủ ý" của `trungphien.ts` KHÔNG bị đổi: nó nói về các
   terminal đang chạy, còn hàng rào mới chỉ áp ở cửa đặt tên.
-- Đo: 693 vitest xanh (thêm 24 ca), `tsc --noEmit` sạch. Năm thí nghiệm phân biệt: gỡ phép
+- Đo: 701 vitest xanh (thêm 24 ca), `tsc --noEmit` sạch. Năm thí nghiệm phân biệt: gỡ phép
   kiểm trùng tên → đỏ 3 ca; cho tên trống là hợp lệ → đỏ 3 ca; trả tên lệnh về cách cũ (tên
   repo gốc) → đỏ 2 ca; lấy `--show-toplevel` làm gốc cây khi tạo phiên → đỏ 1 ca; lấy nó làm
   gốc khi lập tổ → đỏ 1 ca.

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { khopTenTab } from '../agent/title';
 import { boCucLuoi, boCucTuCotDong, TOI_DA_O } from './luoi';
 
 /**
@@ -292,10 +293,6 @@ async function thuPanel(ghiLog: (d: string) => void): Promise<void> {
 const demTermTrongNhom = (g: vscode.TabGroup): number =>
   g.tabs.filter((t) => t.input instanceof vscode.TabInputTerminal).length;
 
-/** Nhóm đầu tiên còn chứa nhiều hơn một terminal — chính là nhóm cần tách tiếp. */
-const nhomConDongTerminal = (): vscode.TabGroup | undefined =>
-  vscode.window.tabGroups.all.find((g) => demTermTrongNhom(g) > 1);
-
 /**
  * Đưa focus vào một nhóm theo chỉ số (0-based), bằng cách đi từ nhóm đầu sang phải.
  *
@@ -344,18 +341,56 @@ function timNhomCoTabTen(ten: string): number {
   const ds = vscode.window.tabGroups.all;
   for (let i = 0; i < ds.length; i++) {
     const co = ds[i]?.tabs.some(
-      (x) => x.input instanceof vscode.TabInputTerminal && x.label === ten,
+      (x) => x.input instanceof vscode.TabInputTerminal && khopTenTab(x.label, ten),
     );
     if (co === true) return i;
   }
   return -1;
 }
 
+/**
+ * Xoay tab qua mọi nhóm cho tới khi tab đang active CHẮC CHẮN là của terminal này.
+ *
+ * Hai nguồn bằng chứng, dùng theo thứ tự — đo trong Extension Host 22/11/2026:
+ *  - nhãn tab có chữ: phải khớp tên (sau khi cắt ký hiệu trạng thái). Đây là mệnh đề loại
+ *    trừ quan trọng nhất: nó chặn đúng ca làm ca test đỏ chập chờn từ 0.2.3 — `show()` đặt
+ *    `activeTerminal` = terminal mới trong khi tab active vẫn là "dau-1", và lệnh dời ngay
+ *    sau đó tác động lên tab sai.
+ *  - nhãn rỗng (tab terminal chưa từng được hiện — rỗng vĩnh viễn, đo 25/10/2026): lúc đó
+ *    `activeTerminal` là thứ duy nhất còn lại, và khi vùng editor giữ focus thì nó đúng.
+ */
+async function xoayToiTabCuaTerminal(
+  t: vscode.Terminal,
+  ghiLog: (d: string) => void,
+): Promise<boolean> {
+  const dungTab = (): boolean => {
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    if (!(tab?.input instanceof vscode.TabInputTerminal)) return false;
+    const nhan = tab.label.trim();
+    if (nhan === '') return vscode.window.activeTerminal === t;
+    return khopTenTab(nhan, t.name);
+  };
+  const soNhomLuc = vscode.window.tabGroups.all.length;
+  for (let g = 0; g < soNhomLuc; g++) {
+    await focusNhom(g);
+    await cho(dungTab, HAN_XOAY_MS);
+    if (dungTab()) return true;
+    const soTab = vscode.window.tabGroups.activeTabGroup.tabs.length;
+    for (let i = 0; i < soTab; i++) {
+      await chay('workbench.action.nextEditorInGroup');
+      await cho(dungTab, HAN_XOAY_MS);
+      if (dungTab()) return true;
+    }
+  }
+  ghiLog(`[luoi] không tìm thấy tab nào chắc chắn là của "${t.name}" trong vùng editor`);
+  return false;
+}
+
 /** Xoay tab trong nhóm đang active cho tới khi tab active là tab terminal mang đúng tên này. */
 async function xoayToiTabTen(ten: string): Promise<boolean> {
   const dungTab = (): boolean => {
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-    return tab?.input instanceof vscode.TabInputTerminal && tab.label === ten;
+    return tab?.input instanceof vscode.TabInputTerminal && khopTenTab(tab.label, ten);
   };
   const soTab = vscode.window.tabGroups.activeTabGroup.tabs.length;
   for (let i = 0; i < soTab + 1; i++) {
@@ -416,7 +451,10 @@ export async function hienTerminal(
   const dungNo = (): boolean => {
     if (vscode.window.activeTerminal === t) return true;
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-    return tab?.input instanceof vscode.TabInputTerminal && tab.label === t.name;
+    // So qua `khopTenTab`, KHÔNG so nguyên văn: agent ghi tiêu đề tab thành "<ký hiệu trạng
+    // thái> <tên phiên>" và đổi liên tục, nên so nguyên văn thì mệnh đề nhãn chết hẳn với
+    // mọi terminal agent — đúng loại terminal mà nhánh này tồn tại để tìm (nợ #002).
+    return tab?.input instanceof vscode.TabInputTerminal && khopTenTab(tab.label, t.name);
   };
   try {
     t.show(false);
@@ -428,6 +466,23 @@ export async function hienTerminal(
   await cho(dungNo, HAN_SHOW_MS);
   if (dungNo()) return true;
 
+  // Terminal sống ở PANEL: `show()` một mình không luôn kéo nổi khi vùng EDITOR đang giữ
+  // focus — trạng thái rất thường gặp (vừa xếp lưới, vừa thêm ô, vừa bấm vào một tab). Cho
+  // panel nhận focus rồi show lại. Với terminal ở editor thì bước này vô hại: điều kiện vẫn
+  // sai và ta đi tiếp xuống phần xoay tab, chỉ tốn một lệnh.
+  await chay('workbench.action.terminal.focus');
+  try {
+    t.show(false);
+  } catch {
+    ghiLog(`[hien] "${t.name}" đã đóng, không hiện được`);
+    return false;
+  }
+  await cho(dungNo, HAN_SHOW_MS);
+  if (dungNo()) {
+    ghiLog(`[hien] "${t.name}" lên active sau khi cho panel nhận focus`);
+    return true;
+  }
+
   // KHÔNG đoán trước terminal đang ở panel hay editor rồi bỏ qua. Mọi nguồn đoán đều là
   // ảnh chụp lúc TẠO, mà cả lưới lẫn lệnh ẩn đều dời terminal qua lại panel↔editor sau đó —
   // đúng cái terminal cần xoay tab nhất (sinh ở panel rồi bị kéo vào lưới) lại là cái bị
@@ -436,6 +491,22 @@ export async function hienTerminal(
   // Xoay oan một terminal đang thật sự ở panel thì vô hại: mỗi nhóm quay trọn một vòng nên
   // tab cũ trở lại đúng chỗ, và hàm vẫn trả `false`.
   ghiLog(`[hien] show() chưa kéo "${t.name}" lên active — xoay tab trong vùng editor`);
+
+  // Đi thẳng tới nhóm đang chứa tab mang tên này, nếu tìm được. Vòng xoay bên dưới quay qua
+  // MỌI nhóm × MỌI tab và chỉ dừng khi `dungNo()` đúng; với terminal agent, mệnh đề nhãn của
+  // `dungNo()` trước 0.2.6 không bao giờ đúng (so nguyên văn với tiêu đề có ký hiệu trạng
+  // thái), nên nó phụ thuộc hoàn toàn vào `activeTerminal` — và khi số đó nói sai thì vòng
+  // quay trọn rồi báo "không tìm thấy". Đây là đường ngắn cho đúng ca đó (nợ #002).
+  const nhomCoTab = timNhomCoTabTen(t.name);
+  if (nhomCoTab >= 0) {
+    await focusNhom(nhomCoTab);
+    if (await xoayToiTabTen(t.name)) {
+      ghiLog(`[hien] tìm thấy tab "${t.name}" ở ô thứ ${nhomCoTab + 1}`);
+      return true;
+    }
+    ghiLog(`[hien] thấy tab "${t.name}" ở ô ${nhomCoTab + 1} nhưng không xoay tới được`);
+  }
+
   const nhom = vscode.window.tabGroups.all.length;
   for (let g = 0; g < nhom; g++) {
     await focusNhom(g);
@@ -486,13 +557,12 @@ export async function themOVaoLuoi(
     // ký của chính ca đó: "đẩy nhầm \"dau-1\" xuống panel, trả nó lên lại" rồi
     // "\"mo-sau\" không lên được vùng editor". Nên: nếu `t` đã ở editor thì chỉ cần xoay tới
     // ĐÚNG tab của nó, không đẩy xuống panel rồi kéo lên nữa.
-    const nhomCoTab = timNhomCoTabTen(t.name);
-    let sanSang = false;
-    if (nhomCoTab >= 0) {
-      await focusNhom(nhomCoTab);
-      sanSang = await xoayToiTabTen(t.name);
-      if (!sanSang) ghiLog(`[luoi] thấy tab "${t.name}" nhưng không xoay tới được, thử đường panel`);
-    }
+    // Nhận diện KHÔNG dựa vào nhãn một mình: chạy cả bộ 22/11/2026 thì tab của terminal vừa
+    // tạo có nhãn rỗng (nó chưa từng được hiện), nên một đường ngắn chỉ so nhãn vẫn bỏ sót
+    // đúng ca cần cứu. `xoayToiTabCuaTerminal` xử cả hai trạng thái nhãn.
+    t.show(true);
+    await cho(() => vscode.window.activeTerminal === t, HAN_SHOW_MS);
+    const sanSang = await xoayToiTabCuaTerminal(t, ghiLog);
 
     if (!sanSang) {
       // Đẩy về panel rồi kéo lên, hệt `xepLuoiTerminal` và vì cùng một lý do: kéo lên chỉ xác

@@ -64,11 +64,16 @@ export async function docBangTienTrinhDayDu(
             '-NoProfile',
             '-NonInteractive',
             '-Command',
-            'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)\|$($_.ParentProcessId)\|$($_.CommandLine)" }',
+            // Truy vấn CHỈ ba cột cần dùng. `Get-CimInstance Win32_Process` không tham số kéo
+            // về mọi thuộc tính của mọi tiến trình (hơn 40 cột), và chính nó là lý do lần quét
+            // vượt hạn khi máy tải: đo 22/11/2026, bộ vitest chạy 51 worker song song thì lệnh
+            // cũ quá 15 giây và hàm trả map RỖNG — mà rỗng nghĩa là "không biết", nên đường
+            // đóng phiên bỏ qua đúng lúc người dùng cần nó nhất.
+            'Get-CimInstance -Query "SELECT ProcessId,ParentProcessId,CommandLine FROM Win32_Process" | ForEach-Object { "$($_.ProcessId)\|$($_.ParentProcessId)\|$($_.CommandLine)" }',
           ],
-          15_000,
+          25_000,
         )
-      : await chay('ps', ['-eo', 'pid=,ppid=,args='], 15_000);
+      : await chay('ps', ['-eo', 'pid=,ppid=,args='], 25_000);
   return parseBangTienTrinhDayDu(stdout);
 }
 
