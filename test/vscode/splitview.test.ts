@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
+import { datNhanTab } from '../../src/ui/nhantab';
 import {
   gopVeMotNhom,
   hienTabTerminalMoiNhom,
@@ -960,5 +961,50 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
     const ok = await hienTerminal(chet);
 
     assert.equal(ok, false, 'terminal đã đóng thì không hiện được, và không được ném');
+  });
+
+  /**
+   * Ca cuối cùng của mệnh đề "một tên cho ba chỗ" mà máy kiểm được.
+   *
+   * Chỗ thứ ba là NHÃN TAB, và nó không do extension đặt: Claude ghi tiêu đề tab bằng escape
+   * sequence OSC 0 ("<ký hiệu trạng thái> <tên phiên>") rồi đổi liên tục. Không cần chạy
+   * Claude thật để kiểm — chỉ cần một shell ghi đúng chuỗi đó, vì phần extension phải chịu
+   * trách nhiệm là: nhãn đã mang ký hiệu thì VẪN phải nhận ra đúng terminal (nợ #002).
+   */
+  /**
+   * Chỗ thứ ba của mệnh đề "một tên cho ba chỗ": NHÃN TAB. Máy kiểm được, không cần mắt người.
+   *
+   * Đo được ở đây, và nó bác bỏ giả định cũ: `createTerminal({ name })` KHÔNG quyết định nhãn
+   * tab — VS Code dựng nhãn theo `terminal.integrated.tabs.title` (mặc định `${process}`), nên
+   * tab hiện "pwsh" / "claude" chứ không hiện tên cây. Đúng cái làm mọi tab agent trông y như
+   * nhau. `datNhanTab` ép tiêu đề do người dùng, và ca này là bằng chứng nó thắng `${process}`.
+   */
+  test('datNhanTab ép nhãn tab thành tên cây (VS Code mặc định hiện tên tiến trình)', async () => {
+    const ten = 'ten-cay-claude';
+    const t = vscode.window.createTerminal({ name: ten, location: vscode.TerminalLocation.Editor });
+    const log: string[] = [];
+    try {
+      await cho(() => tabTerminal() === 1);
+      const nhanCua = (): string | undefined =>
+        vscode.window.tabGroups.all
+          .flatMap((g) => g.tabs)
+          .find((x) => x.input instanceof vscode.TabInputTerminal)?.label;
+      // Phải HIỆN tab một lần trước khi đọc: `tab.label` rỗng với tab terminal chưa từng hiện.
+      t.show(true);
+      await cho(() => (nhanCua() ?? '') !== '', 5000);
+      const nhanMacDinh = nhanCua();
+
+      const ok = await datNhanTab(t, ten, (d) => log.push(d));
+
+      assert.equal(ok, true, `datNhanTab phải thành công — log: ${log.join(' | ')}`);
+      await cho(() => nhanCua() === ten, 5000);
+      assert.equal(
+        nhanCua(),
+        ten,
+        `nhãn tab phải là "${ten}" (mặc định của VS Code là "${nhanMacDinh}") — log: ${log.join(' | ')}`,
+      );
+    } finally {
+      await donDep([t]);
+    }
   });
 });

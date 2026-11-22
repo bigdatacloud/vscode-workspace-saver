@@ -107,6 +107,22 @@ describe('bất biến của phần worktree', () => {
     }
   });
 
+  it('mọi đường TẠO terminal mới đều ép nhãn tab theo tên entry', () => {
+    // `createTerminal({ name })` không quyết định nhãn tab: VS Code dựng nhãn theo
+    // `terminal.integrated.tabs.title`, mặc định `${process}` — đo trong Extension Host
+    // 22/11/2026 thì tab hiện "pwsh", không hiện tên cây. Thiếu bước ép nhãn thì yêu cầu
+    // "tên terminal trùng tên cây" chỉ đúng trong file store, không đúng trên màn hình.
+    for (const ham of [
+      'async newClaudeTerminal(',
+      'async newCodexTerminal(',
+      'async newPlainTerminal(',
+      'async nhanBanTerminal(',
+      'async taoThanhVienTeam(',
+    ]) {
+      expect(thanPhuongThuc(manager, ham), ham).toContain('datNhanTabCho');
+    }
+  });
+
   it('không còn hộp thoại "Lưu và đóng workspace X trước khi mở Y"', () => {
     // Nhiều workspace mở song song là hành vi mong muốn; nhãn nút đó quay lại nghĩa là ai đó
     // đã khôi phục mô hình một-workspace.

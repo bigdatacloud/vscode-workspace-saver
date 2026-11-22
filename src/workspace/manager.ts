@@ -122,6 +122,7 @@ import { activateWorkspace, type ActivatePorts, type ActivateReport } from './ac
 import { gopGoiYDuongDan } from './paths';
 import { decideTerminalRemoval, type RemoveTerminalDecision } from './remove';
 import { entryTrungTen, loiTenCay, xetTenCay, type EntryDaCo, type PhanXuTenCay } from './tencay';
+import { datNhanTab } from '../ui/nhantab';
 import { laVoTrong } from './votrong';
 
 export type TerminalState =
@@ -2713,6 +2714,23 @@ export class WorkspaceManager implements vscode.Disposable {
   private kenhPhienCache: vscode.OutputChannel | null = null;
 
   /** Kênh Output riêng cho việc xếp lưới — chỗ tra khi một terminal không vào được ô nào. */
+  /**
+   * Ép nhãn tab của terminal vừa tạo thành tên entry.
+   *
+   * `createTerminal({ name })` KHÔNG quyết định nhãn tab: VS Code dựng nhãn theo
+   * `terminal.integrated.tabs.title`, mặc định `${process}` — đo trong Extension Host
+   * 22/11/2026, tab của terminal tạo với tên "ten-cay-claude" hiện ra là **"pwsh"**. Nên mọi
+   * tab agent đều mang nhãn "claude" và không phân biệt được việc nào, đúng cái anh Ý muốn
+   * tránh khi yêu cầu "tên terminal trùng tên cây" (22/11/2026).
+   *
+   * Không await: nhãn tab là chuyện hiển thị, không được chặn đường tạo terminal.
+   */
+  private datNhanTabCho(terminalId: string, ten: string): void {
+    const t = this.terminals.get(terminalId);
+    if (t === undefined) return;
+    void datNhanTab(t, ten, (d) => this.ghiPhien(d));
+  }
+
   /** Một dòng vào kênh "Phiên", kèm giờ ISO để so được với lúc người dùng thấy lỗi. */
   private ghiPhien(dong: string): void {
     this.kenhPhienCache ??= vscode.window.createOutputChannel(TEN_KENH_PHIEN);
@@ -3167,6 +3185,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsGhi.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.datNhanTabCho(entry.id, tenWt);
     const lenhTo = this.agent.buildLaunchCommand({ name: tenWt, mode: { kind: 'new', sessionId }, coThem });
     this.ghiPhien(`[lap-to] "${tenWt}" phiên mới ${sessionId} → ${lenhTo}`);
     handle.sendText(lenhTo);
@@ -3825,6 +3844,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsNow.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.datNhanTabCho(entry.id, ten);
     this.ghiPhien(`[tao-moi] "${ten}" ${luaChon.label} → ${luaChon.command}`);
     handle.sendText(luaChon.command);
     // Claude boot mất nhiều giây trước khi registry thấy — spinner cho tới khi có trạng thái.
@@ -3958,6 +3978,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsNow.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.datNhanTabCho(entry.id, ten);
     if (lenh !== '') {
       this.ghiPhien(`[nhan-ban] "${ten}" ${fork ? 'fork từ' : 'phiên mới, gốc'} "${goc.name}" → ${lenh}`);
       handle.sendText(lenh);
@@ -4037,6 +4058,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsNow.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.datNhanTabCho(entry.id, ten);
     this.ghiPhien(`[tao-moi] "${ten}" codex → ${luaChon.command}`);
     handle.sendText(luaChon.command);
     this.batDauLoading([entry.id]);
@@ -4160,6 +4182,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsNow.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.datNhanTabCho(entry.id, ten);
     this.onChanged.fire();
     void this.nhoCwd(cwd);
   }

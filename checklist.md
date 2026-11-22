@@ -13,6 +13,8 @@
 
 ## 5. Xong gần đây
 
+- [x] #013 · 22/11 · **Tên tab terminal = tên cây** — điểm cuối của "một tên ba chỗ", tưởng phải kiểm tay nhưng đo được bằng máy, và hoá ra ĐANG SAI: `createTerminal({ name })` không quyết định nhãn tab, VS Code hiện `${process}` nên tab ra "pwsh" / "claude". Nay cả 5 đường tạo terminal ép nhãn bằng `renameWithArg`; có ca Extension Host đo nhãn thật + ca kiến trúc khoá cả 5 đường. Đo: 702 vitest, EH 34 passing / 0 failing — nguồn: anh Ý 22/11
+
 - [x] #012 · 22/11 · **0.2.6 đã publish Marketplace** — `vsce publish` báo "DONE Published bigdatacloud.ai-workspaces v0.2.6". Anh Ý cấp quyền qua `.claude/settings.json` (chỉ ba lệnh vsce: package, publish, show), nên lần sau Claude tự publish được — nguồn: anh Ý
 
 - [x] #011 · 22/11 · Ca vitest `docBangTienTrinhDayDu` đỏ chập chờn mỗi lần chạy cả bộ — nguyên nhân thật: `Get-CimInstance Win32_Process` không tham số kéo hơn 40 cột của mọi tiến trình, quá hạn 15 s khi 51 worker chạy song song → hàm trả map RỖNG, và rỗng nghĩa là "không biết" nên đường đóng phiên bỏ qua. Nay truy vấn 3 cột + hạn 25 s; 701 vitest xanh cả bộ — nguồn: rà 22/11
@@ -23,6 +25,6 @@
 - [x] #006 · 22/11 · `huong-dan-ai-workspace.html` cập nhật cho 0.2.5: phiên bản v0.2.5, tên gói, thứ tự bốn bước (hỏi tên TRƯỚC khi chọn cách chạy), luật tên bắt buộc + một tên ba chỗ + chặn trùng + gốc là cây chính + ca ngoài git, và trạng thái "phiên đã thoát · shell trống" — nguồn: nợ cũ
 - [x] #008 · 22/11 · `package-lock.json` về đúng 0.2.5 (`npm install --package-lock-only --ignore-scripts`; diff đúng 2 dòng version, không dependency nào đổi) — nguồn: rà 22/11
 - [x] #009 · 22/11 · `zod` 3.23 → **4.6.7**, vá GHSA-mrhx-c7xc-m3w5 (high) — dependency chạy thật duy nhất của extension. tsc sạch, 696 vitest xanh, và cả 8 file store THẬT trên máy (30 terminal) parse đúng bằng schema mới; `zod` rời khỏi danh sách `npm audit` — nguồn: `npm audit` 22/11
-- [x] #001 · 22/11 · Mỗi phiên agent mới = một cây riêng + một tên riêng — **0.2.5 đã publish Marketplace** (xác nhận bằng `vsce show`: 0.2.5 · November 22, 2026), commit `2c9ff3b` + `26b7f49`. Bộ Extension Host nay đã chạy TRỌN trên mã sau đó: 33 passing / 6 pending / 0 failing. Còn chưa kiểm tay đúng một điểm: tên tab sau khi Claude khởi động (chỉ mắt người thấy được) — nguồn: anh Ý
+- [x] #001 · 22/11 · Mỗi phiên agent mới = một cây riêng + một tên riêng — 0.2.5 publish Marketplace, commit `2c9ff3b` + `26b7f49`. Cả ba chỗ dùng một tên nay đều có bằng chứng máy: entry trong store (ca integration), tên phiên `claude -n` (ca integration), nhãn tab (ca Extension Host ở #013) — nguồn: anh Ý
 - [x] #005 · 22/11 · Biến thể `-c` / `-r` trong cây vừa tạo có dòng phụ "cây mới — chưa có hội thoại nào để nối" (vẫn chọn được, chỉ nói trước) — nguồn: rà mã 22/11
 - [x] #000 · 26/10 · 0.2.4 phân biệt "terminal còn sống" với "phiên còn sống" (vỏ trống) — commit `22da7a9`, đã publish Marketplace

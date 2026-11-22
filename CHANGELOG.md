@@ -3,6 +3,33 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.7] — 2026-11-22
+
+### Sửa
+
+- **Tên trên tab terminal nay thật sự là tên cây.** Đây là chỗ thứ ba của mệnh đề "một tên cho
+  ba chỗ" (0.2.5), và nó vẫn sai cho tới bản này — không phải vì mã thiếu, mà vì một giả định
+  chưa ai đo: `vscode.window.createTerminal({ name })` **không** quyết định nhãn tab. VS Code
+  dựng nhãn theo `terminal.integrated.tabs.title`, mặc định `${process}` — đo trong Extension
+  Host 22/11/2026, tab của terminal tạo với tên `ten-cay-claude` hiện ra là **"pwsh"**. Hệ quả
+  đúng là thứ cần tránh: mọi tab agent đều mang nhãn "claude" và không phân biệt được việc nào.
+  Nay mọi đường tạo terminal mới (Claude, Codex, shell thường, nhân bản, lập tổ) ép nhãn tab
+  bằng `workbench.action.terminal.renameWithArg`, và tiêu đề do người dùng thắng `${process}`.
+  Đường KHÔI PHỤC hàng loạt cố ý không làm vậy: ở đó `show()` từng cái sẽ làm tab nhảy liên
+  tục, mà bước xếp lưới ngay sau mới là thứ quyết định cái gì hiện ở đâu.
+
+### Ghi chú kỹ thuật
+
+- Hai ca test giữ điều này: một ca Extension Host đo nhãn tab thật trước/sau khi ép (và ghi
+  lại giá trị mặc định của VS Code trong thông báo lỗi), một ca kiến trúc đòi cả năm đường tạo
+  terminal đều gọi bước ép nhãn.
+- Phát hiện kèm theo khi đo store thật: `claudeName` và tên phiên trong `claude agents --json`
+  khớp nhau ở **7/7** entry đang chạy, nhưng cả hai lệch `entry.name` ở các entry tạo TRƯỚC
+  0.2.5 (tên phiên mang hậu tố `-a6`, `-cd`… do Claude tự thêm). Entry tạo từ 0.2.5 trở đi
+  không còn lệch — hàng rào nằm ở đường tạo mới, không di trú dữ liệu cũ.
+- Đo: 702 vitest xanh, `tsc --noEmit` sạch, Extension Host **34 passing / 6 pending / 0
+  failing**, `npm audit` 0 lỗ hổng.
+
 ## [0.2.6] — 2026-11-22
 
 ### Sửa
