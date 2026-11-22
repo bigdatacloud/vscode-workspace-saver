@@ -2,14 +2,55 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAddWorktreeArgs,
   chuanHoaDuongDan,
+  duongDanCay,
   GitClient,
   ghepTenWorktree,
+  goiRepoChinh,
   laWorktreeCuaExtension,
   parseWorktreeList,
   phanLoaiWorktree,
   trongThuMuc,
 } from '../../src/git/worktree';
 import type { GitRunner, GitResult } from '../../src/git/exec';
+
+describe('duongDanCay + goiRepoChinh', () => {
+  const MAIN = String.raw`D:\Coding\duan`;
+  const CAY = String.raw`D:\Coding\duan-worktrees\viec-a-claude`;
+
+  it('cây nằm CẠNH repo, không nằm trong repo', () => {
+    // Trong repo thì `git clean -xdf` xoá sạch cây cùng mọi thay đổi chưa commit trong đó.
+    expect(duongDanCay(MAIN, 'viec-b-claude')).toBe(
+      String.raw`D:\Coding\duan-worktrees\viec-b-claude`,
+    );
+  });
+
+  it('đứng TRONG một cây thì gốc vẫn là repo chính — không đẻ cây lồng cây', () => {
+    // Đo trên máy thật 22/11/2026: `git rev-parse --show-toplevel` trong một linked worktree
+    // trả về CHÍNH worktree đó. Lấy số đó làm gốc thì cây mới thành
+    // `duan-worktrees\viec-a-claude-worktrees\viec-b-claude`, và không entry nào nhìn thấy
+    // nhau nữa. Dòng ĐẦU của `git worktree list` luôn là worktree chính.
+    const ds = [
+      { path: MAIN, branch: 'main', bare: false, detached: false },
+      { path: CAY, branch: 'viec-a-claude', bare: false, detached: false },
+    ];
+    expect(goiRepoChinh(ds, CAY)).toBe(MAIN);
+    expect(duongDanCay(goiRepoChinh(ds, CAY), 'viec-b-claude')).toBe(
+      String.raw`D:\Coding\duan-worktrees\viec-b-claude`,
+    );
+  });
+
+  it('repo bare không phải chỗ làm việc: bỏ qua, lấy cây thường đầu tiên', () => {
+    const ds = [
+      { path: String.raw`D:\Coding\duan.git`, branch: null, bare: true, detached: false },
+      { path: CAY, branch: 'viec-a-claude', bare: false, detached: false },
+    ];
+    expect(goiRepoChinh(ds, CAY)).toBe(CAY);
+  });
+
+  it('đọc danh sách hỏng thì dùng số dự phòng, không ném', () => {
+    expect(goiRepoChinh([], CAY)).toBe(CAY);
+  });
+});
 
 describe('buildAddWorktreeArgs', () => {
   it('dùng branch có sẵn khi branch đã tồn tại', () => {

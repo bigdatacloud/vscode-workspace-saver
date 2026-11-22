@@ -21,7 +21,9 @@ import {
   GitClient,
   HAU_TO_WORKTREE,
   chuanHoaDuongDan,
+  duongDanCay,
   ghepTenWorktree,
+  goiRepoChinh,
   laWorktreeCuaExtension,
   phanLoaiWorktree,
   trongThuMuc,
@@ -120,6 +122,7 @@ import { TrustStore } from '../trust/store';
 import { activateWorkspace, type ActivatePorts, type ActivateReport } from './activate';
 import { gopGoiYDuongDan } from './paths';
 import { decideTerminalRemoval, type RemoveTerminalDecision } from './remove';
+import { entryTrungTen, loiTenCay, xetTenCay, type EntryDaCo, type PhanXuTenCay } from './tencay';
 import { laVoTrong } from './votrong';
 
 export type TerminalState =
@@ -145,10 +148,24 @@ interface ThanhVienDaChon {
   model?: string;
 }
 
-/** Kết quả hỏi worktree: thư mục làm việc, kèm worktree khi thật sự có một cái. */
+/** Kết quả tạo cây: thư mục làm việc, kèm worktree khi thật sự có một cái. */
 interface KetQuaWorktree {
   cwd: string;
   worktree?: WorktreeRef;
+}
+
+/**
+ * Tên cây người dùng đã chốt — CHƯA có gì trên đĩa.
+ *
+ * Tồn tại để tên đi vào lệnh khởi chạy trước khi `addWorktree` chạy; xem `hoiTenCay`.
+ */
+interface TenCayDaChon {
+  /** Tên dùng cho entry, tab terminal, và tên phiên agent. */
+  tenCay: string;
+  /** Thư mục làm việc sẽ dùng: đường dẫn cây, hoặc chính cwd đã chọn khi ngoài git. */
+  cwd: string;
+  /** Gốc repo; `null` = ngoài git, `taoCay` sẽ không tạo gì. */
+  repoGoc: string | null;
 }
 
 /** Một worktree do extension tạo, kèm phân loại và các entry của workspace trỏ vào nó. */
@@ -3054,6 +3071,16 @@ export class WorkspaceManager implements vscode.Disposable {
     if (!wsNow) return { loi: 'workspace không còn tồn tại' };
 
     const tenVai = tv.role.trim();
+    // Tổ đặt tên theo `<việc>-<vai>`, nên lập lại tổ cùng tên việc sinh ra đúng những cái tên
+    // đã có. Chặn TRƯỚC khi ghi file vai và trước `addWorktree`, không thì mỗi lần trùng để
+    // lại một file vai + một thư mục + một nhánh mà không ai dọn.
+    const trungTen = entryTrungTen(ghepTenWorktree(viec, tenVai), this.dsEntryDaCo());
+    if (trungTen !== null) {
+      return {
+        loi: `tên "${trungTen.name}" đã là của một phiên trong workspace "${trungTen.tenWorkspace}" — đổi tên việc hoặc tên vai`,
+      };
+    }
+
     // Vai trùng tên đã có thì DÙNG LẠI, không ghi đè file: người dùng có thể đã sửa nó, và
     // schema cũng cấm hai vai trùng tên trong một workspace.
     let role = (wsNow.roles ?? []).find((r) => r.name.toLowerCase() === tenVai.toLowerCase());
@@ -3070,7 +3097,7 @@ export class WorkspaceManager implements vscode.Disposable {
     }
 
     const tenWt = ghepTenWorktree(viec, tenVai);
-    const duongDanWt = path.join(path.dirname(goc), `${path.basename(goc)}${HAU_TO_WORKTREE}`, tenWt);
+    const duongDanWt = duongDanCay(goc, tenWt);
     let worktree: WorktreeRef | undefined;
     if (nodeFs.existsSync(duongDanWt)) {
       if ((await this.git.repoRoot(duongDanWt)) === null) {
@@ -3713,19 +3740,32 @@ export class WorkspaceManager implements vscode.Disposable {
     const entryId = randomUUID();
     const coThem = vai === undefined ? undefined : this.coThemChoRole(workspaceId, vai, entryId);
 
-    const luaChon = await vscode.window.showQuickPick(
-      this.agent.buildLaunchOptions(path.basename(duongDan) || 'claude', coThem),
-      { placeHolder: 'Chạy Claude thế nào?' },
+    // Hỏi TÊN trước khi dựng lệnh: `-n` của lệnh khởi chạy phải là đúng cái tên sẽ nằm trên tab
+    // terminal và trong cây workspace. Hộp thoại này chỉ hỏi, chưa tạo gì trên đĩa.
+    const chon = await this.hoiTenCay(duongDan, vai?.name ?? this.agent.id);
+    if (chon === undefined) return;
+    const ten = chon.tenCay;
+
+    // Claude lưu hội thoại theo thư mục, nên trong một cây CHƯA tồn tại thì `-c` / `-r` không có
+    // gì để nối. Từ 22/11/2026 cây là bắt buộc, nên ca này thành ca thường gặp — nói trước cho
+    // người dùng thay vì để họ chọn rồi nhận một phiên trắng mang tên "tiếp tục".
+    const cayMoi = chon.repoGoc !== null && !nodeFs.existsSync(chon.cwd);
+    const luaChonDs = this.agent.buildLaunchOptions(ten, coThem).map((o) =>
+      cayMoi && o.sessionId === undefined
+        ? { ...o, detail: `Cây "${ten}" là cây mới — ở đó chưa có hội thoại nào để nối.` }
+        : o,
     );
+
+    const luaChon = await vscode.window.showQuickPick(luaChonDs, {
+      placeHolder: 'Chạy Claude thế nào?',
+    });
     if (!luaChon) return;
 
-    // Hỏi worktree SAU CÙNG, vì bước này TẠO THẬT thư mục + nhánh git. Hỏi trước rồi người
-    // dùng Esc ở hộp thoại sau là để lại rác không ai dọn (addWorktree cố ý không có đường gỡ).
-    const kq = await this.hoiWorktree(duongDan, vai?.name ?? this.agent.id);
+    // Tạo cây SAU CÙNG, vì bước này TẠO THẬT thư mục + nhánh git. Tạo trước rồi người dùng Esc ở
+    // hộp thoại sau là để lại rác không ai dọn (addWorktree cố ý không có đường gỡ).
+    const kq = await this.taoCay(chon);
     if (kq === undefined) return;
     const cwd = kq.cwd;
-    // Tên terminal = tên worktree. Tên ghép PHẲNG nên basename của đường dẫn chính là nó.
-    const ten = path.basename(cwd) || 'claude';
     const wt = kq.worktree === undefined ? {} : { worktree: kq.worktree };
 
     // Lấy lại object sau chuỗi input/quickpick rồi mới touch (xem ghi chú ở activate()).
@@ -3830,15 +3870,13 @@ export class WorkspaceManager implements vscode.Disposable {
       );
       if (tra !== 'Vẫn nhân bản') return;
     }
+    const chon = await this.hoiTenCay(goc.cwd, vaiTen);
+    if (chon === undefined) return;
+    const ten = chon.tenCay;
     // Bước này TẠO THẬT thư mục + nhánh git, nên để sau mọi hộp thoại có thể bị Esc.
-    const kq = await this.hoiWorktree(goc.cwd, vaiTen, repo !== null);
+    const kq = await this.taoCay(chon);
     if (kq === undefined) return;
     const cwd = kq.cwd;
-    // Cùng thư mục (không phải repo git) thì basename trùng tên bản gốc — phân biệt bằng hậu tố.
-    const ten =
-      chuanHoaDuongDan(cwd) === chuanHoaDuongDan(goc.cwd)
-        ? `${goc.name} (bản sao)`
-        : path.basename(cwd) || `${goc.name} (bản sao)`;
 
     const entryId = randomUUID();
     const vai = goc.roleId === undefined ? undefined : (ws.roles ?? []).find((r) => r.id === goc.roleId);
@@ -3931,16 +3969,20 @@ export class WorkspaceManager implements vscode.Disposable {
     const vai = await this.hoiVai(workspaceId);
     if (vai === 'huy') return;
 
+    // Hỏi TÊN trước (xem ghi chú ở newClaudeTerminal): tên là của cả tab terminal lẫn cây.
+    const chon = await this.hoiTenCay(duongDan, vai?.name ?? this.codex.id);
+    if (chon === undefined) return;
+    const ten = chon.tenCay;
+
     const luaChon = await vscode.window.showQuickPick(this.codex.buildLaunchOptions(), {
       placeHolder: 'Chạy Codex thế nào?',
     });
     if (!luaChon) return;
 
-    // Hỏi worktree SAU CÙNG (xem ghi chú ở newClaudeTerminal): bước này tạo thật thư mục+nhánh.
-    const kq = await this.hoiWorktree(duongDan, vai?.name ?? this.codex.id);
+    // Tạo cây SAU CÙNG (xem ghi chú ở newClaudeTerminal): bước này tạo thật thư mục+nhánh.
+    const kq = await this.taoCay(chon);
     if (kq === undefined) return;
     const cwd = kq.cwd;
-    const ten = path.basename(cwd) || 'codex';
 
     // Lấy lại object sau chuỗi hộp thoại rồi mới touch (xem ghi chú ở activate()).
     const wsNow = findWorkspace(this.store, workspaceId);
@@ -4211,75 +4253,105 @@ export class WorkspaceManager implements vscode.Disposable {
    * GIỮ hộp thoại mở khi đường dẫn gõ vào không tồn tại — bắt người dùng mở lại từ đầu chỉ
    * vì gõ sai một ký tự là tệ hơn hẳn.
    */
+  /** Mọi entry đang có, mọi workspace — nguồn để biết một tên hay một cây đã có chủ chưa. */
+  private dsEntryDaCo(): EntryDaCo[] {
+    const ra: EntryDaCo[] = [];
+    for (const ws of this.store.workspaces) {
+      for (const e of ws.terminals) {
+        ra.push({
+          id: e.id,
+          name: e.name,
+          cwd: e.cwd,
+          tenWorkspace: ws.name,
+          ...(e.worktree === undefined ? {} : { worktree: e.worktree }),
+        });
+      }
+    }
+    return ra;
+  }
+
   /**
-   * Hỏi worktree cho terminal agent sắp mở. Lý do tồn tại: hai terminal cùng trỏ một thư mục
-   * thì "nối lại phiên gần nhất" (`claude -c`, `codex resume --last`) trỏ vào CÙNG một hội
-   * thoại, và cơ chế bắt session theo cwd cũng không phân biệt nổi. Mỗi worktree là một thư
-   * mục + một nhánh riêng nên hết đụng nhau.
+   * Hỏi TÊN cây cho phiên agent sắp mở — và chỉ hỏi, chưa tạo gì trên đĩa.
    *
-   * Hỏi VIỆC chứ không hỏi tên worktree: tên là `<việc>-<vai>` (xem `ghepTenWorktree`), nên
-   * mọi vai cùng làm một việc nằm liền nhau trong `git branch`. `vai` tạm là id agent; khi
-   * có roles thì đây là chỗ duy nhất đổi nguồn sang tên vai.
+   * Lý do có cây: hai terminal cùng trỏ một thư mục thì "nối lại phiên gần nhất" (`claude -c`,
+   * `codex resume --last`) trỏ vào CÙNG một hội thoại, và cơ chế bắt session theo cwd cũng
+   * không phân biệt nổi. Mỗi cây là một thư mục + một nhánh riêng nên hết đụng nhau.
    *
-   * Trả về thư mục làm việc cuối cùng kèm worktree (nếu có); `undefined` nghĩa là người dùng
-   * hủy cả lệnh.
+   * Hỏi VIỆC chứ không hỏi tên cây: tên là `<việc>-<vai>` (xem `ghepTenWorktree`), nên mọi vai
+   * cùng làm một việc nằm liền nhau trong `git branch`. `vai` tạm là id agent; khi có roles thì
+   * đây là chỗ duy nhất đổi nguồn sang tên vai.
+   *
+   * Tên trả về là tên dùng cho CẢ BA chỗ: entry trong cây workspace, tab terminal, và tên phiên
+   * agent (`claude -n`). Tách khỏi bước tạo để tên được biết TRƯỚC khi dựng lệnh khởi chạy —
+   * trước 22/11/2026 lệnh mang tên repo gốc còn tab mang tên cây, lệch nhau mỗi lần có cây — mà
+   * việc tạo thật thư mục + nhánh vẫn nằm sau mọi hộp thoại có thể bị Esc.
+   *
+   * `undefined` nghĩa là người dùng huỷ cả lệnh.
    */
-  /**
-   * @param batBuocViec Không cho để trống tên việc. Dùng cho lệnh nhân bản: bản sao mà dùng
-   *   chung thư mục với bản gốc thì hai agent sửa đè lên nhau — đúng thứ worktree sinh ra để
-   *   tránh, nên ở đó "để trống" không phải một lựa chọn hợp lệ.
-   */
-  private async hoiWorktree(cwd: string, vai: string, batBuocViec = false): Promise<KetQuaWorktree | undefined> {
-    const goc = await this.git.repoRoot(cwd);
-    if (goc === null) return { cwd }; // không phải repo git thì không có worktree để bàn
+  private async hoiTenCay(cwd: string, vai: string, boQuaId?: string): Promise<TenCayDaChon | undefined> {
+    const trongRepo = await this.git.repoRoot(cwd);
+    // Gốc phải là cây CHÍNH, không phải cây đang đứng: `--show-toplevel` bên trong một linked
+    // worktree trả về chính nó (đo 22/11/2026), mà `nhoCwd` lại lưu đường cây vào lịch sử gợi ý
+    // — nên "mở phiên mới từ trong một cây" là ca thường gặp, và nó sẽ đẻ cây lồng cây.
+    const repoGoc =
+      trongRepo === null ? null : goiRepoChinh(await this.git.listWorktrees(cwd), trongRepo);
+    const boQua = boQuaId === undefined ? {} : { boQuaId };
+    // Đọc store ở MỖI lần xét, không chụp một lần: hộp thoại có thể mở hàng phút, trong lúc đó
+    // cửa sổ khác thêm phiên hoặc chính người dùng gỡ phiên đang chiếm cái tên ấy.
+    const xet = (viec: string): PhanXuTenCay =>
+      xetTenCay({ viec, vai, repoGoc, daCo: this.dsEntryDaCo(), ...boQua });
 
     const viec = await vscode.window.showInputBox({
-      title: `Worktree trong repo ${path.basename(goc)}`,
-      prompt: batBuocViec
-        ? `Tên việc — thư mục + nhánh riêng cho bản sao sẽ là "<việc>-${vai}".`
-        : `Tên việc — thư mục + nhánh riêng sẽ là "<việc>-${vai}". Để TRỐNG nếu làm thẳng trên thư mục vừa chọn.`,
-      placeHolder: 'ví dụ: fix-login',
-      validateInput: (v) => {
-        const t = v.trim();
-        if (t === '') return batBuocViec ? 'Nhập tên việc — bản sao cần thư mục và nhánh riêng.' : undefined;
-        // Tên này đi thẳng vào tên nhánh git và một đoạn đường dẫn — chặn ngay ở cửa nhập.
-        if (!/^[\w.][\w./-]*$/.test(t) || t.includes('..')) {
-          return 'Chỉ dùng chữ, số, dấu . _ - / và không bắt đầu bằng dấu -';
-        }
-        return undefined;
-      },
+      title: repoGoc === null ? 'Tên phiên mới' : `Cây mới trong repo ${path.basename(repoGoc)}`,
+      prompt:
+        repoGoc === null
+          ? `Thư mục này không nằm trong repo git nên KHÔNG tạo được cây riêng — phiên này dùng chung thư mục với mọi phiên khác ở đó. Tên dưới đây đặt cho tab terminal và cho phiên agent.`
+          : `Tên việc — thư mục + nhánh riêng sẽ là "<việc>-${vai}", và đó cũng là tên tab terminal + tên phiên agent.`,
+      placeHolder: repoGoc === null ? 'ví dụ: dọn kho ảnh' : 'ví dụ: fix-login',
+      validateInput: (v) => loiTenCay(xet(v), repoGoc !== null) ?? undefined,
     });
     if (viec === undefined) return undefined;
-    if (viec.trim() === '') return { cwd };
-    const tenWt = ghepTenWorktree(viec, vai);
 
-    // NGOÀI repo, không phải `<repo>/.worktrees/`: đặt bên trong repo thì `git clean -xdf`
-    // (lệnh dọn rất thường dùng) xoá sạch worktree cùng mọi thay đổi chưa commit trong đó,
-    // và VS Code còn index/watch một cây làm việc thứ hai nằm lồng bên trong.
-    const duongDan = path.join(path.dirname(goc), `${path.basename(goc)}${HAU_TO_WORKTREE}`, tenWt);
-    if (nodeFs.existsSync(duongDan)) {
+    // Xét lại sau khi hộp thoại đóng: `validateInput` chỉ chạy lúc gõ, nên một phiên trùng tên
+    // sinh ra GIỮA lúc gõ và lúc bấm OK sẽ lọt nếu chỉ tin vào nó.
+    const kq = xet(viec);
+    if (kq.loai !== 'ok') {
+      void vscode.window.showWarningMessage(loiTenCay(kq, repoGoc !== null) ?? 'Tên không dùng được.');
+      return undefined;
+    }
+    return { tenCay: kq.tenCay, cwd: kq.duongDanCay ?? cwd, repoGoc };
+  }
+
+  /**
+   * Tạo THẬT cây đã chọn. Gọi sau cùng, sau mọi hộp thoại còn có thể bị Esc: `addWorktree` cố ý
+   * không có đường gỡ, nên một lần Esc muộn là một thư mục + một nhánh rác không ai dọn.
+   */
+  private async taoCay(chon: TenCayDaChon): Promise<KetQuaWorktree | undefined> {
+    if (chon.repoGoc === null) return { cwd: chon.cwd }; // ngoài git: không có cây để tạo
+
+    if (nodeFs.existsSync(chon.cwd)) {
       // Thư mục sẵn có phải THẬT là một cây làm việc git, không phải rác trùng tên (hoặc một
       // lần `git worktree add` bị giết giữa chừng vì timeout).
-      if ((await this.git.repoRoot(duongDan)) === null) {
+      if ((await this.git.repoRoot(chon.cwd)) === null) {
         void vscode.window.showWarningMessage(
-          `"${duongDan}" đã tồn tại nhưng không phải worktree git hợp lệ. Chọn tên khác hoặc dọn thư mục đó trước.`,
+          `"${chon.cwd}" đã tồn tại nhưng không phải worktree git hợp lệ. Chọn tên khác hoặc dọn thư mục đó trước.`,
         );
         return undefined;
       }
-      // DÙNG LẠI, không đánh số thứ tự: mở lại cùng việc + cùng vai phải cho ra cùng worktree.
-      // Thêm hậu tố `-2` ở đây là biến thao tác mở lại thành thao tác tạo mới.
-      return { cwd: duongDan, ...(await this.nhanhCuaWorktree(duongDan)) };
+      // DÙNG LẠI, không đánh số thứ tự: mở lại cùng việc + cùng vai phải cho ra cùng cây. Việc
+      // cây đó có đang là của entry nào khác hay không đã được `xetTenCay` chặn ở cửa nhập.
+      return { cwd: chon.cwd, ...(await this.nhanhCuaWorktree(chon.cwd)) };
     }
 
     try {
-      await this.git.addWorktree(goc, duongDan, tenWt);
+      await this.git.addWorktree(chon.repoGoc, chon.cwd, chon.tenCay);
     } catch (e) {
       void vscode.window.showWarningMessage(
-        `Không tạo được worktree "${tenWt}": ${e instanceof Error ? e.message : String(e)}`,
+        `Không tạo được cây "${chon.tenCay}": ${e instanceof Error ? e.message : String(e)}`,
       );
       return undefined;
     }
-    return { cwd: duongDan, worktree: { path: duongDan, branch: tenWt } };
+    return { cwd: chon.cwd, worktree: { path: chon.cwd, branch: chon.tenCay } };
   }
 
   /**
@@ -4666,16 +4738,31 @@ export class WorkspaceManager implements vscode.Disposable {
   async renameTerminal(workspaceId: string, terminalId: string): Promise<void> {
     const entry = this.findEntry(workspaceId, terminalId);
     if (!entry) return;
+    const daCo = this.dsEntryDaCo();
     const ten = await vscode.window.showInputBox({
-      prompt: 'Tên mới cho terminal',
+      prompt: 'Tên mới cho terminal — cũng là tên phiên agent, nên phải khác mọi phiên khác',
       value: entry.name,
-      validateInput: (v) => (v.trim() === '' ? 'Tên không được để trống' : undefined),
+      validateInput: (v) => {
+        if (v.trim() === '') return 'Tên không được để trống';
+        // Hai phiên trùng tên là chỗ người dùng lộn — chặn ở cả cửa tạo và cửa đổi tên.
+        const trung = entryTrungTen(v, daCo, terminalId);
+        return trung === null
+          ? undefined
+          : `Tên này đã có: phiên "${trung.name}" trong workspace "${trung.tenWorkspace}".`;
+      },
     });
     if (ten === undefined || ten.trim() === '') return;
 
     const entryNow = this.findEntry(workspaceId, terminalId);
     if (!entryNow) return;
     const tenMoi = ten.trim();
+    const trungNow = entryTrungTen(tenMoi, this.dsEntryDaCo(), terminalId);
+    if (trungNow !== null) {
+      void vscode.window.showWarningMessage(
+        `Tên "${tenMoi}" đã là của phiên "${trungNow.name}" trong workspace "${trungNow.tenWorkspace}".`,
+      );
+      return;
+    }
     entryNow.name = tenMoi;
     this.touch(workspaceId);
     this.scheduleSave();

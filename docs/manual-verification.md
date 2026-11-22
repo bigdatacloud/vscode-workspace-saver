@@ -476,15 +476,30 @@ phiên đã thấy nó), rồi **thoát phiên mà giữ terminal**: gõ `/exit`
       + nhánh `fix-login-claude`, terminal mở tại đó và **tên terminal là `fix-login-claude`**
 - [ ] Làm lại với `Tạo terminal Codex mới`, cùng việc `fix-login` → ra `fix-login-codex`, tức
       hai vai làm cùng một việc nằm liền nhau khi chạy `git branch`
-- [ ] Để TRỐNG ô việc → làm thẳng trên thư mục đã chọn, không tạo worktree
+- [ ] Để TRỐNG ô việc → **bị chặn** ngay trong ô nhập ("Nhập tên việc — mỗi phiên cần thư mục
+      và nhánh riêng."); không còn đường "làm thẳng trên thư mục đã chọn" (0.2.5)
 - [ ] Gõ `fix-login-claude` (đã sẵn đuôi vai) → KHÔNG thành `fix-login-claude-claude`
 - [ ] `git status` trong repo sạch (worktree nằm ngoài nên không cần khai báo ignore gì)
-- [ ] Hỏi worktree diễn ra SAU khi chọn xong lệnh chạy; Esc ở bước chọn lệnh KHÔNG để lại
-      thư mục/nhánh rác nào
+- [ ] Hỏi TÊN diễn ra TRƯỚC khi chọn lệnh chạy, còn việc TẠO thư mục/nhánh vẫn SAU CÙNG; Esc ở
+      bước chọn lệnh KHÔNG để lại thư mục/nhánh rác nào (0.2.5)
 - [ ] Nhập lại đúng việc + vai đã có → **dùng lại** đúng worktree đó, không lỗi, không ghi đè,
       không sinh bản `-2`
-- [ ] Thư mục KHÔNG phải repo git → không hỏi worktree, mở thẳng
+- [ ] Thư mục KHÔNG phải repo git → **vẫn hỏi tên** cho phiên, prompt nói rõ thư mục sẽ bị dùng
+      chung, và không tạo cây nào (0.2.5)
 - [ ] Tên việc có ký tự lạ (`--foo`, `a/../b`) → bị chặn ngay ở ô nhập
+
+## Mỗi phiên một tên (0.2.5)
+- [ ] Mở phiên mới mà gõ đúng tên một phiên đang có ở **workspace khác** → ô nhập báo tên đó đã
+      là của phiên nào, ở workspace nào; chưa đổi tên thì không mở được
+- [ ] Gõ tên dẫn tới một cây mà **một entry khác** đang trỏ vào → ô nhập báo đúng tên entry đó
+- [ ] Tên trên tab terminal, tên trong cây workspace và tên phiên trong `claude agents --json`
+      là MỘT (trước 0.2.5 lệnh mang tên repo gốc nên ba chỗ lệch nhau)
+- [ ] Chuột phải → `Đổi tên terminal` → đặt trùng tên một phiên khác → bị chặn; giữ nguyên tên
+      của chính nó → không bị coi là trùng
+- [ ] `Lập tổ` với tên việc + vai trùng một phiên đã có → thành viên đó báo lỗi và KHÔNG để lại
+      file vai, thư mục hay nhánh nào
+- [ ] Cây tạo mới → biến thể `-c` / `-r` trong bảng chọn lệnh có dòng phụ "cây mới — chưa có
+      hội thoại nào để nối"; cây dùng lại → không có dòng đó
 
 ## Dọn worktree
 - [ ] Chuột phải workspace → `Dọn worktree` → liệt kê worktree trong `<repo>-worktrees/` kèm
@@ -672,8 +687,10 @@ phiên đã thấy nó), rồi **thoát phiên mà giữ terminal**: gõ `/exit`
 - [ ] Nhân bản shell thường → terminal mới mở ở worktree mới, KHÔNG tự chạy `startCommand`; entry
       vẫn giữ lệnh đó cho lần kích hoạt sau
 - [ ] Nhân bản terminal KHÔNG nằm trong repo git → modal cảnh báo dùng chung thư mục; bấm huỷ thì
-      không tạo gì; bấm "Vẫn nhân bản" thì terminal mới tên `<tên gốc> (bản sao)`
-- [ ] Nhập tên việc TRÙNG một worktree đã có → dùng lại worktree đó, không đẻ ra `-2`
+      không tạo gì; bấm "Vẫn nhân bản" thì **vẫn hỏi tên** cho bản sao, và tên đó là tên terminal
+      mới (từ 0.2.5; trước đó tên tự đặt là `<tên gốc> (bản sao)`)
+- [ ] Nhập tên việc TRÙNG một worktree đã có mà KHÔNG entry nào đang trỏ vào → dùng lại worktree
+      đó, không đẻ ra `-2`; nếu có entry đang trỏ vào thì ô nhập báo trùng (0.2.5)
 - [ ] Esc ở mỗi bước (chọn chế độ, nhập tên việc) → không tạo thư mục, nhánh hay entry nào
 
 ## Chuyển terminal & sắp xếp bằng kéo thả

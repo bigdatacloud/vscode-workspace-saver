@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import type { GitRunner } from './exec';
 
 /** Worktree do extension tạo nằm CẠNH repo: `<repo>-worktrees/<tên>`, không nằm trong repo. */
@@ -22,6 +23,33 @@ export function buildAddWorktreeArgs(absPath: string, branch: string, branchExis
 export function ghepTenWorktree(viec: string, vai: string): string {
   const v = viec.trim();
   return v.endsWith(`-${vai}`) ? v : `${v}-${vai}`;
+}
+
+/**
+ * Chỗ đặt một worktree của extension: `<thư mục cha của repo>/<tên repo>-worktrees/<tên cây>`.
+ *
+ * NGOÀI repo, không phải `<repo>/.worktrees/`: đặt bên trong repo thì `git clean -xdf` (lệnh
+ * dọn rất thường dùng) xoá sạch worktree cùng mọi thay đổi chưa commit trong đó, và VS Code
+ * còn index/watch một cây làm việc thứ hai nằm lồng bên trong.
+ *
+ * Một hàm dùng chung cho mọi nơi cần đường dẫn này — ba chỗ tự ghép lấy là ba chỗ có thể lệch
+ * nhau, mà lệch đường dẫn nghĩa là "cây đã có" và "cây tạo mới" không còn nhìn thấy nhau.
+ */
+export function duongDanCay(repoGoc: string, tenCay: string): string {
+  return path.join(path.dirname(repoGoc), `${path.basename(repoGoc)}${HAU_TO_WORKTREE}`, tenCay);
+}
+
+/**
+ * Cây làm việc CHÍNH của repo — gốc để tính chỗ đặt mọi cây con.
+ *
+ * `git rev-parse --show-toplevel` KHÔNG dùng được cho việc này: đo trên máy thật 22/11/2026,
+ * chạy nó bên trong một linked worktree trả về chính worktree đó, nên lấy nó làm gốc sẽ sinh
+ * `<repo>-worktrees/<việc-a>-worktrees/<việc-b>` — cây lồng cây, và hai entry cùng một việc
+ * không còn nhìn thấy nhau để mà báo trùng. Dòng ĐẦU của `git worktree list` luôn là cây
+ * chính; repo bare không phải chỗ làm việc nên bỏ qua.
+ */
+export function goiRepoChinh(ds: readonly WorktreeInfo[], duPhong: string): string {
+  return ds.find((w) => !w.bare)?.path ?? duPhong;
 }
 
 export interface WorktreeInfo {

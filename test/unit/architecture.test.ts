@@ -4,7 +4,12 @@ import { join } from 'node:path';
 
 const PURE_DIRS = ['git', 'agent', 'model', 'adopt', 'claude', 'trust', 'proc', 'capture', 'role', 'orch', 'voice'];
 /** Module thuần nằm lẻ trong thư mục có cả code lớp vscode (src/workspace). */
-const PURE_FILES = [join('src', 'workspace', 'activate.ts')];
+const PURE_FILES = [
+  join('src', 'workspace', 'activate.ts'),
+  join('src', 'workspace', 'tencay.ts'),
+  join('src', 'workspace', 'trungphien.ts'),
+  join('src', 'workspace', 'votrong.ts'),
+];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -72,10 +77,22 @@ describe('bất biến của phần worktree', () => {
   it('newPlainTerminal KHÔNG tạo worktree', () => {
     // Shell thường là để chạy dev server, git log, test runner — worktree riêng cho chúng gần
     // như luôn là sai ý. Đây là chủ ý, không phải chuyện tình cờ.
-    expect(thanPhuongThuc(manager, 'async newPlainTerminal(')).not.toContain('hoiWorktree');
+    expect(thanPhuongThuc(manager, 'async newPlainTerminal(')).not.toContain('taoCay');
     // Và bảo đảm phép cắt thân hàm thật sự nhìn thấy nội dung: hai lệnh agent PHẢI có nó.
-    expect(thanPhuongThuc(manager, 'async newClaudeTerminal(')).toContain('hoiWorktree');
-    expect(thanPhuongThuc(manager, 'async newCodexTerminal(')).toContain('hoiWorktree');
+    expect(thanPhuongThuc(manager, 'async newClaudeTerminal(')).toContain('taoCay');
+    expect(thanPhuongThuc(manager, 'async newCodexTerminal(')).toContain('taoCay');
+  });
+
+  it('tên cây được hỏi TRƯỚC khi lệnh khởi chạy được dựng', () => {
+    // `claude -n <tên>` phải mang đúng cái tên sẽ nằm trên tab terminal. Dựng lệnh trước khi
+    // hỏi tên (cách làm tới 22/11/2026) là cách chắc chắn để hai tên lệch nhau.
+    for (const ham of ['async newClaudeTerminal(', 'async newCodexTerminal(']) {
+      const than = thanPhuongThuc(manager, ham);
+      expect(than.indexOf('hoiTenCay'), ham).toBeGreaterThan(-1);
+      expect(than.indexOf('hoiTenCay'), ham).toBeLessThan(than.indexOf('buildLaunchOptions'));
+      // Và cây chỉ được tạo sau cùng — sau mọi hộp thoại còn có thể bị Esc.
+      expect(than.indexOf('taoCay'), ham).toBeGreaterThan(than.indexOf('buildLaunchOptions'));
+    }
   });
 
   it('không còn hộp thoại "Lưu và đóng workspace X trước khi mở Y"', () => {

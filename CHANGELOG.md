@@ -3,6 +3,60 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.5] — 2026-11-22
+
+### Thay đổi
+
+- **Mỗi phiên agent mới = một cây riêng, và một TÊN riêng.** Mở `Tạo terminal Claude mới` /
+  `Tạo terminal Codex mới` nay luôn phải nhập tên việc: ô nhập không còn nhận câu trả lời
+  trống, nên không còn đường để hai phiên dùng chung một thư mục làm việc (đúng cái worktree
+  sinh ra để tránh — hai phiên cùng thư mục thì `claude -c` / `codex resume --last` trỏ vào
+  CÙNG một hội thoại và cơ chế bắt phiên theo cwd cũng không phân biệt nổi).
+- **Tên đó là một tên cho cả ba chỗ**: entry trong cây workspace, tab terminal, và tên phiên
+  agent (`claude -n`). Trước bản này lệnh khởi chạy được dựng TRƯỚC khi hỏi worktree, nên nó
+  mang tên repo gốc trong khi tab và entry mang tên cây — lệch nhau mỗi lần có cây.
+- **Tên trùng bị chặn ở ba cửa đặt tên, so trên toàn bộ store** (mọi workspace, kể cả workspace
+  đang đóng, kể cả repo khác): `Tạo terminal Claude/Codex mới`, `Đổi tên terminal`, và `Lập tổ`.
+  Cây mà một entry khác đang trỏ vào cũng không được nhận im lặng nữa. Ba đường KHÔNG kiểm
+  trùng, có lý do: `Tạo terminal mới` (shell thường), `Thêm terminal đang mở vào workspace`, và
+  phép đồng bộ tên tab — cả ba chỉ áp cho terminal không phải phiên agent (tên tab của agent do
+  chính agent ghi, extension cố ý không hút vào entry).
+- **Nhân bản terminal** nay cũng đi qua đúng cửa đó: bản sao ngoài repo git trước đây tự đặt tên
+  `<tên gốc> (bản sao)`, nay được hỏi tên như mọi phiên khác.
+- **Cây không còn lồng vào nhau.** Gốc để tính chỗ đặt cây là cây làm việc CHÍNH của repo, không
+  phải thư mục đang đứng: đo 22/11/2026, `git rev-parse --show-toplevel` chạy bên trong một
+  linked worktree trả về chính worktree đó, mà lịch sử gợi ý đường dẫn lại chứa đúng các đường
+  cây — nên "mở phiên mới từ trong một cây" sẽ sinh `<repo>-worktrees/<việc-a>-worktrees/<việc-b>`
+  và hai entry không còn nhìn thấy nhau để báo trùng.
+- **Thư mục không nằm trong repo git**: trước đây lặng lẽ bỏ qua bước worktree; nay vẫn hỏi
+  tên (tên đặt cho tab terminal và cho phiên agent, vẫn kiểm trùng) kèm một câu nói rõ thư
+  mục đó sẽ bị dùng chung với mọi phiên khác ở đấy.
+- **Biến thể "nối tiếp hội thoại" (`-c` / `-r`) trong một cây vừa tạo được dán nhãn**: Claude
+  lưu hội thoại theo thư mục, nên cây mới chưa có gì để nối. Lựa chọn vẫn còn, chỉ là nói
+  trước thay vì để người dùng nhận một phiên trắng mang tên "tiếp tục".
+
+### Ghi chú kỹ thuật
+
+- Hỏi tên và tạo cây nay là hai bước tách bạch (`hoiTenCay` / `taoCay`): tên phải biết TRƯỚC
+  khi dựng lệnh, còn `git worktree add` vẫn phải chạy SAU mọi hộp thoại còn có thể bị Esc —
+  `addWorktree` cố ý không có đường gỡ, nên một lần Esc muộn là một thư mục + một nhánh rác.
+  Một ca kiểm kiến trúc khoá đúng thứ tự đó trong mã.
+- Phép phán xử nằm trong module thuần `src/workspace/tencay.ts` (không biết vscode): cú pháp
+  tên, ghép đuôi vai, đường dẫn cây, trùng tên, trùng cây. Đường dẫn cây nay do một hàm duy
+  nhất tính (`duongDanCay` trong `src/git/worktree.ts`) thay vì ba chỗ tự ghép — ba chỗ tự
+  ghép là ba chỗ có thể lệch, mà lệch đường dẫn nghĩa là "cây đã có" và "cây tạo mới" không
+  còn nhìn thấy nhau.
+- Luật "cùng thư mục, khác tên là chủ ý" của `trungphien.ts` KHÔNG bị đổi: nó nói về các
+  terminal đang chạy, còn hàng rào mới chỉ áp ở cửa đặt tên.
+- Đo: 692 vitest xanh (thêm 23 ca), `tsc --noEmit` sạch, Extension Host 33 passing / 6 pending
+  / 0 failing (4 phút). Bốn thí nghiệm phân biệt: gỡ phép kiểm trùng tên → đỏ 3 ca; cho tên
+  trống là hợp lệ → đỏ 3 ca; trả tên lệnh về cách cũ (tên repo gốc) → đỏ 2 ca; lấy
+  `--show-toplevel` làm gốc cây → đỏ 1 ca.
+- CHƯA kiểm trên VS Code thật: tiêu đề tab sau khi Claude khởi động với `-n <tên>`. Mã đặt tên
+  tab lúc tạo terminal và truyền cùng tên đó vào `-n`, nhưng thứ hiện trên tab sau đó do chính
+  Claude ghi bằng escape sequence — chỉ chạy tay mới biết chắc. Xem mục "Mỗi phiên một tên" trong
+  `docs/manual-verification.md`.
+
 ## [0.2.4] — 2026-10-26
 
 ### Sửa
