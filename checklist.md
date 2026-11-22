@@ -13,6 +13,8 @@
 
 ## 5. Xong gần đây
 
+- [x] #015 · 22/11 · Kiểm **bản đã cài từ VSIX** trong một cửa sổ VS Code thật (không chỉ kiểm mã nguồn): cấu hình riêng `.vscode-test-cai.mjs` + `npm run test:vscode:cai` nạp thư mục extensions thật, kiểm version khớp `package.json`, `activate()` được, lệnh đã đăng ký. Nhờ đó "0.2.7 chạy trong cửa sổ VS Code thật" là phép đo. Đo: 1 passing; bộ chính 35 passing / 0 failing — nguồn: rà 22/11
+
 - [x] #014 · 22/11 · Đo nhãn tab với phiên Claude **THẬT** trong bộ Extension Host — XONG, và sửa luôn kết luận sai của chính mình: bốn lần đầu tôi tìm phiên ở `claude agents --json` + file transcript, không thấy, rồi bảo "claude không boot trong môi trường test". Sai — cả hai nguồn đó chỉ có SAU tin nhắn đầu tiên. Bằng chứng đúng là bảng tiến trình hệ điều hành: `claude.exe --session-id <id> -n ten-cay-claude-that` ở pid thật, và nhãn tab lúc đó vẫn đúng tên cây. Ca nay nằm trong bộ EH (36 passing / 0 failing) — nguồn: rà 22/11
 
 - [x] #013 · 22/11 · **Tên tab terminal = tên cây** — điểm cuối của "một tên ba chỗ", tưởng phải kiểm tay nhưng đo được bằng máy, và hoá ra ĐANG SAI: `createTerminal({ name })` không quyết định nhãn tab, VS Code hiện `${process}` nên tab ra "pwsh" / "claude". Nay cả 5 đường tạo terminal ép nhãn bằng `renameWithArg`; có ca Extension Host đo nhãn thật + ca kiến trúc khoá cả 5 đường. Đo: 702 vitest, EH 34 passing / 0 failing — nguồn: anh Ý 22/11

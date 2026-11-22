@@ -20,6 +20,12 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 
 ### Ghi chú kỹ thuật
 
+- **Bản phát hành được kiểm trong một cửa sổ VS Code thật, không chỉ kiểm mã nguồn.** Bộ
+  Extension Host thường chạy với `--extensionDevelopmentPath`, tức nó đo mã đang sửa. Thêm một
+  cấu hình riêng (`.vscode-test-cai.mjs`, `npm run test:vscode:cai`) nạp thư mục extensions
+  THẬT của máy, nên cửa sổ test dùng đúng gói đã đóng và đã cài: ca đó kiểm phiên bản khớp
+  `package.json`, extension `activate()` được, và các lệnh đã đăng ký. Nhờ vậy câu "0.2.7 chạy
+  được trong cửa sổ VS Code thật" là một phép đo, không phải lời hứa.
 - Hai ca test giữ điều này: một ca Extension Host đo nhãn tab thật trước/sau khi ép (và ghi
   lại giá trị mặc định của VS Code trong thông báo lỗi), một ca kiến trúc đòi cả năm đường tạo
   terminal đều gọi bước ép nhãn.

@@ -617,7 +617,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pretest:vscode": "tsc -p tsconfig.json --outDir out && node -e \"require('fs').rmSync('.vscode-test/user-data',{recursive:true,force:true})\"",
-    "test:vscode": "npm run build && vscode-test"
+    "test:vscode": "npm run build && vscode-test",
+    "test:vscode:cai": "npm run pretest:vscode && node -e \"process.env.AIWS_BAN_MONG=require('./package.json').version;process.env.AIWS_EXT_DIR=process.env.AIWS_EXT_DIR||require('node:path').join(require('node:os').homedir(),'.vscode','extensions');require('node:child_process').execFileSync(process.execPath,['node_modules/@vscode/test-cli/out/bin.mjs','--config','.vscode-test-cai.mjs'],{stdio:'inherit',env:process.env})\""
   },
   "devDependencies": {
     "@types/mocha": "^10.0.7",
