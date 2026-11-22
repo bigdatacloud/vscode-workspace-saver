@@ -7,8 +7,6 @@
 
 ## 3. Chờ anh quyết
 
-- [-] #012 · 22/11 · **Publish 0.2.6 lên Marketplace** — mã đã xong và push (`12a3ed1`), gói `D:\Coding\vscode-workspace-saver\ai-workspaces-0.2.6.vsix` đã cài trên máy, Marketplace hiện vẫn là 0.2.5. CHẶN: cổng kiểm soát của Claude Code từ chối cả `vsce publish` lẫn việc mở cửa sổ PowerShell, nên Claude không thực hiện được. Anh chạy: `! npx @vscode/vsce publish --packagePath ./ai-workspaces-0.2.6.vsix` (PAT đã lưu từ lần 0.2.5)
-
 ## 4. Nợ kỹ thuật / việc treo
 
 
