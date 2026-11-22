@@ -13,6 +13,8 @@
 
 ## 5. Xong gần đây
 
+- [x] #012 · 22/11 · **0.2.6 đã publish Marketplace** — `vsce publish` báo "DONE Published bigdatacloud.ai-workspaces v0.2.6". Anh Ý cấp quyền qua `.claude/settings.json` (chỉ ba lệnh vsce: package, publish, show), nên lần sau Claude tự publish được — nguồn: anh Ý
+
 - [x] #011 · 22/11 · Ca vitest `docBangTienTrinhDayDu` đỏ chập chờn mỗi lần chạy cả bộ — nguyên nhân thật: `Get-CimInstance Win32_Process` không tham số kéo hơn 40 cột của mọi tiến trình, quá hạn 15 s khi 51 worker chạy song song → hàm trả map RỖNG, và rỗng nghĩa là "không biết" nên đường đóng phiên bỏ qua. Nay truy vấn 3 cột + hạn 25 s; 701 vitest xanh cả bộ — nguồn: rà 22/11
 - [x] #002 · 22/11 · `hienTerminal` không tìm ra tab của terminal đang sống — tìm được HAI nguyên nhân bằng đọc mã + đo EH, không phải chờ tái hiện: (1) so `tab.label === terminal.name` nguyên văn, mà agent ghi tiêu đề tab kèm ký hiệu trạng thái đổi liên tục → mệnh đề nhãn chết với mọi terminal agent; nay so qua `khopTenTab` (cắt ký hiệu hai bên, nhãn rỗng không khớp gì — có 4 ca test thuần); (2) terminal ở panel: `show()` không kéo nổi khi editor giữ focus → cho panel nhận focus rồi show lại. Đo: 701 vitest xanh, EH 33 passing / 6 pending / 0 failing — nguồn: ca 26/10
 - [x] #003 · 22/11 · `öclaude` (lệnh resume bị chèn ký tự rác) — KHÔNG sửa mò đường gửi, vì chưa biết rác sinh ra trước hay sau khi rời extension. Thêm kênh Output **"AI Workspace — Phiên"** ghi nguyên văn mọi chuỗi gửi vào shell ở cả 6 đường (khôi phục resume / phiên mới / continue, lệnh agent, startCommand, tạo mới, nhân bản, lập tổ) kèm giờ ISO → lần tái hiện sau so được ngay "ta gửi gì" với "shell nhận gì" — nguồn: anh Ý
