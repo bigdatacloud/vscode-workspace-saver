@@ -23,6 +23,12 @@ Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 - Hai ca test giữ điều này: một ca Extension Host đo nhãn tab thật trước/sau khi ép (và ghi
   lại giá trị mặc định của VS Code trong thông báo lỗi), một ca kiến trúc đòi cả năm đường tạo
   terminal đều gọi bước ép nhãn.
+- Ca Extension Host đó đo thêm một mệnh đề nữa: nhãn **giữ được** tên đó khi chương trình
+  trong terminal tự ghi tiêu đề bằng OSC 0 — đúng việc Claude làm liên tục ("<ký hiệu trạng
+  thái> <tên phiên>"). Không cần chạy Claude thật, chỉ cần một shell ghi đúng chuỗi ấy, và một
+  dấu ấn trên đĩa bắt buộc chứng minh shell ĐÃ chạy lệnh. Bản đầu của ca này xanh RỖNG: khi
+  thiếu dấu ấn nó lặng lẽ bỏ qua phần đo, nên "nhãn không đổi" là kết luận trống — siết thành
+  `assert` mới lộ ra.
 - Phát hiện kèm theo khi đo store thật: `claudeName` và tên phiên trong `claude agents --json`
   khớp nhau ở **7/7** entry đang chạy, nhưng cả hai lệch `entry.name` ở các entry tạo TRƯỚC
   0.2.5 (tên phiên mang hậu tố `-a6`, `-cd`… do Claude tự thêm). Entry tạo từ 0.2.5 trở đi

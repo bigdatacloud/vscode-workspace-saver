@@ -1,4 +1,7 @@
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { datNhanTab } from '../../src/ui/nhantab';
 import {
@@ -1003,6 +1006,39 @@ suite('bấm vào terminal trong cây — đúng cái đó phải lên active', 
         ten,
         `nhãn tab phải là "${ten}" (mặc định của VS Code là "${nhanMacDinh}") — log: ${log.join(' | ')}`,
       );
+
+      // VÀ phải GIỮ được tên đó khi chương trình trong terminal tự ghi tiêu đề — đúng việc
+      // Claude làm liên tục (OSC 0: "<ký hiệu trạng thái> <tên phiên>"). Không cần chạy Claude
+      // thật: chỉ cần một shell ghi đúng chuỗi ấy. Dấu ấn trên đĩa bảo đảm shell ĐÃ chạy lệnh,
+      // nếu không thì "nhãn không đổi" chẳng chứng minh được gì.
+      const BT = '`'; // backtick: ký tự escape của PowerShell
+      const dauAn = path.join(os.tmpdir(), `aiws-osc-${Date.now()}.txt`);
+      const lenhOsc =
+        '[Console]::Write("' + BT + 'e]0;✳ phien-cua-claude' + BT + 'a"); ' +
+        'echo ok > "' + dauAn + '"';
+      t.sendText(lenhOsc, true);
+      try {
+        await cho(() => fs.existsSync(dauAn), 30000);
+        // Không bỏ qua im lặng: shell mặc định ở đây là PowerShell (chính nhãn tab mặc định
+        // đọc được là "pwsh"), nên lệnh PHẢI chạy. Thiếu dấu ấn thì "nhãn không đổi" là một
+        // kết luận rỗng, và một ca test xanh rỗng còn tệ hơn không có ca nào.
+        assert.ok(
+          fs.existsSync(dauAn),
+          'shell phải thật sự chạy lệnh ghi OSC, nếu không phép đo vô nghĩa',
+        );
+        await doi(1500); // cho VS Code kịp áp tiêu đề nếu nó định áp
+        assert.equal(
+          nhanCua(),
+          ten,
+          `nhãn tab phải VẪN là "${ten}" sau khi chương trình ghi OSC — thực tế "${nhanCua()}"`,
+        );
+      } finally {
+        try {
+          fs.rmSync(dauAn, { force: true });
+        } catch {
+          // dấu ấn nằm trong thư mục tạm; xoá không được cũng không ảnh hưởng ca test
+        }
+      }
     } finally {
       await donDep([t]);
     }
