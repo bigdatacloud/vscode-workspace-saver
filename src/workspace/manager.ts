@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import * as nodeFs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { ZodError } from 'zod';
 
 import {
   classifyTerminal,
@@ -241,6 +240,14 @@ const HAN_SO_GIAO_MS = 24 * 3_600_000;
 const SO_DONG_HUY = 10;
 const TEN_KENH_KIEM_TOAN = 'AI Workspace — Điều phối';
 const TEN_KENH_LUOI = 'AI Workspace — Xem song song';
+/**
+ * Kênh ghi MỌI chuỗi extension gửi vào shell để bật / khôi phục một phiên.
+ *
+ * Thêm 22/11/2026 vì một lệnh resume bị chèn ký tự rác (`öclaude`) mà không chỗ nào ghi lại
+ * chuỗi đã gửi: không có nhật ký thì "ta dựng sai lệnh" và "shell nhận méo" trông y như nhau,
+ * và cách duy nhất còn lại là sửa mò đúng đường khởi chạy — đường cốt tử của extension.
+ */
+const TEN_KENH_PHIEN = 'AI Workspace — Phiên';
 /** Log kiểm toán bền, nằm cạnh bus của workspace: `orch/<wsId>/audit.log`. */
 const TEN_FILE_KIEM_TOAN = 'audit.log';
 /** Trần trạng thái "đang tải" — session không hiện trong registry sau chừng này thì thôi xoay. */
@@ -1824,6 +1831,7 @@ export class WorkspaceManager implements vscode.Disposable {
       warn: (message) => {
         void vscode.window.showWarningMessage(message);
       },
+      ghiPhien: (dong) => this.ghiPhien(dong),
     };
   }
 
@@ -2702,8 +2710,15 @@ export class WorkspaceManager implements vscode.Disposable {
   }
 
   private kenhLuoiCache: vscode.OutputChannel | null = null;
+  private kenhPhienCache: vscode.OutputChannel | null = null;
 
   /** Kênh Output riêng cho việc xếp lưới — chỗ tra khi một terminal không vào được ô nào. */
+  /** Một dòng vào kênh "Phiên", kèm giờ ISO để so được với lúc người dùng thấy lỗi. */
+  private ghiPhien(dong: string): void {
+    this.kenhPhienCache ??= vscode.window.createOutputChannel(TEN_KENH_PHIEN);
+    this.kenhPhienCache.appendLine(`${new Date().toISOString()} ${dong}`);
+  }
+
   private kenhLuoi(): vscode.OutputChannel {
     this.kenhLuoiCache ??= vscode.window.createOutputChannel(TEN_KENH_LUOI);
     return this.kenhLuoiCache;
@@ -3152,9 +3167,9 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsGhi.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
-    handle.sendText(
-      this.agent.buildLaunchCommand({ name: tenWt, mode: { kind: 'new', sessionId }, coThem }),
-    );
+    const lenhTo = this.agent.buildLaunchCommand({ name: tenWt, mode: { kind: 'new', sessionId }, coThem });
+    this.ghiPhien(`[lap-to] "${tenWt}" phiên mới ${sessionId} → ${lenhTo}`);
+    handle.sendText(lenhTo);
     this.batDauLoading([entry.id]);
     return { ten: tenWt, id: entryId };
   }
@@ -3810,6 +3825,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsNow.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.ghiPhien(`[tao-moi] "${ten}" ${luaChon.label} → ${luaChon.command}`);
     handle.sendText(luaChon.command);
     // Claude boot mất nhiều giây trước khi registry thấy — spinner cho tới khi có trạng thái.
     this.batDauLoading([entry.id]);
@@ -3943,6 +3959,7 @@ export class WorkspaceManager implements vscode.Disposable {
     });
     this.ghiNhanShellPid(entry.id);
     if (lenh !== '') {
+      this.ghiPhien(`[nhan-ban] "${ten}" ${fork ? 'fork từ' : 'phiên mới, gốc'} "${goc.name}" → ${lenh}`);
       handle.sendText(lenh);
       this.batDauLoading([entry.id]);
     }
@@ -4020,6 +4037,7 @@ export class WorkspaceManager implements vscode.Disposable {
       location: wsNow.terminalLocation,
     });
     this.ghiNhanShellPid(entry.id);
+    this.ghiPhien(`[tao-moi] "${ten}" codex → ${luaChon.command}`);
     handle.sendText(luaChon.command);
     this.batDauLoading([entry.id]);
     this.onChanged.fire();

@@ -35,6 +35,18 @@ function chuaImportVscode(source: string): boolean {
   return laImportTinh || laRequire || laImportDong;
 }
 
+describe('kích thước gói cài', () => {
+  it('schema dùng namespace import của zod, không phải named import', () => {
+    // Đo 22/11/2026 (nâng zod 3 → 4): bundle riêng `src/model/schema.ts` là 92 KB với
+    // `import * as z from 'zod'` và 446 KB với `import { z } from 'zod'` — bản 4 tree-shake
+    // được, còn named import kéo cả barrel (locales, mọi kiểu schema). 354 KB đó đi thẳng vào
+    // gói cài của người dùng, nên đây là hàng rào, không phải sở thích.
+    const src = readFileSync(join('src', 'model', 'schema.ts'), 'utf8');
+    expect(src).toContain("import * as z from 'zod'");
+    expect(src).not.toContain("import { z } from 'zod'");
+  });
+});
+
 describe('hàng rào kiến trúc', () => {
   it('các module core không được import vscode', () => {
     const offenders: string[] = [];

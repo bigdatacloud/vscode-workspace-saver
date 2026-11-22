@@ -1,4 +1,10 @@
-import { z } from 'zod';
+/*
+ * `import * as z` CHỨ KHÔNG PHẢI `import { z }` — đo 22/11/2026 khi nâng zod 3 → 4:
+ * bundle của riêng file này là 92 KB với namespace import, 446 KB với named import, vì bản
+ * 4 tree-shake được còn `{ z }` kéo cả barrel (locales, mọi kiểu schema). Chênh 354 KB đi
+ * thẳng vào gói cài của người dùng.
+ */
+import * as z from 'zod';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuid = z.string().regex(UUID_RE, 'phải là UUID');

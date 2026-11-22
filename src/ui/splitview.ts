@@ -333,6 +333,39 @@ async function xoayToiTabTerminal(g: vscode.TabGroup): Promise<boolean> {
   return vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal;
 }
 
+/**
+ * Nhóm nào trong vùng editor đang chứa một tab terminal MANG TÊN này; `-1` nếu không có.
+ *
+ * So theo nhãn vì API công khai không nối một tab với terminal sinh ra nó. Hạn chế đã biết:
+ * nhãn rỗng với tab terminal chưa từng được hiện, và hai terminal trùng tên thì không phân
+ * biệt được — nên đây chỉ dùng để CHỌN ĐƯỜNG NGẮN, còn đường cũ vẫn là chỗ rơi về.
+ */
+function timNhomCoTabTen(ten: string): number {
+  const ds = vscode.window.tabGroups.all;
+  for (let i = 0; i < ds.length; i++) {
+    const co = ds[i]?.tabs.some(
+      (x) => x.input instanceof vscode.TabInputTerminal && x.label === ten,
+    );
+    if (co === true) return i;
+  }
+  return -1;
+}
+
+/** Xoay tab trong nhóm đang active cho tới khi tab active là tab terminal mang đúng tên này. */
+async function xoayToiTabTen(ten: string): Promise<boolean> {
+  const dungTab = (): boolean => {
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    return tab?.input instanceof vscode.TabInputTerminal && tab.label === ten;
+  };
+  const soTab = vscode.window.tabGroups.activeTabGroup.tabs.length;
+  for (let i = 0; i < soTab + 1; i++) {
+    if (dungTab()) return true;
+    await chay('workbench.action.nextEditorInGroup');
+    await cho(dungTab, HAN_XOAY_MS);
+  }
+  return dungTab();
+}
+
 /** Hạn chờ sau `show()`: đây là đường đi của một CÚ BẤM nên không được đứng hình vài giây. */
 const HAN_SHOW_MS = 600;
 /** Hạn chờ cho MỖI bước xoay tab; `cho()` thoát ngay khi đúng nên đây chỉ là trần. */
@@ -444,26 +477,45 @@ export async function themOVaoLuoi(
 ): Promise<boolean> {
   if (t.exitStatus !== undefined) return false;
   try {
-    // Đẩy về panel rồi kéo lên, hệt `xepLuoiTerminal` và vì cùng một lý do: kéo lên chỉ xác
-    // định khi biết chắc `t` đang ở dưới panel.
-    await dayVePanel(t, ghiLog);
-    const keo = await keoLenTheoThuTu([t], ghiLog);
-    if (keo.len === 0) {
-      ghiLog(`[luoi] không đưa được "${t.name}" vào vùng editor`);
-      return false;
+    // ĐƯỜNG NGẮN: `t` đã có tab trong vùng editor.
+    //
+    // Đo trong Extension Host 22/11/2026 (ca "terminal mở sau khi đã xếp lưới", đỏ chập chờn
+    // từ 0.2.3): `show()` đặt `activeTerminal` = t, nhưng TAB active của nhóm vẫn là terminal
+    // khác, nên `moveToTerminalPanel` đẩy nhầm cái đó xuống panel. Sau khi trả nó lên lại, `t`
+    // vẫn còn ở editor — mà bước kéo lên đòi SỐ TAB PHẢI TĂNG, điều không thể xảy ra nữa. Nhật
+    // ký của chính ca đó: "đẩy nhầm \"dau-1\" xuống panel, trả nó lên lại" rồi
+    // "\"mo-sau\" không lên được vùng editor". Nên: nếu `t` đã ở editor thì chỉ cần xoay tới
+    // ĐÚNG tab của nó, không đẩy xuống panel rồi kéo lên nữa.
+    const nhomCoTab = timNhomCoTabTen(t.name);
+    let sanSang = false;
+    if (nhomCoTab >= 0) {
+      await focusNhom(nhomCoTab);
+      sanSang = await xoayToiTabTen(t.name);
+      if (!sanSang) ghiLog(`[luoi] thấy tab "${t.name}" nhưng không xoay tới được, thử đường panel`);
     }
-    t.show(true);
-    await cho(
-      () =>
-        vscode.window.activeTerminal === t &&
-        vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal,
-    );
-    if (
-      vscode.window.activeTerminal !== t ||
-      !(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal)
-    ) {
-      ghiLog(`[luoi] không chắc tab đang mở là của "${t.name}", không thêm ô`);
-      return false;
+
+    if (!sanSang) {
+      // Đẩy về panel rồi kéo lên, hệt `xepLuoiTerminal` và vì cùng một lý do: kéo lên chỉ xác
+      // định khi biết chắc `t` đang ở dưới panel.
+      await dayVePanel(t, ghiLog);
+      const keo = await keoLenTheoThuTu([t], ghiLog);
+      if (keo.len === 0) {
+        ghiLog(`[luoi] không đưa được "${t.name}" vào vùng editor`);
+        return false;
+      }
+      t.show(true);
+      await cho(
+        () =>
+          vscode.window.activeTerminal === t &&
+          vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal,
+      );
+      if (
+        vscode.window.activeTerminal !== t ||
+        !(vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal)
+      ) {
+        ghiLog(`[luoi] không chắc tab đang mở là của "${t.name}", không thêm ô`);
+        return false;
+      }
     }
 
     const truoc = soNhom();

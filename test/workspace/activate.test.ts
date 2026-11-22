@@ -24,6 +24,7 @@ function ws(terminals: TerminalEntry[]): Workspace {
 function makePorts(over: Partial<ActivatePorts> = {}) {
   const sent = new Map<string, string[]>();
   const calls: string[] = [];
+  const nhatKyPhien: string[] = [];
   const ports: ActivatePorts = {
     createTerminal: (e) => {
       calls.push(`create:${e.id}`);
@@ -45,14 +46,53 @@ function makePorts(over: Partial<ActivatePorts> = {}) {
     coPhienDangChayNgoai: () => false,
     onMinted: async () => { calls.push('minted'); },
     warn: () => {},
+    ghiPhien: (d) => nhatKyPhien.push(d),
     ...over,
   };
-  return { ports, sent, calls };
+  return { ports, sent, calls, nhatKyPhien };
 }
 
 const claudeNew: TerminalEntry = { id: U('2'), name: 'agent-a', cwd: 'D:\\x', kind: 'claude' };
 const claudeResume: TerminalEntry = { ...claudeNew, id: U('3'), claudeSessionId: U('5'), claudeName: 'peer-b' };
 const plainCmd: TerminalEntry = { id: U('4'), name: 'dev', cwd: 'D:\\x', kind: 'plain', startCommand: 'npm run dev' };
+
+describe('nhật ký phiên — bằng chứng cho lệnh khởi chạy đã gửi', () => {
+  // Nợ #003 (anh Ý báo): lệnh resume có lần bị chèn ký tự rác ("öclaude") ở một entry, mà
+  // KHÔNG có nơi nào ghi lại chuỗi đã gửi, nên không ai biết rác xuất hiện trước hay sau khi
+  // rời extension. Không sửa mò đường gửi — ghi lại đã, rồi lần sau mới có số để đọc.
+  it('ghi đúng một dòng cho mỗi lệnh gửi, kèm chế độ và NGUYÊN VĂN chuỗi lệnh', async () => {
+    const { ports, sent, nhatKyPhien } = makePorts();
+
+    await activateWorkspace(ws([claudeResume]), ports);
+
+    expect(nhatKyPhien).toHaveLength(1);
+    const dong = nhatKyPhien[0]!;
+    expect(dong).toContain('resume');
+    expect(dong).toContain(claudeResume.name);
+    // Chuỗi gửi phải nằm NGUYÊN VĂN trong nhật ký: đó là thứ duy nhất cho phép so "ta gửi gì"
+    // với "shell nhận gì" khi lỗi lặp lại. So với chính chuỗi đã gửi, không với một mẫu đoán.
+    const daGui = sent.get(claudeResume.id)?.[0];
+    expect(daGui).toBeDefined();
+    expect(dong).toContain(daGui!);
+  });
+
+  it('entry chưa có id phiên: nhật ký nói rõ là nhánh nối tiếp, không phải resume', async () => {
+    const { ports, nhatKyPhien } = makePorts();
+
+    await activateWorkspace(ws([claudeNew]), ports);
+
+    expect(nhatKyPhien).toHaveLength(1);
+    expect(nhatKyPhien[0]).toContain('continue');
+  });
+
+  it('shell thường có startCommand cũng được ghi — nó cũng là một chuỗi gửi vào shell', async () => {
+    const { ports, nhatKyPhien } = makePorts();
+
+    await activateWorkspace(ws([plainCmd]), ports);
+
+    expect(nhatKyPhien.join(' ')).toContain('npm run dev');
+  });
+});
 
 describe('activateWorkspace', () => {
   // Khôi phục KHÔNG BAO GIỜ được mở một hội thoại trắng: người dùng mở lại workspace là để

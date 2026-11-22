@@ -61,6 +61,15 @@ export interface ActivatePorts {
   xuLyTrungPhien?(entry: TerminalEntry, phanXu: PhanXuPhien): Promise<'daDung' | 'boQua' | 'vanMo'>;
   onMinted(terminalId: string, sessionId: string): Promise<void>;
   warn(message: string): void;
+  /**
+   * Ghi lại MỘT dòng cho mỗi chuỗi thật sự được gửi vào shell.
+   *
+   * Lý do tồn tại: 22/11/2026 anh Ý báo một lệnh resume bị chèn ký tự rác (`öclaude`) ở một
+   * entry, và không nơi nào ghi lại chuỗi extension đã gửi — nên không phân biệt được "ta
+   * dựng sai lệnh" với "lệnh đúng nhưng shell nhận méo". Nhật ký này là thứ cho phép so hai
+   * khả năng đó khi lỗi lặp lại, thay vì đoán rồi sửa mò đường khởi chạy.
+   */
+  ghiPhien(dong: string): void;
 }
 
 export interface ActivateReport {
@@ -144,9 +153,9 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
         const sessionId = currentEntry.claudeSessionId;
         const coThem = ports.coThemCuaEntry(currentEntry);
         if (sessionId !== undefined) {
-          handle.sendText(
-            ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'resume', sessionId }, ...(coThem === undefined ? {} : { coThem }) }),
-          );
+          const lenh = ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'resume', sessionId }, ...(coThem === undefined ? {} : { coThem }) });
+          ports.ghiPhien(`[khoi-phuc] "${currentEntry.name}" resume ${sessionId} → ${lenh}`);
+          handle.sendText(lenh);
         } else if (cwdDaNoiTiep.has(normalizeCwd(currentEntry.cwd)) || ports.coPhienDangChayNgoai(currentEntry.cwd)) {
           // `-c` nối vào hội thoại GẦN NHẤT của thư mục — nên nó chỉ an toàn khi thư mục đó
           // không còn tiến trình nào đang giữ hội thoại ấy, và chỉ cho MỘT entry mỗi thư mục.
@@ -154,21 +163,23 @@ export async function activateWorkspace(ws: Workspace, ports: ActivatePorts): Pr
           // không dám `-c` thì mint phiên mới: mất chỗ đang dở còn hơn trộn hai hội thoại.
           const moi = ports.agent.newSessionId();
           await ports.onMinted(currentEntry.id, moi);
-          handle.sendText(
-            ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'new', sessionId: moi }, ...(coThem === undefined ? {} : { coThem }) }),
-          );
+          const lenh = ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'new', sessionId: moi }, ...(coThem === undefined ? {} : { coThem }) });
+          ports.ghiPhien(`[khoi-phuc] "${currentEntry.name}" phiên MỚI ${moi} (thư mục đã có phiên khác giữ) → ${lenh}`);
+          handle.sendText(lenh);
         } else {
           cwdDaNoiTiep.add(normalizeCwd(currentEntry.cwd));
-          handle.sendText(
-            ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'continue' }, ...(coThem === undefined ? {} : { coThem }) }),
-          );
+          const lenh = ports.agent.buildLaunchCommand({ name: ten, mode: { kind: 'continue' }, ...(coThem === undefined ? {} : { coThem }) });
+          ports.ghiPhien(`[khoi-phuc] "${currentEntry.name}" continue (chưa có id phiên) → ${lenh}`);
+          handle.sendText(lenh);
         }
       } else if (restoreCommand !== undefined) {
+        ports.ghiPhien(`[khoi-phuc] "${currentEntry.name}" lệnh agent → ${restoreCommand}`);
         handle.sendText(restoreCommand);
         ports.onAgentLaunched(currentEntry, restoreCommand, startedAt);
       } else if (currentEntry.startCommand && (runStartCommands || ports.laLenhAgent(currentEntry))) {
         // Lệnh agent chạy kể cả khi người dùng từ chối tin cậy các lệnh khác: hai chuyện độc
         // lập nhau, từ chối một lệnh dev server không có nghĩa là không muốn mở lại agent.
+        ports.ghiPhien(`[khoi-phuc] "${currentEntry.name}" startCommand → ${currentEntry.startCommand}`);
         handle.sendText(currentEntry.startCommand);
       }
       report.opened.push(currentEntry.id);

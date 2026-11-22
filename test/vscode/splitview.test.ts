@@ -700,6 +700,11 @@ suite('xem song song — thêm ô vào lưới đang có', () => {
       vscode.window.createTerminal({ name: `dau-${i}`, location: vscode.TerminalLocation.Editor }),
     );
     let them: vscode.Terminal | undefined;
+    // Ca này đỏ chập chờn theo tải máy từ 0.2.3, và tới 22/11/2026 vẫn KHÔNG ai biết nhánh nào
+    // trả `false`: bản cũ gọi `themOVaoLuoi(them)` không truyền hàm ghi log, nên bốn nhánh thất
+    // bại khác nhau (không kéo được vào vùng editor / không chắc tab là của nó / lưới đã đầy /
+    // ngoại lệ) đều hiện ra y như nhau. Thu log vào thông báo assert để lần đỏ sau có số đo.
+    const log: string[] = [];
     try {
       await cho(() => tabTerminal() === 2);
       await xepLuoiTerminal(dau);
@@ -710,12 +715,15 @@ suite('xem song song — thêm ô vào lưới đang có', () => {
       them = vscode.window.createTerminal({ name: 'mo-sau', location: vscode.TerminalLocation.Editor });
       await cho(() => tabTerminal() === 3);
 
-      const ok = await themOVaoLuoi(them);
+      const ok = await themOVaoLuoi(them, (d) => log.push(d));
 
-      assert.equal(ok, true);
+      assert.equal(ok, true, `themOVaoLuoi trả false — nhật ký: ${log.join(' / ') || '(trống)'}`);
       await cho(() => soNhom() === 3 && moiNhomMotTerminal());
-      assert.equal(soNhom(), 3, `phải có ba ô — ${moTaNhom()}`);
-      assert.ok(moiNhomMotTerminal(), `mỗi ô đúng một terminal — ${moTaNhom()}`);
+      assert.equal(soNhom(), 3, `phải có ba ô — ${moTaNhom()} — nhật ký: ${log.join(' / ')}`);
+      assert.ok(
+        moiNhomMotTerminal(),
+        `mỗi ô đúng một terminal — ${moTaNhom()} — nhật ký: ${log.join(' / ')}`,
+      );
     } finally {
       await donDep(them === undefined ? dau : [...dau, them]);
     }

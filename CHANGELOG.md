@@ -3,6 +3,54 @@
 Mọi thay đổi đáng kể của **AI Workspaces** được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/).
 
+## [0.2.6] — 2026-11-22
+
+### Sửa
+
+- **Thêm một terminal vào lưới đang xem song song: hết đỏ chập chờn, vì nó không phải chuyện
+  tải máy.** Ca Extension Host này đỏ thất thường từ 0.2.3 mà chưa ai biết nhánh nào hỏng — lý
+  do đơn giản: ca test gọi hàm KHÔNG truyền hàm ghi log, nên bốn nhánh thất bại khác nhau trông
+  y như nhau. Thu nhật ký vào thông báo assert là ra ngay: `show()` đặt `activeTerminal` = cái
+  terminal mới, nhưng TAB active của nhóm vẫn là terminal khác, nên lệnh `moveToTerminalPanel`
+  đẩy nhầm cái đó xuống panel; sau khi trả nó lên lại, terminal mới vẫn còn ở editor — mà bước
+  kéo lên đòi *số tab phải tăng*, điều không thể xảy ra nữa. Nay nếu terminal đã có tab trong
+  vùng editor thì chỉ xoay tới đúng tab của nó; đường đẩy-panel-rồi-kéo-lên chỉ còn là chỗ rơi
+  về. Đo: ca đó xanh 5/5 lần, và cả bộ Extension Host **33 passing / 6 pending / 0 failing**.
+
+### Bảo mật chuỗi cung ứng
+
+- **`zod` 3.23 → 4.6.7** (GHSA-mrhx-c7xc-m3w5, mức high: cạn bộ nhớ khi validate collection quá
+  lớn). Đây là dependency CHẠY THẬT duy nhất của extension. Nghiệm thu không chỉ bằng test:
+  cả 8 file store thật trên máy người dùng (30 terminal) parse đúng bằng schema mới.
+- **Gói cài không phình theo**: `import * as z from 'zod'` thay cho `import { z }` — đo được
+  92 KB so với 446 KB cho riêng `schema.ts`, vì bản 4 tree-shake được còn named import kéo cả
+  barrel. 354 KB đó đi thẳng vào gói của người dùng, nên có một ca test giữ hàng rào này.
+- **Toolchain phát triển**: vitest 2 → 5 (bỏ `tinypool` có lỗ hổng critical), esbuild 0.23 →
+  0.28, mocha 10 → 12, `@vscode/test-cli` 0.0.10 → 0.0.15, `@vscode/test-electron` 2.4 → 3.1,
+  `@types/node` 20 → 22 (vitest 5 đòi ≥22). Thêm `overrides` đẩy `serialize-javascript` trong
+  nhánh lồng của test-cli lên bản đã vá.
+- Kết quả quét: **15 lỗ hổng → 7** (1 low, 6 moderate; không còn high hay critical). Bảy cái
+  còn lại nằm trong cây lồng của `@vscode/test-cli` và KHÔNG cái nào vào gói VSIX.
+- Ghi rõ một chỗ lệch luật: `vitest` khai `^5.0.5` nên npm cài 5.1.1, phát hành 18/11/2026 —
+  mới 4 ngày, dưới ngưỡng chờ 7 ngày. Ghim 5.0.5 hoặc `~5.0.5` thì npm (arborist) crash
+  `Cannot read properties of null (reading 'edgesOut')` khi giải peer set của vitest 5, nên
+  không có đường kỹ thuật nào khác. Đây là devDependency, không vào gói phát hành.
+
+### Thêm
+
+- **Kênh Output "AI Workspace — Phiên"** ghi nguyên văn mọi chuỗi extension gửi vào shell, kèm
+  giờ ISO, ở cả sáu đường (khôi phục resume / phiên mới / continue, lệnh agent, startCommand,
+  tạo mới, nhân bản, lập tổ). Lý do: một lệnh resume từng bị chèn ký tự rác (`öclaude`) mà
+  không chỗ nào ghi lại chuỗi đã gửi — không có nhật ký thì "ta dựng sai lệnh" và "shell nhận
+  méo" trông y như nhau, và cách duy nhất còn lại là sửa mò đúng đường cốt tử của extension.
+
+### Tài liệu
+
+- `huong-dan-ai-workspace.html` cập nhật cho 0.2.5–0.2.6: phiên bản, tên gói, thứ tự bốn bước,
+  luật tên bắt buộc + một tên cho ba chỗ + chặn trùng + gốc là cây chính + ca ngoài git, và
+  trạng thái "phiên đã thoát · shell trống".
+- `package-lock.json` về đúng version của `package.json` (đang lệch từ 0.2.3).
+
 ## [0.2.5] — 2026-11-22
 
 ### Thay đổi

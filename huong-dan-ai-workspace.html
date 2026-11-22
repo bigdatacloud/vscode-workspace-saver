@@ -512,7 +512,7 @@
   <div class="khung">
     <div class="dau-luoi">
       <div>
-        <p class="nhan-tren">Extension VS Code · v0.0.1</p>
+        <p class="nhan-tren">Extension VS Code · v0.2.5</p>
         <h1>AI Workspace<br>Session&nbsp;Manager</h1>
         <p class="phu">
           Quản lý các terminal chạy agent như một tập hợp có tên: đóng máy rồi mở lại
@@ -676,11 +676,11 @@
       <section id="cai-dat">
         <div class="doc">
           <h2><span class="h2-eo">Bắt đầu</span>Cài và chạy trong năm phút</h2>
-          <p>Cần VS Code <code>≥ 1.93</code> và Node <code>≥ 20</code>. Cài từ file vsix:</p>
+          <p>Cần VS Code <code>≥ 1.93</code> và Node <code>≥ 20</code>. Có trên Marketplace (tìm <em>AI Workspaces</em>), hoặc cài từ file vsix:</p>
         </div>
 
         <div class="doc" style="margin-top:16px">
-          <pre class="lenh"><span class="nhac">$</span> code <span class="co">--install-extension</span> ai-workspace-session-manager-0.0.1.vsix <span class="co">--force</span></pre>
+          <pre class="lenh"><span class="nhac">$</span> code <span class="co">--install-extension</span> ai-workspaces-0.2.5.vsix <span class="co">--force</span></pre>
         </div>
 
         <div class="doc" style="margin-top:22px">
@@ -688,8 +688,8 @@
           <ol>
             <li>Bấm <strong>+</strong> trên khung → đặt tên workspace. Nó được kích hoạt ngay.</li>
             <li>Chuột phải workspace → <strong>Tạo terminal Claude mới</strong>.</li>
-            <li>Chọn thư mục → chọn cách chạy Claude → gõ <strong>tên việc</strong> (ví dụ <code>fix-login</code>).</li>
-            <li>Terminal mở ra trong worktree <code>fix-login-claude</code>, trên nhánh cùng tên.</li>
+            <li>Chọn thư mục → gõ <strong>tên việc</strong> (ví dụ <code>fix-login</code>) → chọn cách chạy Claude.</li>
+            <li>Terminal mở ra trong worktree <code>fix-login-claude</code>, trên nhánh cùng tên, và <strong>tab terminal mang đúng tên đó</strong>.</li>
           </ol>
           <p>
             Từ giờ, đóng VS Code rồi mở lại và kích hoạt workspace đó: terminal quay về, và
@@ -783,6 +783,7 @@
             <span class="vien-tt c-cho">CHỜ BẠN TRẢ LỜI</span>
             <span class="vien-tt c-tai">đang tải phiên…</span>
             <span class="vien-tt c-ranh">đang mở</span>
+            <span class="vien-tt" style="color:var(--nhat)">phiên đã thoát · shell trống</span>
             <span class="vien-tt" style="color:var(--nhat)">chưa mở</span>
             <span class="vien-tt c-loi">lỗi</span>
           </div>
@@ -797,6 +798,12 @@
             hơn “của ai”. Ba màu này khai trong <code>contributes.colors</code>
             (<code>aiWorkspace.mauAnthropic</code>, <code>aiWorkspace.mauOpenAI</code>,
             <code>aiWorkspace.mauShell</code>), đè được bằng <code>workbench.colorCustomizations</code>.
+          </p>
+          <p>
+            <strong>phiên đã thoát · shell trống</strong> (vòng tròn rỗng, màu mờ) là trạng thái riêng
+            cho một chuyện hay làm người dùng bực: bạn <code>/exit</code> hoặc terminate phiên agent
+            nhưng giữ tab terminal lại. Vỏ shell vẫn sống, nên tới 0.2.3 extension vẫn vẽ nó như
+            “đang mở” và bấm vào thì không có gì xảy ra. Nay bấm vào nó là được hỏi <em>mở lại phiên?</em>
           </p>
           <p>
             Cái đáng chú ý nhất là <strong>CHỜ BẠN TRẢ LỜI</strong>. Registry của Claude chỉ
@@ -997,7 +1004,32 @@ thư mục  (NGOÀI repo, cạnh nó)
           </p>
           <p>
             Mở lại <em>cùng việc + cùng vai</em> sẽ <strong>dùng lại</strong> đúng worktree cũ, không
-            đẻ ra bản <code>-2</code>. Để trống ô việc thì làm thẳng trên thư mục đã chọn, không tạo gì.
+            đẻ ra bản <code>-2</code> — nhưng chỉ khi không terminal nào khác đang trỏ vào nó.
+          </p>
+          <p>
+            <strong>Từ 0.2.5, tên là bắt buộc</strong> và nó là <em>một</em> tên cho ba chỗ: dòng trong
+            cây workspace, tab terminal, và tên phiên agent (<code>claude -n</code>). Ô trống không còn
+            nghĩa “làm thẳng trên thư mục chính” nữa — muốn một shell ngay trên repo thì dùng lệnh
+            <strong>Tạo terminal mới</strong> (shell thường, không bao giờ có worktree).
+          </p>
+          <p>
+            Tên cũng không được <strong>trùng</strong>: extension so với mọi terminal của mọi workspace,
+            kể cả workspace đang đóng và repo khác, rồi báo ngay trong ô nhập tên đó đang là của phiên
+            nào. Lý do: hai phiên trùng tên nằm cạnh nhau trong cây, trong <code>claude agents</code> và
+            trong bảng chọn phiên — đó đúng là chỗ người ta gõ nhầm cửa sổ.
+          </p>
+          <p>
+            Chỗ đặt worktree luôn tính từ <strong>cây làm việc chính</strong> của repo, không phải thư
+            mục bạn đang đứng. Chi tiết nhỏ nhưng quyết định: <code>git rev-parse --show-toplevel</code>
+            chạy <em>bên trong</em> một worktree trả về chính worktree đó, nên nếu lấy số ấy làm gốc thì
+            mở phiên mới từ trong một worktree sẽ sinh
+            <code>erp-worktrees/fix-login-claude-worktrees/viec-sau-claude</code> — worktree lồng
+            worktree, mà lệnh dọn chỉ nhìn vào <code>&lt;repo&gt;-worktrees/</code> nên không thấy chúng.
+          </p>
+          <p>
+            Thư mục <strong>không</strong> nằm trong repo git thì không có worktree nào tạo được —
+            extension vẫn hỏi tên (nó còn là tên tab và tên phiên) và nói rõ thư mục đó sẽ bị dùng chung
+            với mọi phiên khác ở đấy.
           </p>
 
           <h3>Dọn worktree</h3>

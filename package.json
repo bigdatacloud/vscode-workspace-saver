@@ -2,7 +2,7 @@
   "name": "ai-workspaces",
   "displayName": "AI Workspaces",
   "description": "Manage global workspaces of terminals — auto-save state, restore terminals, and resume Claude Code sessions right where you left off",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "bigdatacloud",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -244,17 +244,32 @@
       {
         "id": "aiWorkspace.mauAnthropic",
         "description": "Màu chấm của terminal Claude trong cây AI Workspaces (màu thương hiệu Anthropic).",
-        "defaults": { "dark": "#D97757", "light": "#C8613F", "highContrast": "#F0A080", "highContrastLight": "#8A3A1E" }
+        "defaults": {
+          "dark": "#D97757",
+          "light": "#C8613F",
+          "highContrast": "#F0A080",
+          "highContrastLight": "#8A3A1E"
+        }
       },
       {
         "id": "aiWorkspace.mauOpenAI",
         "description": "Màu chấm của terminal Codex trong cây AI Workspaces (màu thương hiệu OpenAI).",
-        "defaults": { "dark": "#10A37F", "light": "#0E8A6B", "highContrast": "#3FD1A9", "highContrastLight": "#0A6650" }
+        "defaults": {
+          "dark": "#10A37F",
+          "light": "#0E8A6B",
+          "highContrast": "#3FD1A9",
+          "highContrastLight": "#0A6650"
+        }
       },
       {
         "id": "aiWorkspace.mauShell",
         "description": "Màu chấm của terminal shell thường trong cây AI Workspaces.",
-        "defaults": { "dark": "descriptionForeground", "light": "descriptionForeground", "highContrast": "foreground", "highContrastLight": "foreground" }
+        "defaults": {
+          "dark": "descriptionForeground",
+          "light": "descriptionForeground",
+          "highContrast": "foreground",
+          "highContrastLight": "foreground"
+        }
       }
     ],
     "configuration": {
@@ -278,7 +293,16 @@
         "aiWorkspace.voice.model": {
           "type": "string",
           "default": "local",
-          "enum": ["quan", "local", "openai:gpt-4o-mini-transcribe", "openai:gpt-4o-transcribe", "openai:whisper-1", "gemini:gemini-3.1-flash-lite", "gemini:gemini-3.8-flash", "gemini:gemini-3.6-flash"],
+          "enum": [
+            "quan",
+            "local",
+            "openai:gpt-4o-mini-transcribe",
+            "openai:gpt-4o-transcribe",
+            "openai:whisper-1",
+            "gemini:gemini-3.1-flash-lite",
+            "gemini:gemini-3.8-flash",
+            "gemini:gemini-3.6-flash"
+          ],
           "enumDescriptions": [
             "QUAN-Transcribe 1.0 — chuyên tiếng Việt, chạy trên máy; cần Python + torch, lần đầu tải ~2 GB; trả chữ thường không dấu câu",
             "Nemotron 3.5 của VS Code — offline, không cần key; extension làm nóng model lúc mở cửa sổ",
@@ -318,7 +342,10 @@
         },
         "aiWorkspace.terminalLocation": {
           "type": "string",
-          "enum": ["editor", "panel"],
+          "enum": [
+            "editor",
+            "panel"
+          ],
           "enumDescriptions": [
             "Mở terminal thành tab trong khu editor (vùng chính)",
             "Mở terminal trong panel dưới như mặc định của VS Code"
@@ -594,16 +621,19 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.7",
-    "@types/node": "^20.14.0",
+    "@types/node": "^22.20.5",
     "@types/vscode": "^1.93.0",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.0",
-    "esbuild": "^0.23.0",
-    "mocha": "^10.7.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "esbuild": "^0.28.2",
+    "mocha": "^12.0.3",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0"
+    "vitest": "^5.0.5"
   },
   "dependencies": {
-    "zod": "^3.23.0"
+    "zod": "^4.6.7"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.1.4"
   }
 }

@@ -42,6 +42,7 @@ interface MayDo {
   nhatKy: string[];
   lenhDaGui: string[];
   tenTerminal: string[];
+  nhatKyPhien: string[];
 }
 
 /**
@@ -63,6 +64,7 @@ function dungManager(opts: { repoGoc: string | null; daCo?: TerminalEntry[] }): 
   const nhatKy: string[] = [];
   const lenhDaGui: string[] = [];
   const tenTerminal: string[] = [];
+  const nhatKyPhien: string[] = [];
 
   const manager = Object.create(WorkspaceManager.prototype) as Record<string, unknown>;
   Object.assign(manager, {
@@ -121,9 +123,10 @@ function dungManager(opts: { repoGoc: string | null; daCo?: TerminalEntry[] }): 
     ghiNhanShellPid: vi.fn(),
     batDauLoading: vi.fn(),
     nhoCwd: vi.fn(async () => {}),
+    ghiPhien: vi.fn((d: string) => nhatKyPhien.push(d)),
     khamPhaSessionCodex: vi.fn(async () => {}),
   });
-  return { manager, ws, nhatKy, lenhDaGui, tenTerminal };
+  return { manager, ws, nhatKy, lenhDaGui, tenTerminal, nhatKyPhien };
 }
 
 function entry(p: { id: string; name: string; cwd: string }): TerminalEntry {
@@ -157,7 +160,7 @@ describe('mỗi phiên agent mới một cây riêng, tên cây = tên terminal 
     // Trước 22/11/2026 lệnh được dựng từ tên repo gốc (`basename(duongDan)`) rồi mới hỏi
     // worktree, nên `claude -n` mang tên repo còn tab terminal mang tên cây — lệch mỗi lần.
     // Thứ tự ngược lại cũng không được: tạo cây phải nằm sau mọi hộp thoại có thể bị Esc.
-    const { manager, ws, nhatKy, lenhDaGui, tenTerminal } = dungManager({ repoGoc: REPO });
+    const { manager, ws, nhatKy, lenhDaGui, tenTerminal, nhatKyPhien } = dungManager({ repoGoc: REPO });
     vscodeMock.window.showInputBox.mockImplementation(async () => {
       nhatKy.push('hoiTen');
       return 'fix-login';
@@ -173,6 +176,10 @@ describe('mỗi phiên agent mới một cây riêng, tên cây = tên terminal 
     expect(e?.cwd).toBe(CAY);
     expect(tenTerminal).toEqual(['fix-login-claude']);
     expect(lenhDaGui[0]).toContain('-n "fix-login-claude"');
+    // Nợ #003: mọi chuỗi gửi vào shell phải có một dòng nhật ký mang NGUYÊN VĂN chuỗi đó, để
+    // lần sau lệnh bị chèn ký tự rác thì so được "ta gửi gì" với "shell nhận gì".
+    expect(nhatKyPhien).toHaveLength(1);
+    expect(nhatKyPhien[0]).toContain(lenhDaGui[0]!);
   });
 
   it('cây mới thì biến thể "nối tiếp hội thoại" được dán nhãn là vô nghĩa ở đó', async () => {
